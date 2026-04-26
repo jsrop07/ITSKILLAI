@@ -1,0 +1,283 @@
+import axios from "axios";
+import type {
+  Admin,
+  Applicant,
+  ApplicantCreate,
+  Diagnosis,
+  DiagnosisCreate,
+  DiagnosisUpdate,
+  Question,
+  QuestionCreate,
+  Record,
+  RecordCreate,
+  PageContent,
+  PageContentUpdate,
+  DashboardStats,
+  RecentExamRecord,
+  WeakCompetency,
+  ExamLoginResponse,
+  QuestionForExam,
+  AnswerSubmit,
+  ExamResultResponse,
+  AnswerDetail,
+} from "./types";
+
+// ──────────────────────────────────────────────
+// Axios 인스턴스
+// ──────────────────────────────────────────────
+const api = axios.create({
+  baseURL: "http://localhost:8000",
+  headers: { "Content-Type": "application/json" },
+});
+
+// JWT 토큰 자동 첨부
+api.interceptors.request.use((config) => {
+  const token = localStorage.getItem("admin_token");
+  if (token) {
+    config.headers.Authorization = `Bearer ${token}`;
+  }
+  return config;
+});
+
+// 401 시 로그인 페이지로 리다이렉트
+api.interceptors.response.use(
+  (res) => res,
+  (err) => {
+    if (err.response?.status === 401) {
+      localStorage.removeItem("admin_token");
+      window.location.href = "/login";
+    }
+    return Promise.reject(err);
+  }
+);
+
+// ──────────────────────────────────────────────
+// Auth
+// ──────────────────────────────────────────────
+export const authApi = {
+  login: async (email: string, password: string) => {
+    const res = await api.post<{ access_token: string; token_type: string }>(
+      "/api/auth/login",
+      { email, password }
+    );
+    return res.data;
+  },
+  me: async (): Promise<Admin> => {
+    const res = await api.get<Admin>("/api/auth/me");
+    return res.data;
+  },
+};
+
+// ──────────────────────────────────────────────
+// Dashboard
+// ──────────────────────────────────────────────
+export const dashboardApi = {
+  getStats: async (): Promise<DashboardStats> => {
+    const res = await api.get<DashboardStats>("/api/dashboard/stats");
+    return res.data;
+  },
+  getRecentRecords: async (limit = 10): Promise<RecentExamRecord[]> => {
+    const res = await api.get<RecentExamRecord[]>(`/api/dashboard/recent-records?limit=${limit}`);
+    return res.data;
+  },
+  getWeakCompetencies: async (): Promise<WeakCompetency[]> => {
+    const res = await api.get<WeakCompetency[]>("/api/dashboard/weak-competencies");
+    return res.data;
+  },
+};
+
+// ──────────────────────────────────────────────
+// Applicants
+// ──────────────────────────────────────────────
+export const applicantsApi = {
+  list: async (params?: {
+    search?: string;
+    status?: string;
+    target_role?: string;
+  }): Promise<Applicant[]> => {
+    const res = await api.get<Applicant[]>("/api/applicants", { params });
+    return res.data;
+  },
+  get: async (id: number): Promise<Applicant> => {
+    const res = await api.get<Applicant>(`/api/applicants/${id}`);
+    return res.data;
+  },
+  create: async (data: ApplicantCreate): Promise<Applicant> => {
+    const res = await api.post<Applicant>("/api/applicants", data);
+    return res.data;
+  },
+  update: async (id: number, data: Partial<ApplicantCreate>): Promise<Applicant> => {
+    const res = await api.put<Applicant>(`/api/applicants/${id}`, data);
+    return res.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/applicants/${id}`);
+  },
+  // 공개 신청 API
+  apply: async (data: ApplicantCreate): Promise<Applicant> => {
+    const res = await api.post<Applicant>("/api/applicants/apply", data);
+    return res.data;
+  },
+};
+
+// ──────────────────────────────────────────────
+// Diagnoses (시험/문제집)
+// ──────────────────────────────────────────────
+export const diagnosesApi = {
+  list: async (params?: {
+    search?: string;
+    status?: string;
+    target_role?: string;
+  }): Promise<Diagnosis[]> => {
+    const res = await api.get<Diagnosis[]>("/api/diagnoses", { params });
+    return res.data;
+  },
+  get: async (id: number): Promise<Diagnosis> => {
+    const res = await api.get<Diagnosis>(`/api/diagnoses/${id}`);
+    return res.data;
+  },
+  create: async (data: DiagnosisCreate): Promise<Diagnosis> => {
+    const res = await api.post<Diagnosis>("/api/diagnoses", data);
+    return res.data;
+  },
+  update: async (id: number, data: DiagnosisUpdate): Promise<Diagnosis> => {
+    const res = await api.put<Diagnosis>(`/api/diagnoses/${id}`, data);
+    return res.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/diagnoses/${id}`);
+  },
+  getQuestions: async (diagnosisId: number): Promise<any[]> => {
+    const res = await api.get<any[]>(`/api/diagnoses/${diagnosisId}/questions`);
+    return res.data;
+  },
+  addQuestion: async (diagnosisId: number, data: { question_id: number; order_no: number; score: number }) => {
+    const res = await api.post(`/api/diagnoses/${diagnosisId}/questions`, {
+      diagnosis_id: diagnosisId,
+      ...data,
+    });
+    return res.data;
+  },
+};
+
+// ──────────────────────────────────────────────
+// Questions
+// ──────────────────────────────────────────────
+export const questionsApi = {
+  list: async (params?: {
+    search?: string;
+    review_status?: string;
+    source_type?: string;
+    competency_type?: string;
+    difficulty?: string;
+  }): Promise<Question[]> => {
+    const res = await api.get<Question[]>("/api/questions", { params });
+    return res.data;
+  },
+  get: async (id: number): Promise<Question> => {
+    const res = await api.get<Question>(`/api/questions/${id}`);
+    return res.data;
+  },
+  create: async (data: QuestionCreate): Promise<Question> => {
+    const res = await api.post<Question>("/api/questions", data);
+    return res.data;
+  },
+  update: async (id: number, data: Partial<QuestionCreate>): Promise<Question> => {
+    const res = await api.put<Question>(`/api/questions/${id}`, data);
+    return res.data;
+  },
+  delete: async (id: number): Promise<void> => {
+    await api.delete(`/api/questions/${id}`);
+  },
+};
+
+// ──────────────────────────────────────────────
+// Records
+// ──────────────────────────────────────────────
+export const recordsApi = {
+  list: async (params?: {
+    applicant_id?: number;
+    diagnosis_id?: number;
+    status?: string;
+  }): Promise<Record[]> => {
+    const res = await api.get<Record[]>("/api/records", { params });
+    return res.data;
+  },
+  get: async (id: number): Promise<Record> => {
+    const res = await api.get<Record>(`/api/records/${id}`);
+    return res.data;
+  },
+  create: async (data: RecordCreate): Promise<Record> => {
+    const res = await api.post<Record>("/api/records", data);
+    return res.data;
+  },
+  update: async (id: number, data: Partial<Record>): Promise<Record> => {
+    const res = await api.put<Record>(`/api/records/${id}`, data);
+    return res.data;
+  },
+  getAnswers: async (recordId: number): Promise<AnswerDetail[]> => {
+    const res = await api.get<AnswerDetail[]>(`/api/records/${recordId}/answers`);
+    return res.data;
+  },
+  getAnalyticsSummary: async () => {
+    const res = await api.get("/api/records/analytics/summary");
+    return res.data;
+  },
+};
+
+// ──────────────────────────────────────────────
+// Page Contents
+// ──────────────────────────────────────────────
+export const pageContentsApi = {
+  list: async (params?: { page_key?: string; user_type?: string }): Promise<PageContent[]> => {
+    const res = await api.get<PageContent[]>("/api/page-contents", { params });
+    return res.data;
+  },
+  getByKey: async (
+    page_key: string,
+    section_key?: string
+  ): Promise<Record<string, { content_id: number; title?: string; body?: string }>> => {
+    const res = await api.get("/api/page-contents/by-key", {
+      params: { page_key, section_key },
+    });
+    return res.data;
+  },
+  update: async (id: number, data: PageContentUpdate): Promise<PageContent> => {
+    const res = await api.put<PageContent>(`/api/page-contents/${id}`, data);
+    return res.data;
+  },
+};
+
+// ──────────────────────────────────────────────
+// Exam Flow (응시자 — 인증 불필요)
+// ──────────────────────────────────────────────
+export const examApi = {
+  login: async (name: string, login_token: string): Promise<ExamLoginResponse> => {
+    const res = await api.post<ExamLoginResponse>("/api/exam/login", { name, login_token });
+    return res.data;
+  },
+  getQuestions: async (record_id: number, exam_token: string): Promise<QuestionForExam[]> => {
+    const res = await api.get<QuestionForExam[]>(`/api/exam/questions/${record_id}`, {
+      params: { exam_token },
+    });
+    return res.data;
+  },
+  submit: async (
+    record_id: number,
+    answers: AnswerSubmit[],
+    exam_token: string
+  ) => {
+    const res = await api.post(
+      "/api/exam/submit",
+      { record_id, answers },
+      { params: { exam_token } }
+    );
+    return res.data;
+  },
+  getResult: async (record_id: number): Promise<ExamResultResponse> => {
+    const res = await api.get<ExamResultResponse>(`/api/exam/result/${record_id}`);
+    return res.data;
+  },
+};
+
+export default api;
