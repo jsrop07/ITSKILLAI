@@ -8,7 +8,7 @@ import type {
   DiagnosisUpdate,
   Question,
   QuestionCreate,
-  Record,
+  ExamRecord,
   RecordCreate,
   PageContent,
   PageContentUpdate,
@@ -166,13 +166,23 @@ export const diagnosesApi = {
 export const questionsApi = {
   list: async (params?: {
     search?: string;
+    question_type?: string;
     review_status?: string;
     source_type?: string;
     competency_type?: string;
     difficulty?: string;
   }): Promise<Question[]> => {
-    const res = await api.get<Question[]>("/api/questions", { params });
-    return res.data;
+    const res = await api.get("/api/questions", { params });
+    const body = res.data;
+
+    console.log("/api/questions 응답:", body);
+
+    if (Array.isArray(body)) return body;
+    if (Array.isArray(body?.data)) return body.data;
+    if (Array.isArray(body?.questions)) return body.questions;
+    if (Array.isArray(body?.data?.questions)) return body.data.questions;
+
+    return [];
   },
   get: async (id: number): Promise<Question> => {
     const res = await api.get<Question>(`/api/questions/${id}`);
@@ -199,26 +209,31 @@ export const recordsApi = {
     applicant_id?: number;
     diagnosis_id?: number;
     status?: string;
-  }): Promise<Record[]> => {
-    const res = await api.get<Record[]>("/api/records", { params });
+  }): Promise<ExamRecord[]> => {
+    const res = await api.get<ExamRecord[]>("/api/records", { params });
     return res.data;
   },
-  get: async (id: number): Promise<Record> => {
-    const res = await api.get<Record>(`/api/records/${id}`);
+
+  get: async (id: number): Promise<ExamRecord> => {
+    const res = await api.get<ExamRecord>(`/api/records/${id}`);
     return res.data;
   },
-  create: async (data: RecordCreate): Promise<Record> => {
-    const res = await api.post<Record>("/api/records", data);
+
+  create: async (data: RecordCreate): Promise<ExamRecord> => {
+    const res = await api.post<ExamRecord>("/api/records", data);
     return res.data;
   },
-  update: async (id: number, data: Partial<Record>): Promise<Record> => {
-    const res = await api.put<Record>(`/api/records/${id}`, data);
+
+  update: async (id: number, data: Partial<ExamRecord>): Promise<ExamRecord> => {
+    const res = await api.put<ExamRecord>(`/api/records/${id}`, data);
     return res.data;
   },
+
   getAnswers: async (recordId: number): Promise<AnswerDetail[]> => {
     const res = await api.get<AnswerDetail[]>(`/api/records/${recordId}/answers`);
     return res.data;
   },
+
   getAnalyticsSummary: async () => {
     const res = await api.get("/api/records/analytics/summary");
     return res.data;
@@ -281,3 +296,124 @@ export const examApi = {
 };
 
 export default api;
+
+export type EmbeddingStatus =
+  | "pending"
+  | "processing"
+  | "completed"
+  | "failed";
+
+export interface AIDocument {
+  document_id: number;
+  title: string;
+  file_name?: string;
+  file_path?: string;
+  source_type?: string;
+  category?: string;
+  description?: string;
+  uploaded_by?: number | null;
+  created_at?: string;
+  embedding_status?: EmbeddingStatus;
+  embedding_error?: string | null;
+}
+
+export interface RAGSearchResult {
+  content: string;
+  metadata: {
+    document_id?: number;
+    chunk_id?: number;
+    chunk_index?: number;
+    file_name?: string;
+    title?: string;
+    category?: string;
+    source_type?: string;
+  };
+  distance?: number;
+  similarity?: number;
+}
+
+export type QuestionTypeValue = "multiple_choice" | "essay" | "coding";
+
+export interface GenerateAIQuestionsPayload {
+  topic: string;
+  difficulty: "초급" | "중급" | "고급";
+  count: number;
+  question_type: QuestionTypeValue;
+  role?: string;
+  competency_type?: string;
+  search_query?: string;
+  top_k?: number;
+
+}
+
+export interface GenerateQuestionsFromDocumentPayload {
+  topic: string;
+  difficulty: "초급" | "중급" | "고급";
+  count: number;
+  top_k: number;
+  question_type: QuestionTypeValue;
+  role?: string;
+  competency_type?: string;
+  search_query?: string;
+}
+
+export const aiDocumentApi = {
+  list: async (): Promise<AIDocument[]> => {
+    const res = await api.get("/api/ai/documents");
+    const body = res.data;
+
+    if (Array.isArray(body)) return body;
+    if (Array.isArray(body?.data)) return body.data;
+    if (Array.isArray(body?.data?.documents)) return body.data.documents;
+    if (Array.isArray(body?.documents)) return body.documents;
+
+    return [];
+  },
+
+  upload: async (formData: FormData) => {
+    const res = await api.post("/api/ai/documents/upload", formData, {
+      headers: {
+        "Content-Type": "multipart/form-data",
+      },
+    });
+
+    return res.data?.data ?? res.data;
+  },
+
+  embed: async (documentId: number) => {
+    const res = await api.post(`/api/ai/documents/${documentId}/embed`);
+    return res.data;
+  },
+
+  search: async (query: string, topK = 5) => {
+    const res = await api.post("/api/ai/documents/search", {
+      query,
+      top_k: topK,
+    });
+
+    return res.data?.data ?? res.data;
+  },
+
+  generateQuestions: async (payload: GenerateAIQuestionsPayload) => {
+    const res = await api.post(
+      "/api/ai/generate-questions-from-document",
+      payload
+    );
+    return res.data;
+  },
+};
+
+export const aiQuestionApi = {
+  generateGeneral: async (payload: GenerateAIQuestionsPayload) => {
+    const res = await api.post("/api/ai/generate-questions", payload);
+    return res.data;
+  },
+
+  generateFromDocument: async (payload: GenerateAIQuestionsPayload) => {
+    const res = await api.post(
+      "/api/ai/generate-questions-from-document",
+      payload
+    );
+    return res.data;
+  },
+};

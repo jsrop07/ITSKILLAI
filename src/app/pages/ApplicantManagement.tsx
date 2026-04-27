@@ -18,10 +18,14 @@ import {
 import { applicantsApi, recordsApi, diagnosesApi } from "../../lib/api";
 import type { Applicant, ApplicantCreate, Diagnosis } from "../../lib/types";
 import { APPLICANT_STATUS_LABELS } from "../../lib/types";
+type ApplicantWithResult = Applicant & {
+  latest_score?: number | null;
+  latest_pass_yn?: boolean | number | string | null;
+};
 
 export default function ApplicantManagement() {
   const navigate = useNavigate();
-  const [applicants, setApplicants] = useState<Applicant[]>([]);
+  const [applicants, setApplicants] = useState<ApplicantWithResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
   const [roleFilter, setRoleFilter] = useState("all");
@@ -44,7 +48,7 @@ export default function ApplicantManagement() {
       if (statusFilter !== "all") params.status = statusFilter;
       if (roleFilter !== "all") params.target_role = roleFilter;
       const data = await applicantsApi.list(params);
-      setApplicants(data);
+      setApplicants(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     } finally {

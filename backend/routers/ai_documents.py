@@ -9,9 +9,11 @@ from database import get_db
 from models import AIDocument, AIDocumentChunk, Admin
 from schemas import AIDocumentRead
 from routers.auth import get_current_admin
+from schemas import AIDocumentSearchRequest
 from ai.rag.document_loader import load_text_from_file
 from ai.rag.text_splitter import split_text_into_chunks
-
+from ai.rag.document_service import embed_document_chunks
+from ai.rag.document_service import search_document_chunks
 
 router = APIRouter(prefix="/api/ai/documents", tags=["AI Documents"])
 
@@ -60,6 +62,8 @@ def upload_ai_document(
             category=category,
             description=description,
             uploaded_by=None,
+            embedding_status="pending",
+            embedding_error=None,
         )
 
         db.add(ai_document)
@@ -114,3 +118,46 @@ def list_ai_documents(
     db: Session = Depends(get_db),
 ):
     return db.query(AIDocument).order_by(AIDocument.created_at.desc()).all()
+
+
+@router.post("/{document_id}/embed")
+def embed_document(document_id: int, conn=Depends(get_db)):
+    try:
+        result = embed_document_chunks(conn, document_id)
+        return {
+            "message": "문서 embedding 저장이 완료되었습니다.",
+            "data": result,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"문서 embedding 중 오류가 발생했습니다: {str(e)}"
+        )
+
+@router.post("/search")
+def search_documents(
+    request: AIDocumentSearchRequest,
+):
+    try:
+        result = search_document_chunks(
+            query=request.query,
+            top_k=request.top_k or 5
+        )
+
+        return {
+            "message": "문서 검색이 완료되었습니다.",
+            "data": result,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"문서 검색 중 오류가 발생했습니다: {str(e)}"
+        )

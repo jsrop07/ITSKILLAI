@@ -16,13 +16,17 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
 import { questionsApi } from "../../lib/api";
-import type { Question, QuestionCreate, QuestionUpdate } from "../../lib/types";
+import type { Question, QuestionCreate } from "../../lib/types";
 import { REVIEW_STATUS_LABELS } from "../../lib/types";
+
+type QuestionUpdate = Partial<QuestionCreate> & {
+  review_status?: "pending" | "approved" | "rejected";
+};
 
 const QUESTION_TYPE_LABELS: Record<string, string> = {
   multiple_choice: "객관식",
-  short_answer: "단답형",
   essay: "서술형",
+  coding: "코드작성형",
 };
 
 const SOURCE_TYPE_LABELS: Record<string, string> = {
@@ -37,7 +41,7 @@ export default function QuestionManagement() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [reviewFilter, setReviewFilter] = useState("all");
-  
+
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
   const [editForm, setEditForm] = useState<QuestionUpdate | null>(null);
   const [isEditing, setIsEditing] = useState(false);
@@ -53,23 +57,34 @@ export default function QuestionManagement() {
     difficulty: "중급",
     competency_type: "",
     score: 1,
-    choices_json: ["", "", "", ""],
-    answer_json: 0,
+    choices_json: ["", "", "", "", ""],
+    answer_json: 1,
     explanation: "",
   });
 
   const load = async () => {
     setLoading(true);
+
     try {
       const params: any = {};
+
       if (searchTerm) params.search = searchTerm;
       if (typeFilter !== "all") params.question_type = typeFilter;
       if (sourceFilter !== "all") params.source_type = sourceFilter;
       if (reviewFilter !== "all") params.review_status = reviewFilter;
+
+      console.log("문제 목록 요청 params:", params);
+
       const data = await questionsApi.list(params);
-      setQuestions(data);
-    } catch (err) {
-      console.error(err);
+
+      console.log("문제 목록 응답:", data);
+
+      setQuestions(Array.isArray(data) ? data : []);
+    } catch (err: any) {
+      console.error("문제 목록 조회 실패:", err);
+      console.error("백엔드 응답:", err.response?.data);
+      setQuestions([]);
+      alert(err.response?.data?.detail || "문제 목록을 불러오지 못했습니다.");
     } finally {
       setLoading(false);
     }
@@ -83,7 +98,7 @@ export default function QuestionManagement() {
     try {
       await questionsApi.create(form);
       setShowCreate(false);
-      setForm({ title: "", body: "", question_type: "multiple_choice", source_type: "manual", difficulty: "중급", competency_type: "", score: 1, choices_json: ["", "", "", ""], answer_json: 0, explanation: "" });
+      setForm({ title: "", body: "", question_type: "multiple_choice", source_type: "manual", difficulty: "중급", competency_type: "", score: 1, choices_json: ["", "", "", "", ""], answer_json: 1, explanation: "" });
       load();
     } catch (err: any) {
       alert(err.response?.data?.detail || "생성 실패");
@@ -120,8 +135,12 @@ export default function QuestionManagement() {
       difficulty: q.difficulty,
       competency_type: q.competency_type,
       score: q.score,
-      choices_json: q.choices_json || ["", "", "", ""],
-      answer_json: q.answer_json,
+      choices_json: Array.isArray(q.choices_json)
+        ? q.choices_json
+        : typeof q.choices_json === "string"
+          ? JSON.parse(q.choices_json || "[]")
+          : ["", "", "", "", ""],
+      answer_json: Number(q.answer_json || 1),
       explanation: q.explanation,
     });
     setIsEditing(false);
@@ -135,7 +154,7 @@ export default function QuestionManagement() {
       alert("문제가 수정되었습니다.");
       setSelectedQuestion(null);
       load();
-    } catch(err) {
+    } catch (err) {
       console.error(err);
       alert("수정 실패");
     } finally {
@@ -179,8 +198,8 @@ export default function QuestionManagement() {
               <SelectContent>
                 <SelectItem value="all">전체 유형</SelectItem>
                 <SelectItem value="multiple_choice">객관식</SelectItem>
-                <SelectItem value="short_answer">단답형</SelectItem>
                 <SelectItem value="essay">서술형</SelectItem>
+                <SelectItem value="coding">코드작성형</SelectItem>
               </SelectContent>
             </Select>
             <Select value={sourceFilter} onValueChange={setSourceFilter}>
@@ -259,8 +278,8 @@ export default function QuestionManagement() {
                           variant="secondary"
                           className={
                             q.review_status === "approved" ? "bg-green-100 text-green-700"
-                            : q.review_status === "rejected" ? "bg-red-100 text-red-700"
-                            : "bg-amber-100 text-amber-700"
+                              : q.review_status === "rejected" ? "bg-red-100 text-red-700"
+                                : "bg-amber-100 text-amber-700"
                           }
                         >
                           {REVIEW_STATUS_LABELS[q.review_status]}
@@ -311,12 +330,15 @@ export default function QuestionManagement() {
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
                   <Label>문제 유형</Label>
-                  <Select value={editForm.question_type as string} onValueChange={(v: any) => setEditForm({ ...editForm, question_type: v })}>
+                  <Select
+                    value={editForm.question_type}
+                    onValueChange={(v) => setEditForm({ ...editForm, question_type: v as "multiple_choice" | "essay" | "coding", })}>
                     <SelectTrigger><SelectValue /></SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="all">전체 유형</SelectItem>
                       <SelectItem value="multiple_choice">객관식</SelectItem>
-                      <SelectItem value="short_answer">단답형</SelectItem>
                       <SelectItem value="essay">서술형</SelectItem>
+                      <SelectItem value="coding">코드작성형</SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
@@ -344,7 +366,7 @@ export default function QuestionManagement() {
               {editForm.question_type === "multiple_choice" && (
                 <div className="space-y-2">
                   <Label>객관식 선택지 (단일 정답)</Label>
-                  {(editForm.choices_json || ["", "", "", ""]).map((c, i) => (
+                  {((editForm.choices_json as string[]) || ["", "", "", "", ""]).map((c: string, i: number) => (
                     <div key={i} className="flex items-center gap-2">
                       <span className="size-7 flex-shrink-0 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 text-sm font-medium">
                         {String.fromCharCode(65 + i)}
@@ -352,7 +374,7 @@ export default function QuestionManagement() {
                       <Input
                         value={c}
                         onChange={(e) => {
-                          const updated = [...(editForm.choices_json || ["", "", "", ""])];
+                          const updated = [...((editForm.choices_json as string[]) || ["", "", "", "", ""])];
                           updated[i] = e.target.value;
                           setEditForm({ ...editForm, choices_json: updated });
                         }}
@@ -362,19 +384,32 @@ export default function QuestionManagement() {
                           type="radio"
                           name="edit-answer"
                           className="size-4"
-                          checked={editForm.answer_json === i}
-                          onChange={() => setEditForm({ ...editForm, answer_json: i })}
+                          checked={Number(editForm.answer_json) === i + 1}
+                          onChange={() => setEditForm({ ...editForm, answer_json: i + 1 })}
                         />
-                        <span className={`text-sm ml-1 ${editForm.answer_json === i ? "text-green-600 font-bold" : "text-slate-500"}`}>정답체크</span>
+                        <span className={`text-sm ml-1 ${Number(editForm.answer_json) === i + 1 ? "text-green-600 font-bold" : "text-slate-500"}`}>
+                          정답체크
+                        </span>
                       </label>
                     </div>
                   ))}
                 </div>
               )}
-              {(editForm.question_type === "short_answer") && (
+              {(editForm.question_type === "essay" || editForm.question_type === "coding") && (
                 <div className="space-y-2">
-                  <Label>정답</Label>
-                  <Input value={editForm.answer_json || ""} onChange={(e) => setEditForm({ ...editForm, answer_json: e.target.value })} />
+                  <Label>
+                    {editForm.question_type === "coding" ? "예시 코드 / 풀이 방향" : "모범답안"}
+                  </Label>
+                  <Input
+                    value={editForm.answer_json || ""}
+                    onChange={(e) =>
+                      setEditForm({
+                        ...editForm,
+                        answer_json: e.target.value,
+                      })
+                    }
+                    placeholder="정답 입력"
+                  />
                 </div>
               )}
               <div className="space-y-2">
@@ -414,12 +449,15 @@ export default function QuestionManagement() {
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
                 <Label>문제 유형</Label>
-                <Select value={form.question_type} onValueChange={(v: any) => setForm({ ...form, question_type: v })}>
+                <Select
+                  value={form.question_type}
+                  onValueChange={(v) => setForm({ ...form, question_type: v as "multiple_choice" | "essay" | "coding", })}>
                   <SelectTrigger><SelectValue /></SelectTrigger>
                   <SelectContent>
+                    <SelectItem value="all">전체 유형</SelectItem>
                     <SelectItem value="multiple_choice">객관식</SelectItem>
-                    <SelectItem value="short_answer">단답형</SelectItem>
                     <SelectItem value="essay">서술형</SelectItem>
+                    <SelectItem value="coding">코드작성형</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -446,7 +484,7 @@ export default function QuestionManagement() {
             {form.question_type === "multiple_choice" && (
               <div className="space-y-2">
                 <Label>객관식 선택지 (단일 정답)</Label>
-                {(form.choices_json || ["", "", "", ""]).map((c, i) => (
+                {((form.choices_json as string[]) || ["", "", "", "", ""]).map((c: string, i: number) => (
                   <div key={i} className="flex items-center gap-2">
                     <span className="size-7 flex-shrink-0 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 text-sm font-medium">
                       {String.fromCharCode(65 + i)}
@@ -454,7 +492,7 @@ export default function QuestionManagement() {
                     <Input
                       value={c}
                       onChange={(e) => {
-                        const updated = [...(form.choices_json || ["", "", "", ""])];
+                        const updated = [...((form.choices_json as string[]) || ["", "", "", "", ""])];
                         updated[i] = e.target.value;
                         setForm({ ...form, choices_json: updated });
                       }}
@@ -465,19 +503,27 @@ export default function QuestionManagement() {
                         type="radio"
                         name="create-answer"
                         className="size-4"
-                        checked={form.answer_json === i}
-                        onChange={() => setForm({ ...form, answer_json: i })}
+                        checked={Number(form.answer_json) === i + 1}
+                        onChange={() => setForm({ ...form, answer_json: i + 1 })}
                       />
-                      <span className={`text-sm ml-1 ${form.answer_json === i ? "text-green-600 font-bold" : "text-slate-500"}`}>정답체크</span>
+                      <span className={`text-sm ml-1 ${Number(form.answer_json) === i + 1 ? "text-green-600 font-bold" : "text-slate-500"}`}>
+                        정답체크
+                      </span>
                     </label>
                   </div>
                 ))}
               </div>
             )}
-            {(form.question_type === "short_answer") && (
+            {(form.question_type === "essay" || form.question_type === "coding") && (
               <div className="space-y-2">
-                <Label>정답</Label>
-                <Input value={form.answer_json || ""} onChange={(e) => setForm({ ...form, answer_json: e.target.value })} placeholder="정답 입력" />
+                <Label>
+                  {form.question_type === "coding" ? "예시 코드 / 풀이 방향" : "모범답안"}
+                </Label>
+                <Input
+                  value={form.answer_json || ""}
+                  onChange={(e) => setForm({ ...form, answer_json: e.target.value })}
+                  placeholder="정답 입력"
+                />
               </div>
             )}
             <div className="space-y-2">

@@ -6,7 +6,7 @@ export type AdminRole = "super_admin" | "admin";
 export type ApplicantStatus = "pending" | "temp_saved" | "ready" | "in_progress" | "completed";
 export type DiagnosisStatus = "draft" | "active" | "inactive";
 export type DiagnosisLevel = "beginner" | "intermediate" | "advanced";
-export type QuestionType = "multiple_choice" | "short_answer" | "essay";
+export type QuestionType = "multiple_choice" | "essay" | "coding";
 export type ReviewStatus = "pending" | "approved" | "rejected";
 export type RecordStatus = "ready" | "in_progress" | "submitted" | "graded";
 export type SourceType = "manual" | "ai";
@@ -152,7 +152,7 @@ export interface QuestionCreate {
 // ──────────────────────────────────────────────
 // Record (응시 기록)
 // ──────────────────────────────────────────────
-export interface Record {
+export interface ExamRecord {
   record_id: number;
   applicant_id: number;
   diagnosis_id: number;

@@ -39,8 +39,8 @@ class SourceType(str, enum.Enum):
 
 class QuestionType(str, enum.Enum):
     multiple_choice = "multiple_choice"
-    short_answer = "short_answer"
     essay = "essay"
+    coding = "coding"
 
 class ReviewStatus(str, enum.Enum):
     pending = "pending"
@@ -191,6 +191,8 @@ class AIDocument(Base):
     description = Column(Text, nullable=True)
     uploaded_by = Column(Integer, ForeignKey("admins.admin_id"), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+    embedding_status = Column(String(20), default="pending")
+    embedding_error = Column(Text, nullable=True)
 
 
 class AIDocumentChunk(Base):
