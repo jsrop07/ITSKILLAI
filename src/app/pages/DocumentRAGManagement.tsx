@@ -51,6 +51,8 @@ export default function DocumentRAGManagement() {
   const [title, setTitle] = useState("");
   const [sourceType, setSourceType] = useState("NCS");
   const [category, setCategory] = useState("");
+  const [searchCategory, setSearchCategory] = useState("");
+  const [generateCategory, setGenerateCategory] = useState("");
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
 
@@ -58,6 +60,30 @@ export default function DocumentRAGManagement() {
   const [difficulty, setDifficulty] = useState<"초급" | "중급" | "고급">("초급");
   const [count, setCount] = useState(1);
   const [topK, setTopK] = useState(3);
+
+  const topicPlaceholderMap: Record<string, string> = {
+    programming: "예: Python 예외 처리, Java 상속, 비동기 함수",
+    data_structure_algorithm: "예: 스택/큐, DFS/BFS, 시간복잡도, 다익스트라",
+    web_development: "예: REST API, JWT 인증, CORS, React 렌더링",
+    database: "예: 트랜잭션 격리 수준, 인덱스 최적화, JOIN, 정규화",
+    os_network: "예: 프로세스와 스레드, TCP/UDP, DNS, 데드락",
+    security: "예: XSS, CSRF, SQL Injection, OAuth 보안",
+    cloud_devops: "예: Docker, Kubernetes, CI/CD, AWS EC2 배포",
+    ai_data: "예: LLM, RAG, 임베딩, 모델 평가, 데이터 전처리",
+    software_engineering: "예: SOLID 원칙, 디자인 패턴, 테스트 전략, 애자일",
+  };
+
+  const competencyOptions = [
+    { value: "programming", label: "프로그래밍" },
+    { value: "data_structure_algorithm", label: "자료구조/알고리즘" },
+    { value: "web_development", label: "웹 개발" },
+    { value: "database", label: "데이터베이스" },
+    { value: "os_network", label: "운영체제/네트워크" },
+    { value: "security", label: "정보보안" },
+    { value: "cloud_devops", label: "클라우드/DevOps" },
+    { value: "ai_data", label: "인공지능/데이터" },
+    { value: "software_engineering", label: "소프트웨어공학" },
+  ];
 
   const loadDocuments = async () => {
     try {
@@ -104,6 +130,10 @@ export default function DocumentRAGManagement() {
   const handleUpload = async () => {
     if (!title.trim()) {
       alert("문서 제목을 입력해주세요.");
+      return;
+    }
+    if (!category) {
+      alert("문서 카테고리를 선택해주세요.");
       return;
     }
 
@@ -161,7 +191,11 @@ export default function DocumentRAGManagement() {
     try {
       setIsSearching(true);
 
-      const res = await aiDocumentApi.search(searchQuery, 5);
+      const res = await aiDocumentApi.search({
+        query: searchQuery,
+        top_k: topK,
+        category: searchCategory || undefined,
+      });
 
       setRetrievalResults(res.results || []);
     } catch (error: any) {
@@ -178,14 +212,24 @@ export default function DocumentRAGManagement() {
       return;
     }
 
+    if (!generateCategory) {
+      alert("문제 생성에 사용할 역량 유형을 선택해주세요.");
+      return;
+    }
+
+    const categoryLabel =
+      competencyOptions.find((item) => item.value === generateCategory)?.label || "";
+
     try {
       setIsLoading(true);
+
       const res = await aiDocumentApi.generateQuestions({
         topic,
         difficulty,
         count,
         question_type: "multiple_choice",
-        search_query: topic,
+        competency_type: generateCategory,
+        search_query: `${categoryLabel} ${topic}`,
         top_k: topK,
       });
 
@@ -385,7 +429,25 @@ export default function DocumentRAGManagement() {
             </CardTitle>
             <CardDescription>ChromaDB 벡터 검색 동작 확인</CardDescription>
           </CardHeader>
-
+          <CardContent className="pt-6 space-y-4">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                검색 대상 역량 유형
+              </label>
+              <select
+                value={searchCategory}
+                onChange={(e) => setSearchCategory(e.target.value)}
+                className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="">전체 문서</option>
+                {competencyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
+          </CardContent>
           <CardContent className="pt-6 space-y-4">
             <div className="space-y-2">
               <label className="text-sm font-medium text-slate-700">
@@ -455,7 +517,9 @@ export default function DocumentRAGManagement() {
                     </div>
 
                     <p className="text-xs text-slate-500 mb-2">
-                      {result.metadata?.file_name || result.metadata?.title || "문서 정보 없음"}
+                      {result.metadata?.title || result.metadata?.file_name || "문서 정보 없음"}
+                      {" · "}
+                      {result.metadata?.category || "-"}
                     </p>
 
                     <p className="text-sm text-slate-700 leading-relaxed">
@@ -481,7 +545,7 @@ export default function DocumentRAGManagement() {
           <DialogHeader>
             <DialogTitle>문서 업로드</DialogTitle>
             <DialogDescription>
-              PDF, DOCX, TXT 문서를 업로드하면 chunk로 분리되어 저장됩니다.
+              PDF, DOCX, TXT, MD 문서를 업로드하면 chunk로 분리되어 저장됩니다.
             </DialogDescription>
           </DialogHeader>
 
@@ -498,11 +562,23 @@ export default function DocumentRAGManagement() {
               onChange={(e) => setSourceType(e.target.value)}
             />
 
-            <Input
-              placeholder="카테고리 예: Java"
-              value={category}
-              onChange={(e) => setCategory(e.target.value)}
-            />
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                문서 카테고리
+              </label>
+              <select
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="">카테고리 선택</option>
+                {competencyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <Textarea
               placeholder="설명"
@@ -512,7 +588,7 @@ export default function DocumentRAGManagement() {
 
             <Input
               type="file"
-              accept=".pdf,.docx,.txt"
+              accept=".pdf,.docx,.txt,.md"
               onChange={(e) => setFile(e.target.files?.[0] || null)}
             />
 
@@ -537,8 +613,25 @@ export default function DocumentRAGManagement() {
           </DialogHeader>
 
           <div className="space-y-3">
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                문제 생성 역량 유형
+              </label>
+              <select
+                value={generateCategory}
+                onChange={(e) => setGenerateCategory(e.target.value)}
+                className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="">역량 유형 선택</option>
+                {competencyOptions.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
+                  </option>
+                ))}
+              </select>
+            </div>
             <Input
-              placeholder="주제 예: Java 상속과 오버라이딩"
+              placeholder={topicPlaceholderMap[generateCategory] || "예: 평가할 IT 세부 주제를 입력하세요"}
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
             />
@@ -555,23 +648,35 @@ export default function DocumentRAGManagement() {
               <option value="고급">고급</option>
             </select>
 
-            <Input
-              type="number"
-              min={1}
-              max={10}
-              value={count}
-              onChange={(e) => setCount(Number(e.target.value))}
-              placeholder="생성 개수"
-            />
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">생성 문제 수</label>
+              <select
+                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+                value={count}
+                onChange={(e) => setCount(Number(e.target.value))}
+              >
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                  <option key={num} value={num}>
+                    {num}문제
+                  </option>
+                ))}
+              </select>
+            </div>
 
-            <Input
-              type="number"
-              min={1}
-              max={10}
-              value={topK}
-              onChange={(e) => setTopK(Number(e.target.value))}
-              placeholder="참고 chunk 수"
-            />
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">참고 Chunk 수 (Top-K)</label>
+              <select
+                className="h-10 w-full rounded-md border border-slate-300 bg-white px-3 text-sm"
+                value={topK}
+                onChange={(e) => setTopK(Number(e.target.value))}
+              >
+                {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((num) => (
+                  <option key={num} value={num}>
+                    {num}개
+                  </option>
+                ))}
+              </select>
+            </div>
 
             <Button
               className="w-full bg-indigo-600 hover:bg-indigo-700"

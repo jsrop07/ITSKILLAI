@@ -332,6 +332,11 @@ export interface RAGSearchResult {
   similarity?: number;
 }
 
+export interface AIDocumentSearchPayload {
+  query: string;
+  top_k?: number;
+  category?: string;
+}
 export type QuestionTypeValue = "multiple_choice" | "essay" | "coding";
 
 export interface GenerateAIQuestionsPayload {
@@ -339,11 +344,9 @@ export interface GenerateAIQuestionsPayload {
   difficulty: "초급" | "중급" | "고급";
   count: number;
   question_type: QuestionTypeValue;
-  role?: string;
   competency_type?: string;
   search_query?: string;
   top_k?: number;
-
 }
 
 export interface GenerateQuestionsFromDocumentPayload {
@@ -352,7 +355,6 @@ export interface GenerateQuestionsFromDocumentPayload {
   count: number;
   top_k: number;
   question_type: QuestionTypeValue;
-  role?: string;
   competency_type?: string;
   search_query?: string;
 }
@@ -385,16 +387,17 @@ export const aiDocumentApi = {
     return res.data;
   },
 
-  search: async (query: string, topK = 5) => {
+  search: async (payload: AIDocumentSearchPayload) => {
     const res = await api.post("/api/ai/documents/search", {
-      query,
-      top_k: topK,
+      query: payload.query,
+      top_k: payload.top_k ?? 5,
+      category: payload.category || undefined,
     });
 
     return res.data?.data ?? res.data;
   },
 
-  generateQuestions: async (payload: GenerateAIQuestionsPayload) => {
+  generateQuestions: async (payload: GenerateQuestionsFromDocumentPayload) => {
     const res = await api.post(
       "/api/ai/generate-questions-from-document",
       payload

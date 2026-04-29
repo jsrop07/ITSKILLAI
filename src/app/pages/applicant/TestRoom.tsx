@@ -183,11 +183,11 @@ export default function TestRoom() {
               {current.question_type === "multiple_choice" && current.choices_json && (
                 <div className="space-y-2">
                   {current.choices_json.map((choice, i) => {
-                    const isSelected = answers[current.question_id]?.answer_json === i;
+                    const isSelected = answers[current.question_id]?.answer_json === i + 1;
                     return (
                       <button
                         key={i}
-                        onClick={() => setAnswer(current.question_id, i, true)}
+                        onClick={() => setAnswer(current.question_id, i + 1, true)}
                         className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-all ${isSelected
                             ? "border-sky-500 bg-sky-50 text-sky-700 font-medium"
                             : "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
@@ -195,7 +195,7 @@ export default function TestRoom() {
                       >
                         <span className={`inline-flex items-center justify-center size-6 rounded-full mr-3 text-xs font-bold ${isSelected ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-600"
                           }`}>
-                          {String.fromCharCode(65 + i)}
+                          {i + 1}
                         </span>
                         {choice}
                       </button>

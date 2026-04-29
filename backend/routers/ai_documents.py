@@ -19,6 +19,17 @@ router = APIRouter(prefix="/api/ai/documents", tags=["AI Documents"])
 
 UPLOAD_DIR = "uploads/ai_docs"
 
+CATEGORY_LABEL_MAP = {
+    "programming": "프로그래밍",
+    "data_structure_algorithm": "자료구조/알고리즘",
+    "web_development": "웹 개발",
+    "database": "데이터베이스",
+    "os_network": "운영체제/네트워크",
+    "security": "정보보안",
+    "cloud_devops": "클라우드/DevOps",
+    "ai_data": "인공지능/데이터",
+    "software_engineering": "소프트웨어공학",
+}
 
 @router.post("/upload")
 def upload_ai_document(
@@ -35,8 +46,8 @@ def upload_ai_document(
 
         file_ext = os.path.splitext(file.filename)[1].lower()
 
-        if file_ext not in [".pdf", ".docx", ".txt"]:
-            raise HTTPException(status_code=400, detail="PDF, DOCX, TXT 파일만 업로드할 수 있습니다.")
+        if file_ext not in [".pdf", ".docx", ".txt", ".md"]:
+            raise HTTPException(status_code=400, detail="PDF, DOCX, TXT, MD 파일만 업로드할 수 있습니다.")
 
         saved_file_name = f"{title}_{file.filename}"
         saved_file_path = os.path.join(UPLOAD_DIR, saved_file_name)
@@ -71,14 +82,32 @@ def upload_ai_document(
 
         saved_chunks = []
 
+        category_label = CATEGORY_LABEL_MAP.get(category or "", category or "미분류")
+
         for index, chunk in enumerate(chunks):
+            chunk_content = f"""
+        [역량유형: {category_label}]
+        [문서제목: {title}]
+        [출처유형: {source_type or "unknown"}]
+
+        {chunk}
+        """.strip()
+
             document_chunk = AIDocumentChunk(
                 document_id=ai_document.document_id,
                 chunk_index=index,
-                content=chunk,
+                content=chunk_content,
                 page_no=None,
                 vector_id=None,
             )
+            db.add(document_chunk)
+            db.flush()
+
+            saved_chunks.append({
+                "chunk_id": document_chunk.chunk_id,
+                "chunk_index": document_chunk.chunk_index,
+                "content_preview": chunk_content[:100],
+            })
             db.add(document_chunk)
             db.flush()
 
@@ -145,7 +174,8 @@ def search_documents(
     try:
         result = search_document_chunks(
             query=request.query,
-            top_k=request.top_k or 5
+            top_k=request.top_k or 5,
+            category=request.category,
         )
 
         return {

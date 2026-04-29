@@ -13,7 +13,7 @@ router = APIRouter(prefix="/api/applicants", tags=["applicants"])
 def list_applicants(
     search: Optional[str] = Query(None),
     status: Optional[str] = Query(None),
-    target_role: Optional[str] = Query(None),
+    pass_yn: Optional[bool] = Query(None),
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -25,8 +25,6 @@ def list_applicants(
         )
     if status:
         query = query.filter(Applicant.status == status)
-    if target_role:
-        query = query.filter(Applicant.target_role == target_role)
     applicants = query.order_by(Applicant.created_at.desc()).offset(skip).limit(limit).all()
     results = []
     for app in applicants:
@@ -39,6 +37,10 @@ def list_applicants(
             app_dict["latest_score"] = None
             app_dict["latest_pass_yn"] = None
         results.append(app_dict)
+        
+    if pass_yn is not None:
+        results = [r for r in results if r.get("latest_pass_yn") is pass_yn]
+        
     return results
 
 
@@ -73,9 +75,15 @@ def update_applicant(applicant_id: int, data: ApplicantUpdate, db: Session = Dep
 
 @router.delete("/{applicant_id}")
 def delete_applicant(applicant_id: int, db: Session = Depends(get_db)):
+    from models import Record
     applicant = db.query(Applicant).filter(Applicant.applicant_id == applicant_id).first()
     if not applicant:
         raise HTTPException(status_code=404, detail="응시자를 찾을 수 없습니다.")
+        
+    records = db.query(Record).filter(Record.applicant_id == applicant_id).all()
+    for r in records:
+        db.delete(r)
+        
     db.delete(applicant)
     db.commit()
     return {"message": "삭제되었습니다."}

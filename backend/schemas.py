@@ -470,7 +470,8 @@ class AIDocumentChunkRead(BaseModel):
 
 class AIDocumentSearchRequest(BaseModel):
     query: str
-    top_k: Optional[int] = 5
+    top_k: int = 5
+    category: str | None = None
 
 
 class GenerateQuestionsFromDocumentRequest(BaseModel):

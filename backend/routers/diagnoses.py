@@ -68,11 +68,24 @@ def update_diagnosis(diagnosis_id: int, data: DiagnosisUpdate, db: Session = Dep
 
 @router.delete("/{diagnosis_id}")
 def delete_diagnosis(diagnosis_id: int, db: Session = Depends(get_db)):
+    from models import Record, Applicant
     diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == diagnosis_id).first()
     if not diagnosis:
         raise HTTPException(status_code=404, detail="시험을 찾을 수 없습니다.")
-    db.delete(diagnosis)
-    db.commit()
+        
+    # FK 제약조건 확인
+    if db.query(Record).filter(Record.diagnosis_id == diagnosis_id).first():
+        raise HTTPException(status_code=400, detail="이 시험에 연결된 응시 기록이 있어 삭제할 수 없습니다.")
+    if db.query(Applicant).filter(Applicant.target_diagnosis_id == diagnosis_id).first():
+        raise HTTPException(status_code=400, detail="이 시험이 배정된 응시자가 있어 삭제할 수 없습니다.")
+        
+    try:
+        db.delete(diagnosis)
+        db.commit()
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=f"삭제 중 오류가 발생했습니다: {str(e)}")
+        
     return {"message": "삭제되었습니다."}
 
 

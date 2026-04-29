@@ -1,9 +1,13 @@
 # ai/rag/document_service.py
 
+import time
+import logging
 from sqlalchemy import text
 from ai.embedding_service import create_embedding
 from ai.vector_store import search_similar_chunks
 from ai.vector_store import add_chunk_to_vector_store
+
+logger = logging.getLogger("uvicorn.info")
 
 
 
@@ -71,14 +75,18 @@ def update_document_embedding_status(
 
 
 def embed_document_chunks(db, document_id: int):
+    start_time = time.time()
+    logger.info(f"RAG Pipeline [Embed]: 문서 임베딩 시작 (document_id: {document_id})")
     document = get_document_by_id(db, document_id)
 
     if not document:
+        logger.warning(f"RAG Pipeline [Embed]: 문서를 찾을 수 없습니다 (document_id: {document_id})")
         raise ValueError("문서를 찾을 수 없습니다.")
 
     chunks = get_chunks_by_document_id(db, document_id)
 
     if not chunks:
+        logger.warning(f"RAG Pipeline [Embed]: 문서 chunk가 없습니다 (document_id: {document_id})")
         raise ValueError("문서 chunk가 없습니다.")
 
     try:
@@ -117,6 +125,9 @@ def embed_document_chunks(db, document_id: int):
 
         update_document_embedding_status(db, document_id, "completed")
 
+        elapsed_time = time.time() - start_time
+        logger.info(f"RAG Pipeline [Embed]: 문서 임베딩 성공 (document_id: {document_id}, chunks: {embedded_count}, 소요 시간: {elapsed_time:.3f}초)")
+
         return {
             "document_id": document_id,
             "file_name": document["file_name"],
@@ -125,50 +136,76 @@ def embed_document_chunks(db, document_id: int):
         }
 
     except Exception as e:
+        elapsed_time = time.time() - start_time
+        logger.error(f"RAG Pipeline [Embed]: 문서 임베딩 실패 (document_id: {document_id}, 소요 시간: {elapsed_time:.3f}초) - 에러: {str(e)}")
         update_document_embedding_status(db, document_id, "failed", str(e))
         raise e
 
-def search_document_chunks(query: str, top_k: int = 5):
+def search_document_chunks(query: str, top_k: int = 5, category: str | None = None):
+    start_time = time.time()
+    logger.info(f"RAG Pipeline [Search]: 문서 검색 시작 (query: '{query}', top_k: {top_k}, category: {category})")
+    
     if not query or not query.strip():
+        logger.warning("RAG Pipeline [Search]: 검색어가 비어 있습니다.")
         raise ValueError("검색어를 입력해주세요.")
 
-    query_embedding = create_embedding(query)
+    try:
+        query_embedding = create_embedding(query)
 
-    results = search_similar_chunks(
-        query_embedding=query_embedding,
-        top_k=top_k
+        results = search_similar_chunks(
+            query_embedding=query_embedding,
+            top_k=top_k,
+            category=category,
+        )
+
+        documents = results.get("documents", [[]])[0]
+        metadatas = results.get("metadatas", [[]])[0]
+        distances = results.get("distances", [[]])[0]
+
+        search_results = []
+
+        for i in range(len(documents)):
+            distance = distances[i] if i < len(distances) else None
+            similarity = None
+
+            if distance is not None:
+                similarity = 1 / (1 + distance)
+
+            metadata = metadatas[i] if i < len(metadatas) else {}
+
+            search_results.append({
+                "content": documents[i],
+                "metadata": metadata,
+                "distance": distance,
+                "similarity": similarity,
+            })
+
+        elapsed_time = time.time() - start_time
+        logger.info(f"RAG Pipeline [Search]: 문서 검색 성공 (찾은 청크 수: {len(search_results)}, 소요 시간: {elapsed_time:.3f}초)")
+
+        return {
+            "query": query,
+            "top_k": top_k,
+            "category": category,
+            "results": search_results,
+        }
+
+    except Exception as e:
+        elapsed_time = time.time() - start_time
+        logger.error(f"RAG Pipeline [Search]: 문서 검색 실패 (소요 시간: {elapsed_time:.3f}초) - 에러: {str(e)}")
+        raise
+
+def build_context_from_search_results(
+    query: str,
+    top_k: int = 5,
+    category: str | None = None,
+) -> str:
+    search_data = search_document_chunks(
+        query=query,
+        top_k=top_k,
+        category=category,
     )
 
-    documents = results.get("documents", [[]])[0]
-    metadatas = results.get("metadatas", [[]])[0]
-    distances = results.get("distances", [[]])[0]
-
-    search_results = []
-
-    for i in range(len(documents)):
-        distance = distances[i] if i < len(distances) else None
-        similarity = None
-
-        if distance is not None:
-            similarity = 1 / (1 + distance)
-
-        metadata = metadatas[i] if i < len(metadatas) else {}
-
-        search_results.append({
-            "content": documents[i],
-            "metadata": metadata,
-            "distance": distance,
-            "similarity": similarity,
-        })
-
-    return {
-        "query": query,
-        "top_k": top_k,
-        "results": search_results,
-    }
-
-def build_context_from_search_results(query: str, top_k: int = 5) -> str:
-    search_data = search_document_chunks(query=query, top_k=top_k)
     results = search_data.get("results", [])
 
     if not results:
@@ -182,9 +219,11 @@ def build_context_from_search_results(query: str, top_k: int = 5) -> str:
 
         file_name = metadata.get("file_name", "unknown")
         chunk_index = metadata.get("chunk_index", "")
+        title = metadata.get("title", "")
+        category_value = metadata.get("category", "")
 
         context_parts.append(
-            f"[문서 {idx} | file={file_name} | chunk={chunk_index}]\n{content}"
+            f"[문서 {idx} | title={title} | category={category_value} | file={file_name} | chunk={chunk_index}]\n{content}"
         )
 
     return "\n\n".join(context_parts)

@@ -6,6 +6,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Question
+from ai.services.topic_validator import validate_topic_for_competency
 from ai.services.question_generator import (
     generate_questions,
     generate_questions_from_context
@@ -21,7 +22,6 @@ class AIQuestionGenerateRequest(BaseModel):
     difficulty: Literal["초급", "중급", "고급"]
     count: int = 1
     question_type: Literal["multiple_choice", "essay", "coding"] = "multiple_choice"
-    role: str | None = None
     competency_type: str | None = None
     search_query: str | None = None
 
@@ -32,7 +32,6 @@ class AIQuestionGenerateFromDocumentRequest(BaseModel):
     count: int = 1
     top_k: int = 5
     question_type: Literal["multiple_choice", "essay", "coding"] = "multiple_choice"
-    role: str | None = None
     competency_type: str | None = None
     search_query: str | None = None
 
@@ -42,7 +41,8 @@ def save_generated_questions(
     topic: str,
     difficulty: str,
     score: int,
-    question_type: str = "multiple_choice"
+    question_type: str = "multiple_choice",
+    competency_type: str | None = None,
 ):
     saved_questions = []
 
@@ -121,7 +121,7 @@ def save_generated_questions(
             answer_json=answer_json,
             explanation=explanation,
             difficulty=q.get("difficulty", difficulty),
-            competency_type=q.get("competency_type", topic),
+            competency_type=competency_type or topic,
             competency_tags_json=json.dumps(normalized_tags, ensure_ascii=False),
             score=q.get("score", score),
             review_status="pending",
@@ -153,6 +153,11 @@ def generate_ai_questions(
     db: Session = Depends(get_db)
 ):
     try:
+        validate_topic_for_competency(
+            competency_type=request.competency_type,
+            topic=request.topic,
+        )
+
         score = get_score_by_difficulty(request.difficulty)
 
         generated_questions = generate_questions(
@@ -161,7 +166,6 @@ def generate_ai_questions(
             count=request.count,
             score=score,
             question_type=request.question_type,
-            role=request.role,
             competency_type=request.competency_type,
         )
 
@@ -172,6 +176,7 @@ def generate_ai_questions(
             difficulty=request.difficulty,
             score=score,
             question_type=request.question_type,
+            competency_type=request.competency_type,
         )
 
         db.commit()
@@ -181,6 +186,14 @@ def generate_ai_questions(
             "count": len(saved_questions),
             "questions": saved_questions
         }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
         db.rollback()
@@ -192,11 +205,17 @@ def generate_ai_questions_from_document(
     db: Session = Depends(get_db)
 ):
     try:
+        validate_topic_for_competency(
+            competency_type=request.competency_type,
+            topic=request.topic,
+        )
+
         score = get_score_by_difficulty(request.difficulty)
 
         context = build_context_from_search_results(
             query=request.search_query or request.topic,
-            top_k=request.top_k
+            top_k=request.top_k,
+            category=request.competency_type,
         )
 
         if not context or not context.strip():
@@ -212,7 +231,7 @@ def generate_ai_questions_from_document(
             count=request.count,
             score=score,
             question_type=request.question_type,
-            role=request.role,
+            # role=request.role,
             competency_type=request.competency_type,
         )
 
@@ -223,6 +242,7 @@ def generate_ai_questions_from_document(
             difficulty=request.difficulty,
             score=score,
             question_type=request.question_type,
+            competency_type=request.competency_type,
         )
 
         db.commit()

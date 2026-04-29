@@ -112,13 +112,19 @@ def get_record_answers(record_id: int, db: Session = Depends(get_db)):
                 return "-"
             try:
                 idx = int(val)
-                if choices and 0 <= idx < len(choices):
-                    return f"{chr(65 + idx)}. {choices[idx]}"
+                if choices and 1 <= idx <= len(choices):
+                    return f"{idx}번. {choices[idx - 1]}"
             except (ValueError, TypeError):
                 pass
             return str(val)
 
         choices = q.choices_json if q.question_type == "multiple_choice" else None
+        if isinstance(choices, str):
+            import json
+            try:
+                choices = json.loads(choices)
+            except Exception:
+                pass
         display_answer = readable(my_ans_raw, choices)
         display_correct = readable(str(correct_ans_val) if correct_ans_val is not None else None, choices)
 
@@ -126,6 +132,8 @@ def get_record_answers(record_id: int, db: Session = Depends(get_db)):
             "answer_id": i + 1,
             "question_id": q.question_id,
             "question_title": q.title,
+            "question_type": q.question_type,
+            "choices_json": choices,
             "competency_type": q.competency_type,
             "difficulty": q.difficulty,
             "answer_text": display_answer,

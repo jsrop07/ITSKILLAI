@@ -21,38 +21,28 @@ import {
 } from "../components/ui/select";
 import { aiQuestionApi } from "../../lib/api";
 
-const roleOptions = [
-  { value: "backend", label: "백엔드 개발자" },
-  { value: "frontend", label: "프론트엔드 개발자" },
-  { value: "fullstack", label: "풀스택 개발자" },
-  { value: "python", label: "Python 개발자" },
-  { value: "java", label: "Java 개발자" },
-  { value: "ai_developer", label: "인공지능 개발자" },
-  { value: "ml_engineer", label: "머신러닝 엔지니어" },
-  { value: "data_analyst", label: "데이터 분석가" },
-  { value: "data_engineer", label: "데이터 엔지니어" },
-  { value: "cloud_devops", label: "클라우드/DevOps 엔지니어" },
-  { value: "security", label: "정보보안 엔지니어" },
-  { value: "dba", label: "DBA/데이터베이스 엔지니어" },
-  { value: "junior_common", label: "신입 개발자 공통" },
-];
+const topicPlaceholderMap: Record<string, string> = {
+  programming: "예: Python 예외 처리, Java 상속, 비동기 함수",
+  data_structure_algorithm: "예: 스택/큐, DFS/BFS, 시간복잡도, 다익스트라",
+  web_development: "예: REST API, JWT 인증, CORS, React 렌더링",
+  database: "예: 트랜잭션 격리 수준, 인덱스 최적화, JOIN, 정규화",
+  os_network: "예: 프로세스와 스레드, TCP/UDP, DNS, 데드락",
+  security: "예: XSS, CSRF, SQL Injection, OAuth 보안",
+  cloud_devops: "예: Docker, Kubernetes, CI/CD, AWS EC2 배포",
+  ai_data: "예: LLM, RAG, 임베딩, 모델 평가, 데이터 전처리",
+  software_engineering: "예: SOLID 원칙, 디자인 패턴, 테스트 전략, 애자일",
+};
 
 const competencyOptions = [
-  { value: "programming_language", label: "프로그래밍 언어" },
+  { value: "programming", label: "프로그래밍" },
   { value: "data_structure_algorithm", label: "자료구조/알고리즘" },
-  { value: "web_backend", label: "웹/백엔드 개발" },
-  { value: "frontend", label: "프론트엔드 개발" },
+  { value: "web_development", label: "웹 개발" },
   { value: "database", label: "데이터베이스" },
-  { value: "operating_system", label: "운영체제" },
-  { value: "network", label: "네트워크" },
+  { value: "os_network", label: "운영체제/네트워크" },
   { value: "security", label: "정보보안" },
   { value: "cloud_devops", label: "클라우드/DevOps" },
-  { value: "ai_ml", label: "인공지능/머신러닝" },
-  { value: "data_analysis", label: "데이터 분석" },
+  { value: "ai_data", label: "인공지능/데이터" },
   { value: "software_engineering", label: "소프트웨어공학" },
-  { value: "ncs_application_sw", label: "NCS 응용SW개발" },
-  { value: "ncs_database", label: "NCS 데이터베이스" },
-  { value: "ncs_security", label: "NCS 정보보안" },
 ];
 
 const difficultyOptions = [
@@ -77,7 +67,7 @@ type DifficultyValue = "초급" | "중급" | "고급";
 type DocumentScopeValue = "none" | "rag_all";
 
 export default function AIQuestionGeneration() {
-  const [role, setRole] = useState("backend");
+  // const [role, setRole] = useState("backend");
   const [competencyType, setCompetencyType] = useState("programming_language");
   const [difficulty, setDifficulty] = useState<"초급" | "중급" | "고급">("초급");
   const [questionType, setQuestionType] = useState<"multiple_choice" | "essay" | "coding">("multiple_choice");
@@ -89,18 +79,43 @@ export default function AIQuestionGeneration() {
   const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
 
   const handleGenerate = async () => {
+    if (!competencyType) {
+      alert("역량 유형을 선택해주세요.");
+      return;
+    }
     if (!detailedTopic.trim()) {
       alert("세부 주제를 입력해주세요.");
       return;
     }
 
-    const selectedRole = roleOptions.find((item) => item.value === role);
+    const blockedNonItKeywords = [
+      "음식",
+      "맛집",
+      "요리",
+      "레시피",
+      "여행",
+      "연애",
+      "소개팅",
+      "운세",
+      "영화",
+      "노래",
+      "쇼핑",
+    ];
+
+    const hasBlockedKeyword = blockedNonItKeywords.some((keyword) =>
+      detailedTopic.toLowerCase().includes(keyword.toLowerCase())
+    );
+
+    if (hasBlockedKeyword) {
+      alert("세부 주제는 IT 역량진단과 관련된 주제만 입력할 수 있습니다.");
+      return;
+    }
     const selectedCompetency = competencyOptions.find(
       (item) => item.value === competencyType
     );
 
     const searchQuery = [
-      selectedRole?.label,
+      // selectedRole?.label,
       selectedCompetency?.label,
       detailedTopic,
     ]
@@ -112,7 +127,7 @@ export default function AIQuestionGeneration() {
       difficulty,
       count,
       question_type: questionType,
-      role,
+      // role,
       competency_type: competencyType,
       search_query: searchQuery,
       top_k: topK,
@@ -167,23 +182,7 @@ export default function AIQuestionGeneration() {
             </CardTitle>
             <CardDescription>문제 생성을 위한 파라미터 설정</CardDescription>
           </CardHeader>
-          <CardContent className="pt-6 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="role">대상 직무 *</Label>
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger id="role">
-                  <SelectValue placeholder="대상 직무 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  {roleOptions.map((option) => (
-                    <SelectItem key={option.value} value={option.value}>
-                      {option.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            </div>
-
+          <CardContent className="pt-1 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="competency">역량 유형 *</Label>
               <Select value={competencyType} onValueChange={setCompetencyType}>
@@ -204,7 +203,7 @@ export default function AIQuestionGeneration() {
               <Label htmlFor="topic">세부 주제 *</Label>
               <Textarea
                 id="topic"
-                placeholder="예: 트랜잭션 전파 옵션, N+1 쿼리 최적화, CSRF 보안"
+                placeholder={topicPlaceholderMap[competencyType] || "예: 평가할 IT 세부 주제를 입력하세요"}
                 value={detailedTopic}
                 onChange={(e) => setDetailedTopic(e.target.value)}
                 rows={3}
@@ -233,14 +232,26 @@ export default function AIQuestionGeneration() {
 
             <div className="space-y-2">
               <Label htmlFor="count">생성 문제 수 *</Label>
-              <Input
-                id="count"
-                type="number"
-                min="1"
-                max="20"
-                value={count}
-                onChange={(e) => setCount(Number(e.target.value))}
-              />
+              <Select
+                value={String(count)}
+                onValueChange={(value) => setCount(Number(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="문제 수 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1문제</SelectItem>
+                  <SelectItem value="2">2문제</SelectItem>
+                  <SelectItem value="3">3문제</SelectItem>
+                  <SelectItem value="4">4문제</SelectItem>
+                  <SelectItem value="5">5문제</SelectItem>
+                  <SelectItem value="6">6문제</SelectItem>
+                  <SelectItem value="7">7문제</SelectItem>
+                  <SelectItem value="8">8문제</SelectItem>
+                  <SelectItem value="9">9문제</SelectItem>
+                  <SelectItem value="10">10문제</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">

@@ -515,16 +515,43 @@ export default function ApplicantDetail() {
                   </div>
                 </div>
               </div>
-              <div className="grid grid-cols-2 gap-4 border-t border-b border-slate-100 py-4">
-                <div className="space-y-2 p-4 bg-slate-50 rounded-lg">
-                  <Label className="text-slate-500">응시자 답변</Label>
-                  <p className="text-sm font-medium text-slate-800 break-words">{selectedAnswer.answer_text || "-"}</p>
+              {selectedAnswer.question_type === "multiple_choice" && Array.isArray(selectedAnswer.choices_json) ? (
+                <div className="space-y-2 border-t border-b border-slate-100 py-4">
+                  <Label className="text-slate-500 mb-2 block">객관식 선택지 (단일 정답)</Label>
+                  {selectedAnswer.choices_json.map((choice: string, i: number) => {
+                    const isCorrect = String(selectedAnswer.correct_answer_json).startsWith(String(i + 1) + "번");
+                    const isSelected = String(selectedAnswer.answer_text).startsWith(String(i + 1) + "번");
+                    
+                    return (
+                      <div key={i} className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg">
+                        <span className="size-7 flex-shrink-0 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 text-sm font-medium">
+                          {i + 1}
+                        </span>
+                        <span className="flex-1 text-sm text-slate-700">{choice}</span>
+                        <div className="flex gap-2 text-xs font-bold">
+                          {isCorrect && <span className="text-sky-600 bg-sky-100 px-2 py-1 rounded">정답체크</span>}
+                          {isSelected && (
+                            <span className={isCorrect ? "text-green-600 bg-green-100 px-2 py-1 rounded" : "text-red-600 bg-red-100 px-2 py-1 rounded"}>
+                              응답체크
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                    );
+                  })}
                 </div>
-                <div className="space-y-2 p-4 bg-sky-50 rounded-lg">
-                  <Label className="text-sky-700">모범 답안 (정답)</Label>
-                  <p className="text-sm font-medium text-sky-900 break-words">{selectedAnswer.correct_answer_json ?? "-"}</p>
+              ) : (
+                <div className="grid grid-cols-2 gap-4 border-t border-b border-slate-100 py-4">
+                  <div className="space-y-2 p-4 bg-slate-50 rounded-lg">
+                    <Label className="text-slate-500">응시자 답변</Label>
+                    <p className="text-sm font-medium text-slate-800 break-words">{selectedAnswer.answer_text || "-"}</p>
+                  </div>
+                  <div className="space-y-2 p-4 bg-sky-50 rounded-lg">
+                    <Label className="text-sky-700">모범 답안 (정답)</Label>
+                    <p className="text-sm font-medium text-sky-900 break-words">{selectedAnswer.correct_answer_json ?? "-"}</p>
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="flex items-center justify-between bg-slate-50 p-4 rounded-lg">
                 <span className="text-sm font-medium text-slate-700">채점 결과</span>
                 <div className="flex items-center gap-3">

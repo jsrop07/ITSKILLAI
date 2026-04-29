@@ -1,6 +1,10 @@
 import re
 import json
+import time
+import logging
 from ai.client import client
+
+logger = logging.getLogger("uvicorn.info")
 
 def _extract_answer_number_from_explanation(explanation: str):
     if not explanation:
@@ -142,6 +146,9 @@ def _question_type_rule(question_type: str) -> str:
         - 첫 번째 보기가 정답이면 answer는 1이다.
         - 두 번째 보기가 정답이면 answer는 2이다.
         - 정답은 반드시 1개만 존재해야 한다.
+        - 여러 문제를 생성할 경우 정답 번호가 모두 같으면 안 된다.
+        - 정답 보기의 위치는 문제마다 다르게 배치한다.
+        - JSON 예시의 answer 번호를 그대로 반복하지 말고 문제마다 정답 위치를 다르게 배치한다.
         - explanation에 적힌 정답 번호는 반드시 answer 값과 일치해야 한다.
         - explanation에서 "정답은 N번입니다"라고 쓸 경우 N은 반드시 answer와 같아야 한다.
         - "모두 정답", "정답 없음", "위 내용 모두" 같은 선택지는 금지한다.
@@ -150,15 +157,15 @@ def _question_type_rule(question_type: str) -> str:
 
         [객관식 JSON 형식]
         {
-        "title": "문제 제목",
-        "body": "문제 본문",
-        "choices": ["보기1", "보기2", "보기3", "보기4", "보기5"],
-        "answer": 1,
-        "explanation": "정답은 1번입니다. ...",
-        "difficulty": "초급",
-        "competency_type": "programming_language",
-        "competency_tags": ["Python"],
-        "score": 1
+            "title": "문제 제목",
+            "body": "문제 본문",
+            "choices": ["보기1", "보기2", "보기3", "보기4", "보기5"],
+            "answer": 3,
+            "explanation": "정답은 3번입니다. ...",
+            "difficulty": "초급",
+            "competency_type": "programming",
+            "competency_tags": ["Python"],
+            "score": 1
         }
         """
 
@@ -220,9 +227,12 @@ def generate_questions(
     count: int = 1,
     score: int = 1,
     question_type: str = "multiple_choice",
-    role: str | None = None,
+    # role: str | None = None,
     competency_type: str | None = None,
 ):
+    start_time = time.time()
+    logger.info(f"LLM Pipeline [Generate]: AI 문제 생성 시작 (주제: '{topic}', 유형: {question_type}, 난이도: {difficulty}, 개수: {count})")
+    
     prompt = f"""
     너는 IT 역량진단 문제은행의 전문 출제자다.
     목표는 실제 채용/역량진단에 사용할 수 있는 품질의 문제를 생성하는 것이다.
@@ -230,8 +240,20 @@ def generate_questions(
     반드시 JSON 배열만 출력해라.
     마크다운 코드블록, 설명 문장, 추가 텍스트는 절대 출력하지 마라.
 
+    [중요 검증 규칙]
+    - 문제는 반드시 IT 역량진단과 관련된 내용이어야 한다.
+    - 세부 주제가 음식, 여행, 연애, 취미, 쇼핑 등 IT와 무관하면 문제를 생성하지 않는다.
+    - 선택된 역량 유형과 세부 주제가 맞지 않으면 문제를 생성하지 않는다.
+    - 역량 유형이 자료구조/알고리즘이면 LLM, RAG, 딥러닝 같은 인공지능 문제를 만들지 않는다.
+    - 역량 유형이 데이터베이스이면 SQL, 트랜잭션, 인덱스, 정규화 등 데이터베이스 중심 문제만 만든다.
+    - 역량 유형이 인공지능/데이터이면 LLM, RAG, 임베딩, 모델 평가, 머신러닝, 데이터 분석 중심 문제만 만든다.
+    
+    [출제 기준]
+    - 사용자가 선택한 역량 유형을 최우선 기준으로 문제를 생성한다.
+    - 세부 주제는 역량 유형 안에서 더 좁은 출제 범위로만 사용한다.
+    - 세부 주제가 역량 유형보다 우선하면 안 된다.
+
     [출제 조건]
-    - 대상 직무: {role or "미지정"}
     - 역량 유형: {competency_type or "미지정"}
     - 세부 주제: {topic}
     - 난이도: {difficulty}
@@ -257,9 +279,17 @@ def generate_questions(
     - 너무 쉬운 상식 문제, 말장난 문제, 암기만 요구하는 문제는 피한다.
     - 문제 본문은 평가하려는 개념이 명확해야 한다.
     - 오답은 그럴듯해야 하지만, 정답과 명확히 구분되어야 한다.
-    - 해설은 정답 이유만 쓰지 말고 핵심 개념과 오답 판단 근거를 포함해야 한다.
+    - 해설은 정답 이유만 쓰지 말고 핵심 개념과 오답 판단 근거를 포함해야 단다.
     - 같은 개념을 문장만 바꿔 반복 출제하지 마라.
     - {count}개의 문제는 서로 평가 포인트가 달라야 한다.
+
+    [오답 품질 규칙]
+    - 오답은 장난스럽거나 비현실적인 문장으로 만들지 않는다.
+    - "자동으로 해결된다", "삭제한다", "무시한다", "생략한다", "항상", "무조건", "오직" 같은 극단적 표현을 반복하지 않는다.
+    - 오답도 실무자가 헷갈릴 수 있는 그럴듯한 선택지로 작성한다.
+    - 단, 문서 내용 기준으로는 명확히 틀려야 한다.
+    - 오답은 정답과 같은 주제 영역 안에서 만들어야 한다.
+    - 예를 들어 요구사항 확인 문제라면 오답도 요구사항 분석, 요구사항 검토, 명세서, 기능/비기능 요구사항, 검증, 추적성 등 관련 개념으로 구성한다.
 
     {_difficulty_rule(difficulty)}
 
@@ -287,24 +317,38 @@ def generate_questions(
     - competency_type은 "{competency_type or topic}" 값으로 작성한다.
     - competency_tags는 세부 주제와 관련된 문자열 배열로 작성한다.
     """
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": "너는 IT 역량진단 문제은행의 전문 출제자다. 반드시 유효한 JSON 배열만 출력한다.",
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
-        temperature=0.2,
-    )
+    
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "너는 IT 역량진단 문제은행의 전문 출제자다. 반드시 유효한 JSON 배열만 출력한다.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=0.2,
+        )
 
-    content = response.choices[0].message.content
-    questions = _clean_json_response(content)
-    return _validate_questions(questions, question_type, difficulty, score)
+        content = response.choices[0].message.content
+        questions = _clean_json_response(content)
+        validated_questions = _validate_questions(questions, question_type, difficulty, score)
+        
+        if _has_answer_position_bias(validated_questions, question_type):
+            raise ValueError("생성된 문제의 정답 번호가 지나치게 한쪽으로 몰려 있습니다. 다시 생성해주세요.")
+
+        elapsed_time = time.time() - start_time
+        logger.info(f"LLM Pipeline [Generate]: AI 문제 생성 완료 (생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)")
+        
+        return validated_questions
+    except Exception as e:
+        elapsed_time = time.time() - start_time
+        logger.error(f"LLM Pipeline [Generate]: AI 문제 생성 실패 (소요 시간: {elapsed_time:.3f}초) - 에러: {str(e)}")
+        raise
 
 
 def generate_questions_from_context(
@@ -314,9 +358,11 @@ def generate_questions_from_context(
     count: int = 1,
     score: int = 1,
     question_type: str = "multiple_choice",
-    role: str | None = None,
     competency_type: str | None = None,
 ):
+    start_time = time.time()
+    logger.info(f"LLM Pipeline [RAG Generate]: RAG 기반 AI 문제 생성 시작 (주제: '{topic}', 유형: {question_type}, 난이도: {difficulty}, 개수: {count})")
+    
     prompt = f"""
         너는 IT 역량진단 문제은행의 문서 기반 문제 출제 전문가다.
         목표는 제공된 문서 내용에 근거한 검증 가능한 문제만 생성하는 것이다.
@@ -330,13 +376,19 @@ def generate_questions_from_context(
         문서 내용만으로 문제와 정답을 만들 수 없으면 억지로 만들지 말고 빈 JSON 배열 [] 을 반환해라.
 
         [출제 조건]
-        - 대상 직무: {role or "미지정"}
         - 역량 유형: {competency_type or "미지정"}
         - 세부 주제: {topic}
         - 난이도: {difficulty}
         - 배점: {score}
         - 생성 개수: {count}
         - 문제 유형: {question_type}
+        
+        [역량 유형 제한 규칙]
+        - 문제는 반드시 선택된 역량 유형에 맞아야 한다.
+        - 세부 주제가 선택된 역량 유형과 충돌하면 문제를 생성하지 말고 빈 JSON 배열 [] 을 반환한다.
+        - 역량 유형이 자료구조/알고리즘이면 LLM, RAG, 딥러닝 같은 인공지능 문제를 만들지 않는다.
+        - 역량 유형이 데이터베이스이면 SQL, 트랜잭션, 인덱스, 정규화 등 데이터베이스 중심 문제만 만든다.
+        - 역량 유형이 인공지능/데이터이면 LLM, RAG, 임베딩, 모델 평가, 머신러닝, 데이터 분석 중심 문제만 만든다.
 
         [문서 기반 환각 방지 규칙]
         - 문서에 없는 용어를 새로 추가하지 마라.
@@ -360,6 +412,33 @@ def generate_questions_from_context(
         - 생성되는 {count}개의 문제는 서로 다른 평가 포인트를 가져야 한다.
         - 문서 내용이 부족하면 {count}개보다 적게 생성해도 된다.
         - 단, 이 경우에도 JSON 배열만 출력한다.
+        
+        [정답 위치 분산 규칙]
+        - 여러 개의 객관식 문제를 생성할 때 정답 번호가 모두 같으면 안 된다.
+        - 정답 번호는 1~5 사이에서 최대한 고르게 분산한다.
+        - 예를 들어 5문제를 생성한다면 answer 값은 1, 2, 3, 4, 5가 섞이도록 한다.
+        - 정답을 항상 1번에 배치하지 마라.
+        - 정답 보기의 위치는 문제마다 다르게 배치한다.
+        - 모든 문제의 answer가 같은 번호이면 안 된다.
+        
+        [문서 기반 중급/고급 문제 강화 규칙]
+        - 중급/고급 문제는 문서의 문장을 그대로 확인하는 문제로 만들지 않는다.
+        - 중급 문제는 문서 내용을 실제 검토 상황에 적용하게 만든다.
+        - 고급 문제는 문서 내용을 바탕으로 원인, 영향, 리스크, 우선순위, 대응 방안을 판단하게 만든다.
+        - 요구사항 확인 주제라면 다음 상황 중 하나를 문제 본문에 포함한다:
+            1) 요구사항 목록에서 기능이 누락된 상황
+            2) 기능 요구사항과 비기능 요구사항이 혼재된 상황
+            3) 요구사항 명세서의 속성 검토가 필요한 상황
+            4) 요구사항 검증 계획이 부족한 상황
+            5) 프로토타이핑을 통해 추가 요구사항을 도출해야 하는 상황
+        - 단, 문서에 근거가 없는 상황은 만들지 않는다.
+
+        [난이도별 문제 특성 규칙]
+        - 문제는 반드시 요청된 난이도 "{difficulty}"에 맞게 생성한다.
+        - 초급은 기본 개념, 용어 이해, 단순 구분을 평가한다.
+        - 중급은 단순 정의 암기가 아니라 문서 내용을 바탕으로 한 비교, 적용, 검토 기준 선택, 상황 판단을 평가한다.
+        - 고급은 문서 내용을 바탕으로 원인, 영향, 리스크, 우선순위, 대응 방안을 판단하게 한다.
+        - "{difficulty}"가 중급 또는 고급이면 문제 본문에 짧은 실무 상황을 포함한다.
 
         {_difficulty_rule(difficulty)}
 
@@ -390,22 +469,57 @@ def generate_questions_from_context(
         - competency_tags는 문서 내용과 주제에 관련된 문자열 배열로 작성한다.
         - 문서 근거가 부족하면 빈 배열 [] 을 반환한다.
         """
+        
 
-    response = client.chat.completions.create(
-        model="gpt-4o-mini",
-        messages=[
-            {
-                "role": "system",
-                "content": "너는 문서 기반 IT 역량진단 문제 출제자다. 반드시 유효한 JSON 배열만 출력한다.",
-            },
-            {
-                "role": "user",
-                "content": prompt,
-            },
-        ],
-        temperature=0.1,
-    )
+    try:
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "너는 문서 기반 IT 역량진단 문제 출제자다. 반드시 유효한 JSON 배열만 출력한다.",
+                },
+                {
+                    "role": "user",
+                    "content": prompt,
+                },
+            ],
+            temperature=0.1,
+        )
 
-    content = response.choices[0].message.content
-    questions = _clean_json_response(content)
-    return _validate_questions(questions, question_type, difficulty, score)
+        content = response.choices[0].message.content
+        questions = _clean_json_response(content)
+        validated_questions = _validate_questions(questions, question_type, difficulty, score)
+        
+        if _has_answer_position_bias(validated_questions, question_type):
+            raise ValueError("생성된 문제의 정답 번호가 지나치게 한쪽으로 몰려 있습니다. 다시 생성해주세요.")
+
+        elapsed_time = time.time() - start_time
+        logger.info(f"LLM Pipeline [RAG Generate]: RAG 기반 AI 문제 생성 완료 (생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)")
+        
+        return validated_questions
+    except Exception as e:
+        elapsed_time = time.time() - start_time
+        logger.error(f"LLM Pipeline [RAG Generate]: RAG 기반 AI 문제 생성 실패 (소요 시간: {elapsed_time:.3f}초) - 에러: {str(e)}")
+        raise
+
+def _has_answer_position_bias(questions: list, question_type: str) -> bool:
+    if question_type != "multiple_choice":
+        return False
+
+    if len(questions) < 3:
+        return False
+
+    try:
+        answers = [int(q.get("answer")) for q in questions]
+    except Exception:
+        return False
+
+    if len(set(answers)) == 1:
+        return True
+
+    for answer_no in set(answers):
+        if answers.count(answer_no) / len(answers) >= 0.8:
+            return True
+
+    return False

@@ -12,6 +12,7 @@ import {
 import {
   Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogFooter,
 } from "../components/ui/dialog";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
@@ -41,6 +42,12 @@ export default function QuestionManagement() {
   const [typeFilter, setTypeFilter] = useState("all");
   const [sourceFilter, setSourceFilter] = useState("all");
   const [reviewFilter, setReviewFilter] = useState("all");
+  const [difficultyFilter, setDifficultyFilter] = useState("all");
+  const [competencyFilter, setCompetencyFilter] = useState("");
+  const [page, setPage] = useState(1);
+  const limit = 20;
+
+  const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
 
   const [selectedQuestion, setSelectedQuestion] = useState<Question | null>(null);
   const [editForm, setEditForm] = useState<QuestionUpdate | null>(null);
@@ -72,6 +79,8 @@ export default function QuestionManagement() {
       if (typeFilter !== "all") params.question_type = typeFilter;
       if (sourceFilter !== "all") params.source_type = sourceFilter;
       if (reviewFilter !== "all") params.review_status = reviewFilter;
+      if (difficultyFilter !== "all") params.difficulty = difficultyFilter;
+      if (competencyFilter) params.competency_type = competencyFilter;
 
       console.log("문제 목록 요청 params:", params);
 
@@ -80,6 +89,7 @@ export default function QuestionManagement() {
       console.log("문제 목록 응답:", data);
 
       setQuestions(Array.isArray(data) ? data : []);
+      setPage(1);
     } catch (err: any) {
       console.error("문제 목록 조회 실패:", err);
       console.error("백엔드 응답:", err.response?.data);
@@ -90,7 +100,7 @@ export default function QuestionManagement() {
     }
   };
 
-  useEffect(() => { load(); }, [searchTerm, typeFilter, sourceFilter, reviewFilter]);
+  useEffect(() => { load(); }, [searchTerm, typeFilter, sourceFilter, reviewFilter, difficultyFilter, competencyFilter]);
 
   const handleCreate = async () => {
     if (!form.title) return alert("문제 제목은 필수입니다.");
@@ -123,6 +133,30 @@ export default function QuestionManagement() {
     } catch (err) {
       console.error(err);
       alert("삭제 불가 (시험에 포함된 문제일 수 있습니다.)");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (checkedIds.size === 0) return alert("선택된 항목이 없습니다.");
+    if (!window.confirm(`선택한 ${checkedIds.size}개 항목을 삭제하시겠습니까?`)) return;
+    try {
+      await Promise.all(Array.from(checkedIds).map(id => questionsApi.delete(id)));
+      setCheckedIds(new Set());
+      load();
+    } catch (err) {
+      alert("일부 항목 삭제 실패");
+    }
+  };
+
+  const handleBulkApprove = async () => {
+    if (checkedIds.size === 0) return alert("선택된 항목이 없습니다.");
+    if (!window.confirm(`선택한 ${checkedIds.size}개 항목을 승인하시겠습니까?`)) return;
+    try {
+      await Promise.all(Array.from(checkedIds).map(id => questionsApi.update(id, { review_status: "approved" } as any)));
+      setCheckedIds(new Set());
+      load();
+    } catch (err) {
+      alert("일부 항목 승인 실패");
     }
   };
 
@@ -168,6 +202,28 @@ export default function QuestionManagement() {
     초급: "bg-green-100 text-green-700",
   };
 
+  const paginatedQuestions = questions.slice((page - 1) * limit, page * limit);
+  const totalPages = Math.ceil(questions.length / limit) || 1;
+
+  const allFilteredChecked = paginatedQuestions.length > 0 && paginatedQuestions.every(q => checkedIds.has(q.question_id));
+
+  const toggleCheckAll = () => {
+    const newKeys = new Set(checkedIds);
+    if (allFilteredChecked) {
+      paginatedQuestions.forEach(q => newKeys.delete(q.question_id));
+    } else {
+      paginatedQuestions.forEach(q => newKeys.add(q.question_id));
+    }
+    setCheckedIds(newKeys);
+  };
+
+  const toggleCheck = (id: number) => {
+    const newKeys = new Set(checkedIds);
+    if (newKeys.has(id)) newKeys.delete(id);
+    else newKeys.add(id);
+    setCheckedIds(newKeys);
+  };
+
   return (
     <div className="p-8 space-y-6">
       <div className="flex items-center justify-between">
@@ -193,8 +249,14 @@ export default function QuestionManagement() {
                 className="pl-10"
               />
             </div>
+            <Input
+              placeholder="역량 검색"
+              value={competencyFilter}
+              onChange={(e) => setCompetencyFilter(e.target.value)}
+              className="w-32"
+            />
             <Select value={typeFilter} onValueChange={setTypeFilter}>
-              <SelectTrigger className="w-36"><SelectValue placeholder="유형" /></SelectTrigger>
+              <SelectTrigger className="w-32"><SelectValue placeholder="유형" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">전체 유형</SelectItem>
                 <SelectItem value="multiple_choice">객관식</SelectItem>
@@ -202,8 +264,17 @@ export default function QuestionManagement() {
                 <SelectItem value="coding">코드작성형</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
+              <SelectTrigger className="w-28"><SelectValue placeholder="난이도" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체 난이도</SelectItem>
+                <SelectItem value="초급">초급</SelectItem>
+                <SelectItem value="중급">중급</SelectItem>
+                <SelectItem value="고급">고급</SelectItem>
+              </SelectContent>
+            </Select>
             <Select value={sourceFilter} onValueChange={setSourceFilter}>
-              <SelectTrigger className="w-36"><SelectValue placeholder="출처" /></SelectTrigger>
+              <SelectTrigger className="w-32"><SelectValue placeholder="출처" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">전체 출처</SelectItem>
                 <SelectItem value="ai">AI 생성</SelectItem>
@@ -211,7 +282,7 @@ export default function QuestionManagement() {
               </SelectContent>
             </Select>
             <Select value={reviewFilter} onValueChange={setReviewFilter}>
-              <SelectTrigger className="w-36"><SelectValue placeholder="검토 상태" /></SelectTrigger>
+              <SelectTrigger className="w-32"><SelectValue placeholder="상태" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">전체 상태</SelectItem>
                 <SelectItem value="pending">검토 대기</SelectItem>
@@ -220,6 +291,17 @@ export default function QuestionManagement() {
               </SelectContent>
             </Select>
           </div>
+          {checkedIds.size > 0 && (
+            <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100">
+              <span className="text-sm font-medium text-sky-700">{checkedIds.size}개 선택됨</span>
+              <Button variant="outline" size="sm" className="h-8 text-green-700 hover:text-green-800" onClick={handleBulkApprove}>
+                선택 승인
+              </Button>
+              <Button variant="outline" size="sm" className="h-8 text-red-600 hover:text-red-700" onClick={handleBulkDelete}>
+                선택 삭제
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
@@ -228,6 +310,9 @@ export default function QuestionManagement() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox checked={allFilteredChecked} onCheckedChange={toggleCheckAll} />
+                  </TableHead>
                   <TableHead className="w-12">#</TableHead>
                   <TableHead>문제</TableHead>
                   <TableHead>유형</TableHead>
@@ -245,9 +330,12 @@ export default function QuestionManagement() {
                     <TableCell colSpan={9} className="text-center text-slate-400 py-12">문제가 없습니다.</TableCell>
                   </TableRow>
                 ) : (
-                  questions.map((q, idx) => (
+                  paginatedQuestions.map((q, idx) => (
                     <TableRow key={q.question_id}>
-                      <TableCell className="text-slate-500 text-sm">{idx + 1}</TableCell>
+                      <TableCell>
+                        <Checkbox checked={checkedIds.has(q.question_id)} onCheckedChange={() => toggleCheck(q.question_id)} />
+                      </TableCell>
+                      <TableCell className="text-slate-500 text-sm">{(page - 1) * limit + idx + 1}</TableCell>
                       <TableCell className="max-w-xs">
                         <p className="text-slate-700 text-sm truncate">{q.title}</p>
                       </TableCell>
@@ -306,6 +394,29 @@ export default function QuestionManagement() {
                 )}
               </TableBody>
             </Table>
+          )}
+          {!loading && questions.length > 0 && (
+            <div className="flex items-center justify-center gap-4 p-4 border-t border-slate-200">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(Math.max(1, page - 1))}
+                disabled={page === 1}
+              >
+                이전
+              </Button>
+              <span className="text-sm text-slate-600">
+                {page} / {totalPages}
+              </span>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setPage(Math.min(totalPages, page + 1))}
+                disabled={page === totalPages}
+              >
+                다음
+              </Button>
+            </div>
           )}
         </CardContent>
       </Card>
@@ -369,7 +480,7 @@ export default function QuestionManagement() {
                   {((editForm.choices_json as string[]) || ["", "", "", "", ""]).map((c: string, i: number) => (
                     <div key={i} className="flex items-center gap-2">
                       <span className="size-7 flex-shrink-0 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 text-sm font-medium">
-                        {String.fromCharCode(65 + i)}
+                        {i + 1}
                       </span>
                       <Input
                         value={c}
@@ -487,7 +598,7 @@ export default function QuestionManagement() {
                 {((form.choices_json as string[]) || ["", "", "", "", ""]).map((c: string, i: number) => (
                   <div key={i} className="flex items-center gap-2">
                     <span className="size-7 flex-shrink-0 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 text-sm font-medium">
-                      {String.fromCharCode(65 + i)}
+                      {i + 1}
                     </span>
                     <Input
                       value={c}
