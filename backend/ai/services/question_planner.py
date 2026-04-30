@@ -7,7 +7,7 @@ from ai.client import client
 
 
 VALID_DIFFICULTIES = {"초급", "중급", "고급"}
-VALID_QUESTION_TYPES = {"multiple_choice", "short_answer"}
+VALID_QUESTION_TYPES = {"multiple_choice", "essay", "code"}
 
 
 def _extract_json_array(text: str) -> list[dict[str, Any]]:
@@ -91,63 +91,83 @@ def _difficulty_planning_rule(difficulty: str) -> str:
 def _competency_planning_rule(competency_type: str) -> str:
     rules = {
         "database": """
-- 데이터베이스 역량 설계 규칙:
-  - 인덱스, 정규화, 트랜잭션, 격리 수준, 실행 계획, 조인, 락, 성능 튜닝, 백업/복구 중 하나를 중심 개념으로 삼는다.
-  - 고급 문제는 단순히 "인덱스를 추가한다"가 정답이 되지 않도록 한다.
-  - 데이터 분포, 카디널리티, 조회 패턴, 쓰기 부하, 락 경합, 정합성 요구사항 같은 조건을 포함한다.
-""",
+        [데이터베이스 역량 설계 규칙]
+        - 인덱스, 정규화, 트랜잭션, 격리 수준, 실행 계획, 조인, 락, 성능 튜닝, 백업/복구 중 하나를 중심 개념으로 삼는다.
+        - 고급 문제는 단순히 "인덱스를 추가한다"가 정답이 되지 않도록 한다.
+        - 데이터 분포, 카디널리티, 조회 패턴, 쓰기 부하, 락 경합, 정합성 요구사항 같은 조건을 포함한다.
+        - topic이 인덱스, 실행 계획, 조인, 쿼리 성능이면 보안, 개인정보, 접근 제어 중심 시나리오로 확장하지 않는다.
+        - 인덱스 문제의 정답은 "인덱스를 추가한다"가 아니라 실행 계획, 선택도, 조건 컬럼, 정렬 여부, 쓰기 부하를 함께 고려한 판단이어야 한다.
+        - 실행 계획 문제는 조인 순서, 스캔 방식, 인덱스 사용 여부, 예상/실제 행 수 차이 중 하나 이상을 조건에 포함한다.
+        - 오답은 단순히 틀린 행동이 아니라, 일부 상황에서는 가능하지만 현재 쿼리 조건이나 데이터 분포에는 맞지 않는 전략으로 설계한다.
+        """,
+
         "data_structure_algorithm": """
-- 자료구조/알고리즘 역량 설계 규칙:
-  - 시간복잡도, 공간복잡도, 입력 크기, 자료 접근 패턴, 삽입/삭제 빈도, 정렬 여부, 중복 여부 중 일부를 조건으로 포함한다.
-  - 고급 문제는 "해시 테이블", "트리", "연결 리스트" 같은 자료구조명을 단순 정답으로 만들지 않는다.
-  - 왜 해당 자료구조나 알고리즘이 조건에 적합한지 판단 기준을 포함한다.
-""",
+        [자료구조/알고리즘 역량 설계 규칙]
+        - 시간복잡도, 공간복잡도, 입력 크기, 자료 접근 패턴, 삽입/삭제 빈도, 정렬 여부, 중복 여부 중 일부를 조건으로 포함한다.
+        - 고급 문제는 "해시 테이블", "트리", "연결 리스트" 같은 자료구조명을 단순 정답으로 만들지 않는다.
+        - 왜 해당 자료구조나 알고리즘이 조건에 적합한지 판단 기준을 포함한다.
+        - topic이 해시 테이블과 트리 선택이면 인공지능, RAG, 데이터베이스 인덱스 문제로 확장하지 않는다.
+        - 정답은 자료구조 이름이 아니라 입력 크기, 조회/삽입/삭제 빈도, 정렬/범위 검색 필요 여부를 기준으로 결정되게 한다.
+        - 오답은 특정 연산에는 유리하지만 현재 요구되는 연산 패턴에는 부적절한 자료구조 선택으로 설계한다.
+        """,
+
         "software_engineering": """
-- 소프트웨어공학 역량 설계 규칙:
-  - 요구사항, 설계, 테스트, 형상관리, 변경관리, 추적성, 품질 속성, 리스크 관리 중 하나를 중심 개념으로 삼는다.
-  - 고급 문제는 일반 지식으로 우선순위를 단정하지 말고, 주어진 조건과 근거에 따라 판단하게 한다.
-  - 기능 요구사항/비기능 요구사항/제약사항/검증 기준/이해관계자 충돌 같은 조건을 포함한다.
-""",
+        [소프트웨어공학 역량 설계 규칙]
+        - 요구사항, 설계, 테스트, 형상관리, 변경관리, 추적성, 품질 속성, 리스크 관리 중 하나를 중심 개념으로 삼는다.
+        - 고급 문제는 일반 지식으로 우선순위를 단정하지 말고, 주어진 조건과 근거에 따라 판단하게 한다.
+        - 기능 요구사항/비기능 요구사항/제약사항/검증 기준/이해관계자 충돌 같은 조건을 포함한다.
+        """,
+
         "ai_data": """
-- AI/Data 역량 설계 규칙:
-  - 데이터 품질, 학습/검증 데이터 분리, 과적합, 평가 지표, 피처, 모델 선택, RAG, 임베딩, 검색 품질 중 하나를 중심 개념으로 삼는다.
-  - 고급 문제에서 reranking, fine-tuning, RAG 같은 기법을 만능 정답처럼 반복하지 않는다.
-  - 문제 상황에 데이터 분포, 검색 실패 원인, 평가 기준, 운영 제약 중 일부를 포함한다.
-""",
+        [AI 역량 설계 규칙]
+        - 데이터 품질, 학습/검증 데이터 분리, 과적합, 평가 지표, 피처, 모델 선택, RAG, 임베딩, 검색 품질 중 하나를 중심 개념으로 삼는다.
+        - 고급 문제에서 reranking, fine-tuning, RAG 같은 기법을 만능 정답처럼 반복하지 않는다.
+        - 문제 상황에 데이터 분포, 검색 실패 원인, 평가 기준, 운영 제약 중 일부를 포함한다.
+        - RAG 문제에서 reranking을 만능 정답으로 설계하지 않는다.
+        - reranking은 검색 후보가 존재하지만 순서와 관련도 평가가 부정확한 경우에만 정답 전략으로 사용한다.
+        - keyword search 또는 hybrid search는 정확한 용어, 약어, 코드, 고유명사를 vector search가 놓치는 상황에서 사용한다.
+        - metadata filter는 category, 문서 유형, 출처, 날짜처럼 필터링 가능한 metadata가 있을 때만 정답 전략으로 사용한다.
+        - chunking 개선은 문맥이 잘리거나 여러 주제가 한 chunk에 섞이는 경우에만 정답 전략으로 사용한다.
+        """,
+
         "security": """
-- 보안 역량 설계 규칙:
-  - 인증, 인가, 암호화, 취약점, 로그, 접근통제, 개인정보 보호, 사고 대응 중 하나를 중심 개념으로 삼는다.
-  - 고급 문제는 단순히 "암호화한다", "접근을 차단한다"가 아니라 위험도와 운영 제약을 함께 판단하게 한다.
-""",
+        [보안 역량 설계 규칙]
+        - 인증, 인가, 암호화, 취약점, 로그, 접근통제, 개인정보 보호, 사고 대응 중 하나를 중심 개념으로 삼는다.
+        - 고급 문제는 단순히 "암호화한다", "접근을 차단한다"가 아니라 위험도와 운영 제약을 함께 판단하게 한다.
+        """,
+
         "web_development": """
-- 웹 개발 역량 설계 규칙:
-  - HTTP, REST API, 인증, 상태관리, CORS, 캐싱, 렌더링, 프론트/백엔드 연동, 에러 처리 중 하나를 중심 개념으로 삼는다.
-  - 고급 문제는 요청 흐름, 상태 변화, 장애 원인, 사용자 영향까지 포함한다.
-""",
+        [웹 개발 역량 설계 규칙]
+        - HTTP, REST API, 인증, 상태관리, CORS, 캐싱, 렌더링, 프론트/백엔드 연동, 에러 처리 중 하나를 중심 개념으로 삼는다.
+        - 고급 문제는 요청 흐름, 상태 변화, 장애 원인, 사용자 영향까지 포함한다.
+        """,
+
         "os_network": """
-- 운영체제/네트워크 역량 설계 규칙:
-  - 프로세스, 스레드, 메모리, 파일시스템, TCP/IP, DNS, HTTP, 로드밸런싱, 포트, 방화벽 중 하나를 중심 개념으로 삼는다.
-  - 고급 문제는 병목 원인, 장애 전파, 동시성, 리소스 경합을 조건에 포함한다.
-""",
+        [운영체제/네트워크 역량 설계 규칙]
+        - 프로세스, 스레드, 메모리, 파일시스템, TCP/IP, DNS, HTTP, 로드밸런싱, 포트, 방화벽 중 하나를 중심 개념으로 삼는다.
+        - 고급 문제는 병목 원인, 장애 전파, 동시성, 리소스 경합을 조건에 포함한다.
+        """,
+
         "cloud_devops": """
-- Cloud/DevOps 역량 설계 규칙:
-  - 배포, CI/CD, 컨테이너, 모니터링, 오토스케일링, 장애 복구, 로깅, 인프라 비용 중 하나를 중심 개념으로 삼는다.
-  - 고급 문제는 안정성, 비용, 운영 복잡도, 장애 대응을 함께 판단하게 한다.
-""",
+        [Cloud/DevOps 역량 설계 규칙]
+        - 배포, CI/CD, 컨테이너, 모니터링, 오토스케일링, 장애 복구, 로깅, 인프라 비용 중 하나를 중심 개념으로 삼는다.
+        - 고급 문제는 안정성, 비용, 운영 복잡도, 장애 대응을 함께 판단하게 한다.
+        """,
+
         "programming": """
-- 프로그래밍 역량 설계 규칙:
-  - 변수, 함수, 예외 처리, 객체지향, 모듈화, 테스트, 코드 품질, 성능 중 하나를 중심 개념으로 삼는다.
-  - 고급 문제는 단순 문법이 아니라 유지보수성, 확장성, 오류 가능성을 판단하게 한다.
-""",
+        [프로그래밍 역량 설계 규칙]
+        - 변수, 함수, 예외 처리, 객체지향, 모듈화, 테스트, 코드 품질, 성능 중 하나를 중심 개념으로 삼는다.
+        - 고급 문제는 단순 문법이 아니라 유지보수성, 확장성, 오류 가능성을 판단하게 한다.
+        """,
     }
 
     return rules.get(
         competency_type,
         """
-- 공통 역량 설계 규칙:
-  - 주어진 역량 유형에 맞는 핵심 개념을 중심으로 문제를 설계한다.
-  - 단순 암기보다 조건 기반 판단이 가능하도록 설계한다.
-""",
+        [공통 역량 설계 규칙]
+        - 주어진 역량 유형에 맞는 핵심 개념을 중심으로 문제를 설계한다.
+        - 단순 암기보다 조건 기반 판단이 가능하도록 설계한다.
+        """,
     )
 
 
@@ -217,6 +237,17 @@ def _build_planner_prompt(
   - RAG 문서 기반 생성에서는 나중에 문서 근거를 넣을 예정이다.
   - 지금은 반드시 "general_knowledge"로 작성한다.
 
+[설계 품질 강화 규칙]
+- correct_reason에는 "분석한다", "판단한다", "고려한다" 같은 추상 표현만 쓰지 마라.
+- correct_reason에는 어떤 기준으로 어떤 선택이 정답이 되는지 구체적으로 작성한다.
+- answer_decision_rule에는 정답과 오답을 구분하는 최종 기준을 명확히 작성한다.
+- distractor_strategy에는 쉽게 틀린 오답이 아니라, 일부 조건에서는 타당하지만 현재 조건에서는 부족한 오답 전략을 작성한다.
+- "무시한다", "완전히 제거한다", "무조건 높인다", "무조건 낮춘다", "항상 적용한다", "성능만 고려한다", "보안을 무시한다" 같은 노골적인 오답 전략을 만들지 마라.
+- 고급 문제 설계에서는 정답이 특정 기술명 하나로 결정되지 않게 한다.
+- 고급 문제 설계에서는 정답이 현재 상황의 조건, 제약, 리스크, 트레이드오프를 종합해야 결정되도록 한다.
+- 같은 생성 묶음 안에서 target_concept가 반복되지 않게 한다.
+- topic에서 벗어난 역량으로 확장하지 않는다.
+
 [금지 규칙]
 - 문제 본문, choices, answer, explanation을 만들지 마라.
 - 실제 객관식 선택지를 만들지 마라.
@@ -269,7 +300,14 @@ def validate_question_plan(
         if field not in plan:
             reasons.append(f"설계서 필드 누락: {field}")
 
+    difficulty = _normalize_difficulty(difficulty)
+
     scenario = str(plan.get("scenario", "")).strip()
+    target_concept = str(plan.get("target_concept", "")).strip()
+    correct_reason = str(plan.get("correct_reason", "")).strip()
+    distractor_strategy = str(plan.get("distractor_strategy", "")).strip()
+    answer_decision_rule = str(plan.get("answer_decision_rule", "")).strip()
+
     constraints = plan.get("constraints", [])
 
     if not scenario:
@@ -278,8 +316,6 @@ def validate_question_plan(
     if not isinstance(constraints, list):
         reasons.append("constraints는 배열이어야 합니다.")
         constraints = []
-
-    difficulty = _normalize_difficulty(difficulty)
 
     if difficulty == "초급" and len(constraints) < 1:
         reasons.append("초급 문제는 조건이 1개 이상 필요합니다.")
@@ -290,24 +326,64 @@ def validate_question_plan(
     if difficulty == "고급" and len(constraints) < 3:
         reasons.append("고급 문제는 조건이 3개 이상 필요합니다.")
 
+    if not correct_reason:
+        reasons.append("correct_reason이 비어 있습니다.")
+
+    if not answer_decision_rule:
+        reasons.append("answer_decision_rule이 비어 있습니다.")
+
+    if not distractor_strategy:
+        reasons.append("distractor_strategy가 비어 있습니다.")
+
     if difficulty == "고급":
         weak_words = ["정의", "개념", "무엇인가", "설명하라"]
         joined = " ".join(
             [
-                str(plan.get("scenario", "")),
-                str(plan.get("target_concept", "")),
-                str(plan.get("correct_reason", "")),
+                scenario,
+                target_concept,
+                correct_reason,
+                answer_decision_rule,
             ]
         )
 
         if any(word in joined for word in weak_words) and len(constraints) < 4:
             reasons.append("고급 문제 설계가 단순 개념 확인형에 가깝습니다.")
 
-    if not str(plan.get("correct_reason", "")).strip():
-        reasons.append("correct_reason이 비어 있습니다.")
+        abstract_phrases = [
+            "분석한다",
+            "판단한다",
+            "고려한다",
+            "적절한 조치를 취한다",
+            "적절한 방안을 선택한다",
+            "최적화한다",
+        ]
 
-    if not str(plan.get("answer_decision_rule", "")).strip():
-        reasons.append("answer_decision_rule이 비어 있습니다.")
+        if correct_reason in abstract_phrases:
+            reasons.append("correct_reason이 너무 추상적입니다.")
+
+        if answer_decision_rule in abstract_phrases:
+            reasons.append("answer_decision_rule이 너무 추상적입니다.")
+
+        if correct_reason and len(correct_reason) < 35:
+            reasons.append("correct_reason이 고급 문제 설계 기준으로 너무 짧습니다.")
+
+        if answer_decision_rule and len(answer_decision_rule) < 35:
+            reasons.append("answer_decision_rule이 고급 문제 설계 기준으로 너무 짧습니다.")
+
+    weak_distractor_words = [
+        "무시한다",
+        "삭제한다",
+        "완전히 제거한다",
+        "무조건",
+        "항상",
+        "오직",
+        "성능만 고려한다",
+        "보안을 무시한다",
+        "단순히",
+    ]
+
+    if any(word in distractor_strategy for word in weak_distractor_words):
+        reasons.append("distractor_strategy에 너무 쉽게 틀린 오답 전략이 포함되어 있습니다.")
 
     return reasons
 
@@ -331,7 +407,15 @@ def validate_question_plans(
             "reject_reasons": reasons,
         }
 
-        validated.append(plan)
+        if len(reasons) == 0:
+            validated.append(plan)
+
+    if len(validated) == 0:
+    # 임시 안정화:
+        # 설계서 품질 검증이 너무 강하면 이후 문제 생성 단계까지 가지 못하고 400이 발생한다.
+        # 리팩토링 전까지는 plan_review를 붙인 원본 설계서를 그대로 넘기고,
+        # 실제 문제 생성/검증 단계에서 한 번 더 걸러낸다.
+        return plans
 
     return validated
 

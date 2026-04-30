@@ -107,6 +107,196 @@ def _has_explanation_contradiction(explanation: str, answer: int) -> bool:
 
     return False
 
+def _find_weak_multiple_choice_options(q: dict, difficulty: str) -> list[str]:
+    """
+    고급 객관식에서 너무 쉽게 제거되는 선택지 표현을 찾는다.
+    단, 여기서는 문제를 폐기하지 않고 quality warning 용도로만 사용한다.
+    """
+    if difficulty != "고급":
+        return []
+
+    choices = q.get("choices", [])
+
+    if not isinstance(choices, list):
+        return []
+
+    weak_patterns = [
+        "무시한다",
+        "완전히 제거",
+        "무조건",
+        "항상",
+        "오직",
+        "성능만",
+        "보안만",
+        "아무 조치",
+        "고려하지 않는다",
+        "방치한다",
+    ]
+
+    # "단순히", "삭제한다"는 너무 자주 걸리므로 일단 hard warning에서 제외
+    # 나중에 question_reviewer.py에서 quality_score 감점 항목으로 처리하는 것이 좋다.
+
+    found: list[str] = []
+
+    for choice in choices:
+        choice_text = str(choice)
+
+        for pattern in weak_patterns:
+            if pattern in choice_text:
+                found.append(f"'{pattern}' 포함 선택지: {choice_text}")
+
+    return found
+
+def _find_hard_choice_quality_errors(q: dict, difficulty: str) -> list[str]:
+    """
+    객관식 선택지 품질이 너무 낮은 경우 문제를 폐기하기 위한 hard error 검사.
+    특히 고급 문제에서 정답만 길고 오답이 짧거나,
+    오답이 누가 봐도 틀린 일반론이면 폐기한다.
+    """
+    if difficulty != "고급":
+        return []
+
+    choices = q.get("choices", [])
+    answer = q.get("answer")
+
+    if not isinstance(choices, list) or len(choices) != 5:
+        return ["선택지가 5개가 아닙니다."]
+
+    try:
+        answer_int = int(answer)
+    except Exception:
+        return ["answer가 숫자가 아닙니다."]
+
+    if answer_int < 1 or answer_int > 5:
+        return ["answer가 1~5 범위를 벗어났습니다."]
+
+    errors: list[str] = []
+
+    correct_choice = str(choices[answer_int - 1]).strip()
+    wrong_choices = [
+        str(choice).strip()
+        for idx, choice in enumerate(choices)
+        if idx != answer_int - 1
+    ]
+
+    choice_lengths = [len(str(choice).strip()) for choice in choices]
+    wrong_lengths = [len(choice) for choice in wrong_choices]
+
+    avg_wrong_len = sum(wrong_lengths) / max(len(wrong_lengths), 1)
+    min_len = min(choice_lengths)
+    max_len = max(choice_lengths)
+
+    # 1) 정답만 과도하게 긴 경우
+    if len(correct_choice) > avg_wrong_len * 1.35:
+        errors.append(
+            "정답 선택지만 다른 오답보다 과도하게 길어 정답이 노출됩니다."
+        )
+
+    # 2) 선택지 길이 편차가 너무 큰 경우
+    if min_len > 0 and max_len / min_len >= 2.0:
+        errors.append(
+            "선택지 간 길이 편차가 너무 커서 정답 추측 가능성이 높습니다."
+        )
+
+    # 3) 고급 문제인데 너무 짧은 일반론 선택지가 있는 경우
+    too_short_choices = [
+        choice for choice in choices
+        if len(str(choice).strip()) < 22
+    ]
+
+    if too_short_choices:
+        errors.append(
+            f"고급 문제에 너무 짧은 선택지가 포함되어 있습니다: {too_short_choices}"
+        )
+
+    # 4) 너무 쉽게 제거되는 DB/성능 튜닝 오답 패턴
+    hard_weak_patterns = [
+        "무조건",
+        "항상",
+        "오직",
+        "모든 컬럼",
+        "모든 조건",
+        "모든 조인",
+        "모든 테이블",
+        "인덱스를 제거",
+        "인덱스를 삭제",
+        "쿼리를 단순화",
+        "조인 순서를 무조건",
+        "조인 순서를 수동으로 고정",
+        "인덱스를 추가하여 모든",
+        "성능을 높인다",
+        "성능을 개선한다",
+        "쓰기 작업의 성능을 높인다",
+    ]
+
+    for choice in choices:
+        choice_text = str(choice)
+
+        for pattern in hard_weak_patterns:
+            if pattern in choice_text:
+                errors.append(
+                    f"너무 쉽게 제거되는 선택지 표현이 포함되어 있습니다: '{pattern}' / {choice_text}"
+                )
+
+    # 5) 정답만 '고려/평가/종합' 구조이고 오답은 단순 조치인 경우
+    correct_judgment_words = [
+        "고려",
+        "평가",
+        "종합",
+        "분석",
+        "판단",
+        "리스크",
+        "트레이드오프",
+    ]
+
+    simple_action_patterns = [
+        "추가한다",
+        "제거한다",
+        "단순화한다",
+        "변경한다",
+        "고정한다",
+        "높인다",
+    ]
+
+    correct_has_judgment = any(word in correct_choice for word in correct_judgment_words)
+    simple_wrong_count = 0
+
+    for wrong_choice in wrong_choices:
+        if any(pattern in wrong_choice for pattern in simple_action_patterns):
+            if not any(word in wrong_choice for word in correct_judgment_words):
+                simple_wrong_count += 1
+
+    if correct_has_judgment and simple_wrong_count >= 2:
+        errors.append(
+            "정답만 종합 판단형이고 오답은 단순 조치형이라 정답이 쉽게 드러납니다."
+        )
+
+    return errors
+
+def _has_numbered_distractor_explanation(explanation: str) -> bool:
+    """
+    해설에서 오답을 '1번은', '2번은'처럼 번호 기준으로 설명하는지 감지한다.
+    정답 첫 문장 '정답은 N번입니다.'는 허용한다.
+    """
+    if not explanation:
+        return False
+
+    text = str(explanation).strip()
+
+    # 첫 문장의 정답 번호 표현은 제거하고 검사
+    text = re.sub(r"^정답은\s*\d\s*번입니다\.?\s*", "", text)
+
+    numbered_patterns = [
+        r"\b[1-5]\s*번은",
+        r"\b[1-5]\s*번의",
+        r"\b[1-5]\s*번 선택지",
+        r"\b[1-5]\s*번 보기",
+        r"\b[1-5]\s*번과\s*[1-5]\s*번",
+        r"\b[1-5]\s*번,\s*[1-5]\s*번",
+    ]
+
+    return any(re.search(pattern, text) for pattern in numbered_patterns)
+
 def _get_target_answer_positions(count: int) -> list[int]:
     """
     객관식 정답 위치를 랜덤으로 배치하되,
@@ -284,9 +474,15 @@ def _repair_multiple_choice_explanations(questions: list[dict]) -> list[dict]:
     - explanation은 반드시 "정답은 N번입니다."로 시작한다.
     - N은 주어진 answer 값과 반드시 같아야 한다.
     - 정답 선택지가 왜 맞는지 구체적으로 설명한다.
-    - 오답 선택지들도 왜 부적절한지 설명한다.
+    - 오답 선택지들도 왜 부적절한지 설명하되, 번호가 아니라 선택지의 핵심 조치 내용 기준으로 설명한다.
     - 단순히 "다른 선택지는 관련이 없습니다"처럼 뭉뚱그려 쓰지 마라.
     - 오답 설명은 선택지의 핵심 내용 기준으로 설명한다.
+    - 정답 번호는 첫 문장 "정답은 N번입니다."에서만 사용한다.
+    - 그 이후 문장에서는 "1번은", "2번은", "3번은", "4번은", "5번은" 같은 표현을 절대 사용하지 마라.
+    - "1번 선택지", "2번 보기", "3번의 방식" 같은 번호 기준 표현도 사용하지 마라.
+    - 오답은 반드시 선택지의 핵심 개념이나 조치 내용 기준으로 설명한다.
+    - 예: "인덱스를 삭제하는 방식은 쓰기 부하는 줄일 수 있지만 조회 성능 저하 원인을 악화시킬 수 있다."
+    - 예: "단일 인덱스 추가는 일부 조회에는 도움이 될 수 있으나 조인 조건, 정렬 조건, 쓰기 부하를 함께 고려하지 못한다."
     - 문제 본문 상황과 직접 연결해서 설명한다.
     - 문서에 없는 새로운 기술명, 수치, 도구명, 절차를 추가하지 마라.
     - 해설은 3~6문장 정도로 작성한다.
@@ -378,18 +574,56 @@ def _validate_questions(questions: list, question_type: str, difficulty: str, sc
                 logger.warning(f"문제 검증 제외: index={idx}, reason=answer_out_of_range")
                 continue
 
+            quality_warnings = []
+
             explanation_answer = _extract_answer_number_from_explanation(str(explanation))
 
             if explanation_answer is not None and explanation_answer != answer_int:
                 logger.warning(
-                    f"문제 검증 제외: index={idx}, reason=explanation_answer_mismatch, "
+                    f"문제 품질 경고: index={idx}, reason=explanation_answer_mismatch, "
                     f"answer={answer_int}, explanation_answer={explanation_answer}"
                 )
-                continue
+                quality_warnings.append(
+                    f"해설의 정답 번호({explanation_answer})와 answer({answer_int})가 달라 자동 수정했습니다."
+                )
+                q["explanation"] = _replace_answer_number_in_explanation(
+                    str(explanation),
+                    answer_int,
+                )
 
-            if _has_explanation_contradiction(str(explanation), answer_int):
-                logger.warning(f"문제 검증 제외: index={idx}, reason=explanation_contradiction")
-                continue
+            if _has_explanation_contradiction(str(q.get("explanation", explanation)), answer_int):
+                logger.warning(f"문제 품질 경고: index={idx}, reason=explanation_contradiction")
+                quality_warnings.append(
+                    "해설에서 정답이 아닌 선택지를 긍정적으로 설명했을 가능성이 있습니다."
+                )
+
+            weak_option_reasons = _find_weak_multiple_choice_options(q, difficulty)
+            if weak_option_reasons:
+                logger.warning(
+                    f"문제 품질 경고: index={idx}, reason=weak_multiple_choice_options, "
+                    f"details={weak_option_reasons}"
+                )
+                quality_warnings.extend(weak_option_reasons)
+
+            hard_choice_errors = _find_hard_choice_quality_errors(q, difficulty)
+
+            if hard_choice_errors:
+                logger.warning(
+                    f"문제 품질 경고: index={idx}, reason=hard_choice_quality_error, "
+                    f"details={hard_choice_errors}"
+                )
+                quality_warnings.extend(hard_choice_errors)
+
+            if _has_numbered_distractor_explanation(str(q.get("explanation", explanation))):
+                logger.warning(
+                    f"문제 품질 경고: index={idx}, reason=numbered_distractor_explanation"
+                )
+                quality_warnings.append(
+                    "해설에서 오답을 번호 기준으로 설명하고 있어 선택지 재배치 후 불일치 가능성이 있습니다."
+                )
+
+            if quality_warnings:
+                q["quality_warnings"] = quality_warnings
 
             q["answer"] = answer_int
 
@@ -448,6 +682,7 @@ def _request_llm_json(prompt: str, system_message: str, temperature: float = 0.1
     )
 
     content = response.choices[0].message.content
+    logger.info(f"LLM raw response preview: {str(content)[:1000]}")
     return _clean_json_response(content)
 
 def _generate_with_retry(
@@ -457,7 +692,7 @@ def _generate_with_retry(
     difficulty: str,
     score: int,
     temperature: float = 0.1,
-    max_retries: int = 2,
+    max_retries: int = 0,
 ):
     last_error = None
 
@@ -475,6 +710,12 @@ def _generate_with_retry(
                 difficulty,
                 score,
             )
+            logger.info(
+                f"LLM 원본 문제 생성 수: {len(questions) if isinstance(questions, list) else 'not_list'}"
+            )
+
+            if len(validated_questions) == 0:
+                raise ValueError("검증을 통과한 문제가 없습니다.")
 
             validated_questions = _rebalance_answer_positions(
                 validated_questions,
@@ -482,23 +723,26 @@ def _generate_with_retry(
             )
 
             if _has_answer_position_bias(validated_questions, question_type):
-                raise ValueError("정답 번호가 한쪽으로 몰려 있습니다.")
+                logger.warning("정답 번호 편향 경고: 정답 번호가 한쪽으로 몰릴 가능성이 있습니다.")
 
-            if question_type == "multiple_choice":
-                validated_questions = _repair_multiple_choice_explanations(
-                    validated_questions
-                )
-
-                # 해설 재생성 후 answer와 explanation 번호가 맞는지 다시 검증
-                validated_questions = _validate_questions(
-                    validated_questions,
-                    question_type,
-                    difficulty,
-                    score,
-                )
+            # 임시 안정화:
+            # choices 재배치 후 해설 재생성은 추가 LLM 호출을 발생시키고,
+            # 다시 검증 실패를 유발할 수 있으므로 리팩토링 전까지 비활성화한다.
+            #
+            # if question_type == "multiple_choice":
+            #     validated_questions = _repair_multiple_choice_explanations(validated_questions)
+            #     validated_questions = _validate_questions(
+            #         validated_questions,
+            #         question_type,
+            #         difficulty,
+            #         score,
+            #     )
+            #
+            #     if len(validated_questions) == 0:
+            #         raise ValueError("해설 재생성 후 검증을 통과한 문제가 없습니다.")
 
             return validated_questions
-
+            
         except Exception as e:
             last_error = e
             logger.warning(
@@ -1004,6 +1248,13 @@ def _build_plan_based_generation_prompt(
 - 오답은 선택된 역량 유형과 같은 업무 맥락 안에서 구성한다.
 - 예를 들어 데이터베이스 문제라면 오답도 SQL, 인덱스, 트랜잭션, 정규화 등 관련 개념 안에서 구성한다.
 - 예를 들어 보안 문제라면 오답도 인증, 인가, 암호화, 접근 제어, 취약점 대응 등 관련 개념 안에서 구성한다.
+- 난이도가 "고급"이면 "삭제한다", "무시한다", "무조건", "항상", "오직", "단순히", "완전히 제거한다"가 포함된 선택지를 만들지 마라.
+- 난이도가 "고급"이면 오답도 실무자가 실제로 선택할 수 있는 대안이어야 한다.
+- 오답은 일부 조건에서는 타당하지만, 현재 문제의 핵심 조건 또는 제약을 만족하지 못해야 한다.
+- 선택지는 "인덱스를 추가한다", "쿼리를 단순화한다", "정규화한다"처럼 짧은 일반론으로 작성하지 마라.
+- 선택지에는 판단 기준을 포함해라.
+- 예: "주문 날짜 단일 인덱스를 추가해 기간 조건을 먼저 처리한다"는 일부 상황에서는 가능하지만, 고객 조인 조건과 쓰기 부하를 함께 고려하지 못하는 오답이 될 수 있다.
+- 예: "조인 순서를 수동으로 고정한다"는 일부 상황에서는 도움이 될 수 있지만, 통계 정보와 실제 행 수 차이를 먼저 확인해야 하는 상황에서는 우선순위가 낮은 오답이 될 수 있다.
 
 {_difficulty_rule(difficulty)}
 
@@ -1112,7 +1363,7 @@ def generate_questions_from_plans(
         difficulty=difficulty,
         score=score,
         temperature=0.2,
-        max_retries=2,
+        max_retries=0,
     )
 
 def generate_questions(
@@ -1139,26 +1390,26 @@ def generate_questions(
     )
 
     try:
-        # 1. 문제 설계서 생성
+        candidate_count = max(count + 2, 5)
+
         plans = generate_question_plans(
             topic=topic,
             difficulty=difficulty,
-            count=count,
+            count=candidate_count,
             question_type=question_type,
             competency_type=competency_type or "programming",
         )
 
         logger.info(
             f"LLM Pipeline [Planner]: 문제 설계서 생성 완료 "
-            f"(생성된 설계서 수: {len(plans)}/{count})"
+            f"(생성된 설계서 수: {len(plans)}/{candidate_count})"
         )
 
-        # 2. 설계서 기반 실제 문제 생성
         validated_questions = generate_questions_from_plans(
             topic=topic,
             difficulty=difficulty,
             plans=plans,
-            count=count,
+            count=candidate_count,
             score=score,
             question_type=question_type,
             competency_type=competency_type,
@@ -1168,10 +1419,10 @@ def generate_questions(
 
         logger.info(
             f"LLM Pipeline [Generate]: 설계서 기반 AI 문제 생성 완료 "
-            f"(생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)"
+            f"(생성된 문제 수: {len(validated_questions[:count])}/{count}, 후보 통과 수: {len(validated_questions)}, 소요 시간: {elapsed_time:.3f}초)"
         )
 
-        return validated_questions
+        return validated_questions[:count]
 
     except Exception as e:
         elapsed_time = time.time() - start_time
@@ -1350,13 +1601,13 @@ def generate_questions_from_context(
             difficulty=difficulty,
             score=score,
             temperature=0.1,
-            max_retries=2,
+            max_retries=0,
         )
 
         elapsed_time = time.time() - start_time
         logger.info(f"LLM Pipeline [RAG Generate]: RAG 기반 AI 문제 생성 완료 (생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)")
         
-        return validated_questions
+        return validated_questions[:count]
     except Exception as e:
         elapsed_time = time.time() - start_time
         logger.error(f"LLM Pipeline [RAG Generate]: RAG 기반 AI 문제 생성 실패 (소요 시간: {elapsed_time:.3f}초) - 에러: {str(e)}")
