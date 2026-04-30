@@ -26,7 +26,7 @@ import type {
 // Axios 인스턴스
 // ──────────────────────────────────────────────
 const api = axios.create({
-  baseURL: "http://localhost:8000",
+  baseURL: "http://localhost:9000",
   headers: { "Content-Type": "application/json" },
 });
 

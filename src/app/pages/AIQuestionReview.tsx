@@ -295,7 +295,7 @@ export default function AIQuestionReview() {
                             >
                               <div className="flex items-start gap-3">
                                 <span className="font-medium text-slate-600">
-                                  {String.fromCharCode(65 + idx)}
+                                  {idx + 1}
                                 </span>
 
                                 <span className="flex-1 text-slate-700">
@@ -315,10 +315,6 @@ export default function AIQuestionReview() {
                           );
                         })}
                       </div>
-
-                      <p className="text-xs text-slate-500 mt-2">
-                        저장된 정답 번호: {answer}
-                      </p>
                     </div>
                   )}
 

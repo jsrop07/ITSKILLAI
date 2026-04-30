@@ -212,8 +212,13 @@ def generate_ai_questions_from_document(
 
         score = get_score_by_difficulty(request.difficulty)
 
+        rag_query = request.search_query or build_enhanced_rag_query(
+            topic=request.topic,
+            competency_type=request.competency_type,
+        )
+
         context = build_context_from_search_results(
-            query=request.search_query or request.topic,
+            query=rag_query,
             top_k=request.top_k,
             category=request.competency_type,
         )
@@ -273,3 +278,65 @@ def get_score_by_difficulty(difficulty: str, default_score: int = 1):
         "고급": 5,
     }
     return score_map.get(difficulty, default_score)
+
+def build_enhanced_rag_query(topic: str, competency_type: str | None = None) -> str:
+    base_query = topic.strip()
+
+    keyword_map = {
+        "software_engineering": [
+            "소프트웨어공학",
+            "요구사항",
+            "기능 요구사항",
+            "비기능 요구사항",
+            "요구사항 명세서",
+            "요구사항 검증",
+            "품질 속성",
+            "인수 테스트",
+            "추적성",
+            "프로토타이핑",
+        ],
+        "database": [
+            "데이터베이스",
+            "SQL",
+            "정규화",
+            "트랜잭션",
+            "인덱스",
+            "무결성",
+            "ERD",
+        ],
+        "security": [
+            "정보보안",
+            "인증",
+            "인가",
+            "암호화",
+            "취약점",
+            "접근통제",
+            "위협",
+            "보안 요구사항",
+        ],
+        "os_network": [
+            "운영체제",
+            "네트워크",
+            "프로세스",
+            "스레드",
+            "TCP/IP",
+            "라우팅",
+            "DNS",
+            "프로토콜",
+        ],
+        "ai_data": [
+            "인공지능",
+            "데이터 분석",
+            "머신러닝",
+            "임베딩",
+            "RAG",
+            "LLM",
+            "모델 평가",
+            "정확도",
+            "재현율",
+        ],
+    }
+
+    extra_keywords = keyword_map.get(competency_type, [])
+
+    return " ".join([base_query] + extra_keywords)

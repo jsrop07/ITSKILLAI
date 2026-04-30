@@ -9,7 +9,7 @@ from ai.vector_store import add_chunk_to_vector_store
 
 logger = logging.getLogger("uvicorn.info")
 
-
+MIN_CONTEXT_SIMILARITY = 0.42
 
 def get_document_by_id(db, document_id: int):
     sql = text("""
@@ -211,9 +211,20 @@ def build_context_from_search_results(
     if not results:
         raise ValueError("관련 문서 내용을 찾을 수 없습니다.")
 
+    filtered_results = [
+        item for item in results
+        if item.get("similarity") is not None
+        and item.get("similarity", 0) >= MIN_CONTEXT_SIMILARITY
+    ]
+
+    if not filtered_results:
+        raise ValueError(
+            f"관련 문서 내용의 유사도가 너무 낮습니다. similarity {MIN_CONTEXT_SIMILARITY} 이상인 chunk가 없습니다."
+        )
+
     context_parts = []
 
-    for idx, item in enumerate(results, start=1):
+    for idx, item in enumerate(filtered_results, start=1):
         content = item.get("content", "")
         metadata = item.get("metadata", {})
 
