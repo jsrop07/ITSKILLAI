@@ -14,6 +14,7 @@ import { Textarea } from "../components/ui/textarea";
 
 import { questionsApi } from "../../lib/api";
 import type { Question } from "../../lib/types";
+import { getCompetencyLabel } from "../../lib/types";
 
 const QUESTION_TYPE_LABELS: Record<string, string> = {
   multiple_choice: "객관식",
@@ -199,7 +200,7 @@ export default function AIQuestionReview() {
 
                     <div className="flex items-center gap-2 mb-2 flex-wrap">
                       <Badge variant="secondary" className="bg-sky-100 text-sky-700 text-xs">
-                        {q.competency_type || "미분류"}
+                        {getCompetencyLabel(q.competency_type) || "미분류"}
                       </Badge>
 
                       <Badge
@@ -258,7 +259,7 @@ export default function AIQuestionReview() {
                         </Badge>
 
                         <Badge variant="secondary" className="bg-slate-100 text-slate-700">
-                          {selectedQuestion.competency_type || "미분류"}
+                          {getCompetencyLabel(selectedQuestion.competency_type) || "미분류"}
                         </Badge>
 
                         <Badge variant="secondary" className="bg-violet-100 text-violet-700">

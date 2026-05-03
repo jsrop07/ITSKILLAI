@@ -18,7 +18,7 @@ import {
 } from "../components/ui/select";
 import { questionsApi } from "../../lib/api";
 import type { Question, QuestionCreate } from "../../lib/types";
-import { REVIEW_STATUS_LABELS } from "../../lib/types";
+import { REVIEW_STATUS_LABELS, COMPETENCY_OPTIONS, getCompetencyLabel } from "../../lib/types";
 
 type QuestionUpdate = Partial<QuestionCreate> & {
   review_status?: "pending" | "approved" | "rejected";
@@ -249,12 +249,22 @@ export default function QuestionManagement() {
                 className="pl-10"
               />
             </div>
-            <Input
-              placeholder="역량 검색"
-              value={competencyFilter}
-              onChange={(e) => setCompetencyFilter(e.target.value)}
-              className="w-32"
-            />
+            <Select
+              value={competencyFilter || "all"}
+              onValueChange={(value) => setCompetencyFilter(value === "all" ? "" : value)}
+            >
+              <SelectTrigger className="w-40">
+                <SelectValue placeholder="역량" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체 역량</SelectItem>
+                {COMPETENCY_OPTIONS.map((option) => (
+                  <SelectItem key={option.value} value={option.value}>
+                    {option.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
             <Select value={typeFilter} onValueChange={setTypeFilter}>
               <SelectTrigger className="w-32"><SelectValue placeholder="유형" /></SelectTrigger>
               <SelectContent>
@@ -353,7 +363,7 @@ export default function QuestionManagement() {
                       </TableCell>
                       <TableCell>
                         {q.competency_type && (
-                          <Badge variant="secondary" className="bg-sky-100 text-sky-700">{q.competency_type}</Badge>
+                          <Badge variant="secondary" className="bg-sky-100 text-sky-700">{getCompetencyLabel(q.competency_type)}</Badge>
                         )}
                       </TableCell>
                       <TableCell>
@@ -435,8 +445,20 @@ export default function QuestionManagement() {
                 <Textarea value={editForm.title} onChange={(e) => setEditForm({ ...editForm, title: e.target.value })} rows={2} />
               </div>
               <div className="space-y-2">
-                <Label>추가 설명 (선택)</Label>
-                <Textarea value={editForm.body} onChange={(e) => setEditForm({ ...editForm, body: e.target.value })} rows={3} />
+                <Label>문제 본문</Label>
+
+                {!isEditing ? (
+                  <div className="max-h-[70vh] overflow-y-auto rounded-lg border border-slate-200 bg-slate-50 p-5 text-[15px] leading-7 text-slate-900 whitespace-pre-wrap font-mono">
+                    {editForm.body || "-"}
+                  </div>
+                ) : (
+                  <Textarea
+                    value={editForm.body}
+                    onChange={(e) => setEditForm({ ...editForm, body: e.target.value })}
+                    rows={12}
+                    className="font-mono text-sm leading-6"
+                  />
+                )}
               </div>
               <div className="grid grid-cols-2 gap-4">
                 <div className="space-y-2">
@@ -466,7 +488,17 @@ export default function QuestionManagement() {
                 </div>
                 <div className="space-y-2">
                   <Label>역량 분류</Label>
-                  <Input value={editForm.competency_type} onChange={(e) => setEditForm({ ...editForm, competency_type: e.target.value })} />
+                  <Select
+                    value={editForm.competency_type || ""}
+                    onValueChange={(v) => setEditForm({ ...editForm, competency_type: v })}
+                  >
+                    <SelectTrigger><SelectValue placeholder="역량 선택" /></SelectTrigger>
+                    <SelectContent>
+                      {COMPETENCY_OPTIONS.map((opt) => (
+                        <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 </div>
                 <div className="space-y-2">
                   <Label>점수</Label>
@@ -482,13 +514,15 @@ export default function QuestionManagement() {
                       <span className="size-7 flex-shrink-0 flex items-center justify-center rounded-full bg-slate-100 text-slate-600 text-sm font-medium">
                         {i + 1}
                       </span>
-                      <Input
+                      <Textarea
                         value={c}
                         onChange={(e) => {
                           const updated = [...((editForm.choices_json as string[]) || ["", "", "", "", ""])];
                           updated[i] = e.target.value;
                           setEditForm({ ...editForm, choices_json: updated });
                         }}
+                        rows={2}
+                        className="text-sm leading-6 resize-none"
                       />
                       <label className="flex items-center gap-1 cursor-pointer">
                         <input
@@ -525,15 +559,41 @@ export default function QuestionManagement() {
               )}
               <div className="space-y-2">
                 <Label>해설</Label>
-                <Textarea value={editForm.explanation} onChange={(e) => setEditForm({ ...editForm, explanation: e.target.value })} rows={3} />
+                <Textarea
+                  value={editForm.explanation}
+                  onChange={(e) => setEditForm({ ...editForm, explanation: e.target.value })}
+                  rows={5}
+                  className="text-sm leading-6"
+                />
               </div>
             </div>
           )}
           <DialogFooter>
-            <Button variant="outline" onClick={() => setSelectedQuestion(null)}>닫기</Button>
-            {selectedQuestion && (
-              <Button className="bg-sky-600 hover:bg-sky-700" onClick={handleUpdate} disabled={saving}>
-                {saving ? <Loader2 className="size-4 animate-spin mr-2" /> : <Save className="size-4 mr-2" />}
+            <Button variant="outline" onClick={() => setSelectedQuestion(null)}>
+              닫기
+            </Button>
+
+            {selectedQuestion && !isEditing && (
+              <Button
+                variant="outline"
+                onClick={() => setIsEditing(true)}
+              >
+                <Edit className="size-4 mr-2" />
+                수정
+              </Button>
+            )}
+
+            {selectedQuestion && isEditing && (
+              <Button
+                className="bg-sky-600 hover:bg-sky-700"
+                onClick={handleUpdate}
+                disabled={saving}
+              >
+                {saving ? (
+                  <Loader2 className="size-4 animate-spin mr-2" />
+                ) : (
+                  <Save className="size-4 mr-2" />
+                )}
                 저장
               </Button>
             )}
@@ -554,8 +614,14 @@ export default function QuestionManagement() {
               <Textarea value={form.title} onChange={(e) => setForm({ ...form, title: e.target.value })} placeholder="문제를 입력하세요" rows={2} />
             </div>
             <div className="space-y-2">
-              <Label>추가 설명 (선택)</Label>
-              <Textarea value={form.body} onChange={(e) => setForm({ ...form, body: e.target.value })} placeholder="코드 예시나 추가 설명" rows={3} />
+              <Label>문제 본문</Label>
+              <Textarea
+                value={form.body}
+                onChange={(e) => setForm({ ...form, body: e.target.value })}
+                placeholder="코드 예시, SQL 쿼리, 실행 계획, 추가 설명 등을 입력하세요."
+                rows={10}
+                className="font-mono text-sm leading-6"
+              />
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">
@@ -585,7 +651,17 @@ export default function QuestionManagement() {
               </div>
               <div className="space-y-2">
                 <Label>역량 분류</Label>
-                <Input value={form.competency_type} onChange={(e) => setForm({ ...form, competency_type: e.target.value })} placeholder="예: Spring Framework" />
+                <Select
+                  value={form.competency_type || ""}
+                  onValueChange={(v) => setForm({ ...form, competency_type: v })}
+                >
+                  <SelectTrigger><SelectValue placeholder="역량 선택" /></SelectTrigger>
+                  <SelectContent>
+                    {COMPETENCY_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={opt.value}>{opt.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
               <div className="space-y-2">
                 <Label>점수</Label>

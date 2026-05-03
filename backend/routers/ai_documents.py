@@ -14,22 +14,12 @@ from ai.rag.document_loader import load_text_from_file
 from ai.rag.text_splitter import split_text_into_chunks
 from ai.rag.document_service import embed_document_chunks
 from ai.rag.document_service import search_document_chunks
+from ai.services.competency_config import normalize_competency_type, get_competency_label
 
 router = APIRouter(prefix="/api/ai/documents", tags=["AI Documents"])
 
 UPLOAD_DIR = "uploads/ai_docs"
 
-CATEGORY_LABEL_MAP = {
-    "programming": "프로그래밍",
-    "data_structure_algorithm": "자료구조/알고리즘",
-    "web_development": "웹 개발",
-    "database": "데이터베이스",
-    "os_network": "운영체제/네트워크",
-    "security": "정보보안",
-    "cloud_devops": "클라우드/DevOps",
-    "ai_data": "인공지능/데이터",
-    "software_engineering": "소프트웨어공학",
-}
 
 @router.post("/upload")
 def upload_ai_document(
@@ -65,12 +55,14 @@ def upload_ai_document(
         if not chunks:
             raise HTTPException(status_code=400, detail="문서 chunk 생성에 실패했습니다.")
 
+        normalized_category = normalize_competency_type(category)
+
         ai_document = AIDocument(
             title=title,
             file_name=file.filename,
             file_path=saved_file_path,
             source_type=source_type,
-            category=category,
+            category=normalized_category,
             description=description,
             uploaded_by=None,
             embedding_status="pending",
@@ -81,17 +73,16 @@ def upload_ai_document(
         db.flush()
 
         saved_chunks = []
-
-        category_label = CATEGORY_LABEL_MAP.get(category or "", category or "미분류")
+        category_label = get_competency_label(normalized_category)
 
         for index, chunk in enumerate(chunks):
             chunk_content = f"""
-        [역량유형: {category_label}]
-        [문서제목: {title}]
-        [출처유형: {source_type or "unknown"}]
+[역량유형: {category_label}]
+[문서제목: {title}]
+[출처유형: {source_type or "unknown"}]
 
-        {chunk}
-        """.strip()
+{chunk}
+""".strip()
 
             document_chunk = AIDocumentChunk(
                 document_id=ai_document.document_id,
@@ -107,14 +98,6 @@ def upload_ai_document(
                 "chunk_id": document_chunk.chunk_id,
                 "chunk_index": document_chunk.chunk_index,
                 "content_preview": chunk_content[:100],
-            })
-            db.add(document_chunk)
-            db.flush()
-
-            saved_chunks.append({
-                "chunk_id": document_chunk.chunk_id,
-                "chunk_index": document_chunk.chunk_index,
-                "content_preview": chunk[:100],
             })
 
         db.commit()

@@ -20,30 +20,11 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { aiQuestionApi } from "../../lib/api";
-
-const topicPlaceholderMap: Record<string, string> = {
-  programming: "예: Python 예외 처리, Java 상속, 비동기 함수",
-  data_structure_algorithm: "예: 스택/큐, DFS/BFS, 시간복잡도, 다익스트라",
-  web_development: "예: REST API, JWT 인증, CORS, React 렌더링",
-  database: "예: 트랜잭션 격리 수준, 인덱스 최적화, JOIN, 정규화",
-  os_network: "예: 프로세스와 스레드, TCP/UDP, DNS, 데드락",
-  security: "예: XSS, CSRF, SQL Injection, OAuth 보안",
-  cloud_devops: "예: Docker, Kubernetes, CI/CD, AWS EC2 배포",
-  ai_data: "예: LLM, RAG, 임베딩, 모델 평가, 데이터 전처리",
-  software_engineering: "예: SOLID 원칙, 디자인 패턴, 테스트 전략, 애자일",
-};
-
-const competencyOptions = [
-  { value: "programming", label: "프로그래밍" },
-  { value: "data_structure_algorithm", label: "자료구조/알고리즘" },
-  { value: "web_development", label: "웹 개발" },
-  { value: "database", label: "데이터베이스" },
-  { value: "os_network", label: "운영체제/네트워크" },
-  { value: "security", label: "정보보안" },
-  { value: "cloud_devops", label: "클라우드/DevOps" },
-  { value: "ai_data", label: "인공지능/데이터" },
-  { value: "software_engineering", label: "소프트웨어공학" },
-];
+import {
+  COMPETENCY_OPTIONS,
+  TOPIC_PLACEHOLDER_MAP,
+  type CompetencyTypeValue,
+} from "../../lib/types";
 
 const difficultyOptions = [
   { value: "초급", label: "초급" },
@@ -68,7 +49,8 @@ type DocumentScopeValue = "none" | "rag_all";
 
 export default function AIQuestionGeneration() {
   // const [role, setRole] = useState("backend");
-  const [competencyType, setCompetencyType] = useState("programming_language");
+  const [competencyType, setCompetencyType] =
+    useState<CompetencyTypeValue>("software_engineering");
   const [difficulty, setDifficulty] = useState<"초급" | "중급" | "고급">("초급");
   const [questionType, setQuestionType] = useState<"multiple_choice" | "essay" | "coding">("multiple_choice");
   const [documentScope, setDocumentScope] = useState<"none" | "rag_all">("none");
@@ -110,7 +92,7 @@ export default function AIQuestionGeneration() {
       alert("세부 주제는 IT 역량진단과 관련된 주제만 입력할 수 있습니다.");
       return;
     }
-    const selectedCompetency = competencyOptions.find(
+    const selectedCompetency = COMPETENCY_OPTIONS.find(
       (item) => item.value === competencyType
     );
 
@@ -185,12 +167,15 @@ export default function AIQuestionGeneration() {
           <CardContent className="pt-1 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="competency">역량 유형 *</Label>
-              <Select value={competencyType} onValueChange={setCompetencyType}>
+              <Select
+                value={competencyType}
+                onValueChange={(value) => setCompetencyType(value as CompetencyTypeValue)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="역량 유형 선택" />
                 </SelectTrigger>
                 <SelectContent>
-                  {competencyOptions.map((option) => (
+                  {COMPETENCY_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -203,7 +188,7 @@ export default function AIQuestionGeneration() {
               <Label htmlFor="topic">세부 주제 *</Label>
               <Textarea
                 id="topic"
-                placeholder={topicPlaceholderMap[competencyType] || "예: 평가할 IT 세부 주제를 입력하세요"}
+                placeholder={TOPIC_PLACEHOLDER_MAP[competencyType] || "예: 평가할 IT 세부 주제를 입력하세요"}
                 value={detailedTopic}
                 onChange={(e) => setDetailedTopic(e.target.value)}
                 rows={3}
