@@ -291,8 +291,6 @@ def _find_hard_choice_quality_errors(q: dict, difficulty: str) -> list[str]:
         "조인 순서를 수동으로 고정",
         "조인 순서를 무조건",
         "인덱스를 추가하여 모든",
-        "성능을 높인다",
-        "성능을 개선한다",
         "쓰기 작업의 성능을 높인다",
     ]
 
@@ -442,8 +440,16 @@ def _has_required_evidence_for_competency(
 
     if competency_type == "ai":
         lower_body = body.lower()
+        template_format = str(q.get("template_format") or "").strip().lower()
 
-        retrieval_signals = [
+        def count_signals(signals: list[str]) -> int:
+            return sum(1 for signal in signals if signal.lower() in lower_body)
+
+        def has_any(signals: list[str]) -> bool:
+            return any(signal.lower() in lower_body for signal in signals)
+
+        rag_signals = [
+            "rag",
             "query",
             "질의",
             "top_k",
@@ -452,21 +458,11 @@ def _has_required_evidence_for_competency(
             "청크",
             "similarity",
             "유사도",
-            "score",
-            "점수",
             "metadata",
             "메타데이터",
-            "filter",
-            "필터",
+            "metadata_filter",
             "검색 결과",
             "검색된 문서",
-        ]
-
-        pipeline_signals = [
-            "reranker",
-            "리랭커",
-            "reranking",
-            "재정렬",
             "embedding",
             "임베딩",
             "vector search",
@@ -475,59 +471,360 @@ def _has_required_evidence_for_competency(
             "키워드 검색",
             "hybrid search",
             "하이브리드 검색",
+            "reranker",
+            "리랭커",
             "context filtering",
-            "context filter",
             "컨텍스트 필터링",
-        ]
-
-        metric_signals = [
-            "precision",
-            "recall",
-            "f1",
-            "accuracy",
-            "정확도",
-            "정밀도",
-            "재현율",
-            "latency",
-            "지연 시간",
-            "p95",
-            "응답 시간",
             "hallucination",
             "환각",
         ]
 
-        retrieval_count = sum(1 for signal in retrieval_signals if signal in lower_body)
-        pipeline_count = sum(1 for signal in pipeline_signals if signal in lower_body)
-        metric_count = sum(1 for signal in metric_signals if signal in lower_body)
+        llm_signals = [
+            "llm",
+            "prompt",
+            "프롬프트",
+            "json",
+            "schema",
+            "스키마",
+            "structured output",
+            "구조화 출력",
+            "response_format",
+            "parsing",
+            "파싱",
+            "choices",
+            "answer",
+            "explanation",
+            "tool calling",
+            "function calling",
+            "도구 호출",
+            "함수 호출",
+            "tool schema",
+            "인자",
+            "argument",
+            "타입 검증",
+            "validation",
+            "검증",
+            "fallback",
+            "재시도",
+        ]
 
-        total_signal_count = retrieval_count + pipeline_count + metric_count
+        agent_signals = [
+            "agent",
+            "에이전트",
+            "langgraph",
+            "graph",
+            "그래프",
+            "node",
+            "노드",
+            "state",
+            "상태",
+            "plan",
+            "planning",
+            "tool call",
+            "tool",
+            "도구",
+            "observation",
+            "관찰",
+            "retry",
+            "재시도",
+            "repair_node",
+            "validation_node",
+            "human review",
+            "human-in-the-loop",
+            "human_review_node",
+            "검수",
+            "분기",
+        ]
 
-        if difficulty == "중급":
-            if total_signal_count < 2:
+        modelops_signals = [
+            "fine-tuning",
+            "파인튜닝",
+            "qlora",
+            "lora",
+            "vllm",
+            "serving",
+            "서빙",
+            "inference",
+            "추론",
+            "latency",
+            "지연",
+            "p95",
+            "cost",
+            "비용",
+            "gpu",
+            "canary",
+            "배포",
+            "monitoring",
+            "모니터링",
+            "quality_score",
+            "jsonl",
+            "approved",
+            "pending",
+            "rejected",
+        ]
+
+        ml_signals = [
+            "machine learning",
+            "머신러닝",
+            "deep learning",
+            "딥러닝",
+            "train",
+            "validation",
+            "test",
+            "accuracy",
+            "정확도",
+            "precision",
+            "정밀도",
+            "recall",
+            "재현율",
+            "f1",
+            "threshold",
+            "임계값",
+            "overfitting",
+            "과적합",
+            "regularization",
+            "early stopping",
+            "일반화",
+            "불균형",
+            "소수 클래스",
+            "false positive",
+            "false negative",
+        ]
+
+        # template_format이 남아 있으면 가장 정확하게 하위 유형을 판단한다.
+        if template_format.startswith(("retrieval_", "reranker_", "hybrid_", "chunking_", "context_", "hallucination_", "evaluation_", "query_rewrite")):
+            ai_subtype = "rag"
+        elif template_format.startswith("llm_"):
+            ai_subtype = "llm"
+        elif template_format.startswith("agent_"):
+            ai_subtype = "agent"
+        elif template_format.startswith("modelops_"):
+            ai_subtype = "modelops"
+        elif template_format.startswith("ml_"):
+            ai_subtype = "ml"
+        else:
+            # template_format이 이미 pop된 경우 body 기반으로 추론한다.
+            subtype_scores = {
+                "rag": count_signals(rag_signals),
+                "llm": count_signals(llm_signals),
+                "agent": count_signals(agent_signals),
+                "modelops": count_signals(modelops_signals),
+                "ml": count_signals(ml_signals),
+            }
+            ai_subtype = max(subtype_scores, key=subtype_scores.get)
+
+        if ai_subtype == "rag":
+            total_count = count_signals(rag_signals)
+
+            if difficulty == "중급" and total_count < 2:
                 return False, (
-                    "ai 중급 문제에는 query/top_k/chunk/similarity/metadata/embedding/reranker/"
-                    "precision/recall/latency 중 최소 2개 이상의 구체 단서가 필요합니다."
+                    "ai 중급 RAG 문제에는 query/top_k/chunk/similarity/metadata/embedding/"
+                    "reranker/context filtering 중 최소 2개 이상의 구체 단서가 필요합니다."
                 )
 
-        if difficulty == "고급":
-            if total_signal_count < 3:
+            if difficulty == "고급":
+                retrieval_ok = has_any([
+                    "query",
+                    "질의",
+                    "top_k",
+                    "top-k",
+                    "chunk",
+                    "청크",
+                    "similarity",
+                    "유사도",
+                    "검색 결과",
+                    "검색된 문서",
+                ])
+                pipeline_ok = has_any([
+                    "embedding",
+                    "임베딩",
+                    "vector search",
+                    "벡터 검색",
+                    "keyword search",
+                    "키워드 검색",
+                    "hybrid search",
+                    "하이브리드 검색",
+                    "reranker",
+                    "리랭커",
+                    "metadata_filter",
+                    "metadata",
+                    "메타데이터",
+                    "context filtering",
+                    "컨텍스트 필터링",
+                ])
+
+                if total_count < 3 or not retrieval_ok or not pipeline_ok:
+                    return False, (
+                        "ai 고급 RAG 문제에는 검색 결과 단서(query/top_k/chunk/similarity 등)와 "
+                        "파이프라인 단서(embedding/vector search/keyword search/metadata_filter/"
+                        "reranker/context filtering 등)가 함께 필요합니다."
+                    )
+
+        elif ai_subtype == "llm":
+            total_count = count_signals(llm_signals)
+
+            if difficulty == "중급" and total_count < 2:
                 return False, (
-                    "ai 고급 문제에는 검색 로그, 파이프라인 조건, 평가 지표 중 최소 3개 이상의 "
-                    "구체 단서가 필요합니다."
+                    "ai 중급 LLM 문제에는 prompt/JSON/schema/structured output/tool calling/"
+                    "validation 중 최소 2개 이상의 구체 단서가 필요합니다."
                 )
 
-            if retrieval_count < 1:
+            if difficulty == "고급":
+                output_or_tool_ok = has_any([
+                    "json",
+                    "schema",
+                    "structured output",
+                    "구조화 출력",
+                    "response_format",
+                    "tool calling",
+                    "function calling",
+                    "도구 호출",
+                    "함수 호출",
+                    "tool schema",
+                ])
+                validation_ok = has_any([
+                    "validation",
+                    "검증",
+                    "필수 필드",
+                    "answer",
+                    "choices",
+                    "parsing",
+                    "파싱",
+                    "fallback",
+                    "재시도",
+                ])
+
+                if total_count < 3 or not output_or_tool_ok or not validation_ok:
+                    return False, (
+                        "ai 고급 LLM 문제에는 JSON/schema/structured output/tool calling 같은 출력·도구 조건과 "
+                        "validation/fallback/retry 같은 검증 단서가 함께 필요합니다."
+                    )
+
+        elif ai_subtype == "agent":
+            total_count = count_signals(agent_signals)
+
+            if difficulty == "중급" and total_count < 2:
                 return False, (
-                    "ai 고급 RAG 문제에는 query, top_k, chunk, similarity, metadata, 검색 결과 중 "
-                    "최소 1개 이상의 검색 결과 단서가 필요합니다."
+                    "ai 중급 Agent 문제에는 agent/tool/observation/state/retry/graph 중 "
+                    "최소 2개 이상의 구체 단서가 필요합니다."
                 )
 
-            if pipeline_count < 1:
+            if difficulty == "고급":
+                workflow_ok = has_any([
+                    "agent",
+                    "에이전트",
+                    "langgraph",
+                    "graph",
+                    "node",
+                    "노드",
+                    "state",
+                    "상태",
+                ])
+                control_ok = has_any([
+                    "observation",
+                    "관찰",
+                    "retry",
+                    "재시도",
+                    "repair",
+                    "repair_node",
+                    "validation_node",
+                    "human review",
+                    "human_review_node",
+                    "human-in-the-loop",
+                    "검수",
+                    "분기",
+                ])
+
+                if total_count < 3 or not workflow_ok or not control_ok:
+                    return False, (
+                        "ai 고급 Agent 문제에는 Agent/LangGraph/state/node 같은 워크플로우 단서와 "
+                        "observation/retry/repair/human review 같은 제어 단서가 함께 필요합니다."
+                    )
+
+        elif ai_subtype == "modelops":
+            total_count = count_signals(modelops_signals)
+
+            if difficulty == "중급" and total_count < 2:
                 return False, (
-                    "ai 고급 RAG 문제에는 embedding, vector search, hybrid search, reranker, "
-                    "context filtering 중 최소 1개 이상의 파이프라인 단서가 필요합니다."
+                    "ai 중급 ModelOps 문제에는 fine-tuning/QLoRA/vLLM/serving/latency/cost/"
+                    "quality_score/JSONL 중 최소 2개 이상의 구체 단서가 필요합니다."
                 )
 
+            if difficulty == "고급":
+                model_or_data_ok = has_any([
+                    "fine-tuning",
+                    "파인튜닝",
+                    "qlora",
+                    "lora",
+                    "quality_score",
+                    "jsonl",
+                    "approved",
+                    "pending",
+                    "rejected",
+                    "vllm",
+                    "serving",
+                    "서빙",
+                ])
+                ops_metric_ok = has_any([
+                    "latency",
+                    "지연",
+                    "p95",
+                    "cost",
+                    "비용",
+                    "gpu",
+                    "canary",
+                    "monitoring",
+                    "모니터링",
+                    "통과율",
+                    "운영",
+                ])
+
+                if total_count < 3 or not model_or_data_ok or not ops_metric_ok:
+                    return False, (
+                        "ai 고급 ModelOps 문제에는 fine-tuning/QLoRA/vLLM/serving/JSONL/quality_score 같은 "
+                        "모델·데이터 단서와 latency/cost/p95/canary/monitoring 같은 운영 단서가 함께 필요합니다."
+                    )
+
+        elif ai_subtype == "ml":
+            total_count = count_signals(ml_signals)
+
+            if difficulty == "중급" and total_count < 2:
+                return False, (
+                    "ai 중급 ML 문제에는 train/validation/test/accuracy/precision/recall/F1/"
+                    "overfitting 중 최소 2개 이상의 구체 단서가 필요합니다."
+                )
+
+            if difficulty == "고급":
+                metric_or_split_ok = has_any([
+                    "train",
+                    "validation",
+                    "test",
+                    "accuracy",
+                    "정확도",
+                    "precision",
+                    "정밀도",
+                    "recall",
+                    "재현율",
+                    "f1",
+                ])
+                risk_or_action_ok = has_any([
+                    "불균형",
+                    "소수 클래스",
+                    "threshold",
+                    "임계값",
+                    "비용",
+                    "overfitting",
+                    "과적합",
+                    "regularization",
+                    "early stopping",
+                    "일반화",
+                ])
+
+                if total_count < 3 or not metric_or_split_ok or not risk_or_action_ok:
+                    return False, (
+                        "ai 고급 ML 문제에는 평가 지표 또는 데이터 분리 단서와 "
+                        "불균형/threshold/비용/과적합/regularization/early stopping 같은 판단 단서가 함께 필요합니다."
+                    )
     return True, None
 
 def _ensure_question_body_ends_with_question(

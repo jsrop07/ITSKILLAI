@@ -8,9 +8,58 @@ from collections import Counter
 from ai.services.question_validator import validate_questions
 from ai.services.question_planner import generate_question_plans
 from ai.services.competency_config import normalize_competency_type
-from ai.services.question_templates import ( build_ai_rag_advanced_template,build_sql_advanced_template,)
-from ai.services.question_choice_generator import generate_choices_for_template_question
+from ai.services.question_templates import (
+    build_ai_advanced_template,
+    build_sql_advanced_template,
+)
+from ai.services.question_choice_generator import (
+    generate_choices_for_template_question,
+    generate_choices_for_template_questions_batch,
+)
 logger = logging.getLogger("uvicorn.info")
+
+def _normalize_explanation_style_local(explanation: str, answer_int: int) -> str:
+    """
+    question_generator 내부에서 해설 재생성 결과를 존댓말 문체로 정리한다.
+    question_choice_generator의 내부 함수를 import하지 않기 위한 로컬 정리 함수.
+    """
+    text = _replace_answer_number_in_explanation(
+        str(explanation or "").strip(),
+        answer_int,
+    )
+
+    replacements = {
+        "가능성이 높아진다.": "가능성이 높아집니다.",
+        "가능성이 낮아진다.": "가능성이 낮아집니다.",
+        "개선될 수 있다.": "개선될 수 있습니다.",
+        "판단할 수 있다.": "판단할 수 있습니다.",
+        "확인할 수 있다.": "확인할 수 있습니다.",
+        "줄일 수 있다.": "줄일 수 있습니다.",
+        "높일 수 있다.": "높일 수 있습니다.",
+        "도움이 된다.": "도움이 됩니다.",
+        "필요하다.": "필요합니다.",
+        "중요하다.": "중요합니다.",
+        "적절하다.": "적절합니다.",
+        "타당하다.": "타당합니다.",
+        "부족하다.": "부족합니다.",
+        "제한된다.": "제한됩니다.",
+        "발생한다.": "발생합니다.",
+        "증가한다.": "증가합니다.",
+        "감소한다.": "감소합니다.",
+        "해결한다.": "해결합니다.",
+        "반영한다.": "반영합니다.",
+        "고려한다.": "고려합니다.",
+        "검토한다.": "검토합니다.",
+        "비교한다.": "비교합니다.",
+        "평가한다.": "평가합니다.",
+        "분석한다.": "분석합니다.",
+        "측정한다.": "측정합니다.",
+    }
+
+    for source, target in replacements.items():
+        text = text.replace(source, target)
+
+    return text
 
 def _replace_answer_number_in_explanation(explanation: str, new_answer: int) -> str:
     """
@@ -96,7 +145,7 @@ def _build_safe_multiple_choice_explanation(q: dict, answer: int) -> str:
             f"정답은 {answer_int}번입니다. "
             f"'{correct_choice}'가 문제에서 제시된 조건과 제약을 가장 직접적으로 반영한 대응입니다. "
             f"다른 선택지들은 일부 상황에서 고려될 수 있으나, 현재 문제의 핵심 원인이나 제약 조건을 충분히 해결하지 못하거나 "
-            f"부작용을 함께 고려하지 못한다는 한계가 있습니다."
+            f"부작용을 함께 고려하지 못하는 한계가 있습니다."
         )
     # 번호 기반 표현이 아직 남아 있으면 안전 해설로 교체
     if re.search(r"\b[1-5]\s*번은", cleaned) or re.search(r"\b[1-5]\s*번 선택지", cleaned) or re.search(r"\b[1-5]\s*번 보기", cleaned):
@@ -243,7 +292,12 @@ def _repair_multiple_choice_explanations(questions: list[dict]) -> list[dict]:
     [해설 작성 규칙]
     - explanation은 반드시 "정답은 N번입니다."로 시작한다.
     - N은 주어진 answer 값과 반드시 같아야 한다.
+    - explanation은 반드시 존댓말 문체로 작성한다.
+    - "~이다", "~한다", "~높아진다", "~적절하다", "~필요하다" 같은 반말형 종결을 쓰지 않는다.
+    - 모든 문장은 "~입니다", "~합니다", "~수 있습니다", "~해야 합니다"처럼 끝낸다.
     - 정답 선택지가 왜 맞는지 구체적으로 설명한다.
+    - 정답 선택지를 그대로 반복하지 말고, 문제 본문의 조건과 연결해 설명한다.
+    - 오답 선택지 중 최소 2개 이상에 대해 왜 현재 조건에서는 부족한지 설명한다.
     - 오답 선택지들도 왜 부적절한지 설명하되, 번호가 아니라 선택지의 핵심 조치 내용 기준으로 설명한다.
     - 단순히 "다른 선택지는 관련이 없습니다"처럼 뭉뚱그려 쓰지 마라.
     - 오답 설명은 선택지의 핵심 내용 기준으로 설명한다.
@@ -251,8 +305,8 @@ def _repair_multiple_choice_explanations(questions: list[dict]) -> list[dict]:
     - 그 이후 문장에서는 "1번은", "2번은", "3번은", "4번은", "5번은" 같은 표현을 절대 사용하지 마라.
     - "1번 선택지", "2번 보기", "3번의 방식" 같은 번호 기준 표현도 사용하지 마라.
     - 오답은 반드시 선택지의 핵심 개념이나 조치 내용 기준으로 설명한다.
-    - 예: "인덱스를 삭제하는 방식은 쓰기 부하는 줄일 수 있지만 조회 성능 저하 원인을 악화시킬 수 있다."
-    - 예: "단일 인덱스 추가는 일부 조회에는 도움이 될 수 있으나 조인 조건, 정렬 조건, 쓰기 부하를 함께 고려하지 못한다."
+    - 예: "인덱스를 삭제하는 방식은 쓰기 부하는 줄일 수 있지만 조회 성능 저하 원인을 악화시킬 수 있습니다."
+    - 예: "단일 인덱스 추가는 일부 조회에는 도움이 될 수 있으나 조인 조건, 정렬 조건, 쓰기 부하를 함께 고려하지 못합니다."
     - 문제 본문 상황과 직접 연결해서 설명한다.
     - 문서에 없는 새로운 기술명, 수치, 도구명, 절차를 추가하지 마라.
     - 해설은 3~6문장 정도로 작성한다.
@@ -290,7 +344,24 @@ def _repair_multiple_choice_explanations(questions: list[dict]) -> list[dict]:
                 continue
             if idx < 0 or idx >= len(questions):
                 continue
-            questions[idx]["explanation"] = str(explanation)
+            
+            explanation_text = str(explanation).strip()
+
+            if "검증 실패" in explanation_text or "복수정답" in explanation_text:
+                logger.warning(
+                    f"객관식 해설 재생성 결과 복수정답 가능성 감지: index={idx}, explanation={explanation_text}"
+                )
+                continue
+
+            explanation_text = _normalize_explanation_style_local(
+                explanation_text,
+                int(questions[idx].get("answer", 1)),
+            )
+
+            if len(explanation_text) >= 120:
+                questions[idx]["explanation"] = explanation_text
+
+
         return questions
     except Exception as e:
         logger.warning(f"객관식 해설 재생성 실패: {str(e)}")
@@ -358,14 +429,14 @@ def _generate_with_retry(
                 question_type,
             )
             logger.info(
-                f"SQL 고급 문제 정답 위치 재배치 완료: "
+                f"객관식 정답 위치 재배치 완료: "
                 f"final_answers={[q.get('answer') for q in validated_questions]}"
             )
             if _has_answer_position_bias(validated_questions, question_type):
                 logger.warning("정답 번호 편향 경고: 정답 번호가 한쪽으로 몰릴 가능성이 있습니다.")
             # 임시 안정화:
-            # choices 재배치 후 해설 재생성은 추가 LLM 호출을 발생시키고,
-            # 다시 검증 실패를 유발할 수 있으므로 리팩토링 전까지 비활성화한다.
+            # 일반 planner 기반 생성에서는 속도와 안정성을 위해 해설 재생성 호출을 생략한다.
+            # AI/SQL 고급 템플릿 경로에서는 별도 분기에서 choices 재배치 후 해설 재생성을 수행한다.
             #
             return validated_questions
         except Exception as e:
@@ -843,18 +914,19 @@ def _build_plan_based_generation_prompt(
     - 오답은 실무자가 실제로 선택할 수 있는 대안이어야 한다.
     - 오답은 문제 상황의 일부 조건은 해결하지만, 핵심 조건을 놓치거나 부작용을 고려하지 못해야 한다.
     - 데이터베이스 고급 문제의 오답 예시는 다음처럼 작성한다.
-    - "WHERE 조건 일부에만 맞는 단일 인덱스를 추가하지만, 조인 조건과 데이터 분포 변화는 반영하지 못한다."
-    - "실행 계획을 확인하지만 예상 행 수와 실제 행 수의 차이를 분석하지 않아 인덱스 선택 문제를 충분히 파악하지 못한다."
-    - "읽기 성능 개선을 위해 인덱스를 늘리지만, 쓰기 부하와 락 경합 증가 가능성을 함께 평가하지 못한다."
-    - 보안과 성능이 함께 있는 문제의 오답 예시는 다음처럼 작성한다.
-    - "접근 제어 정책은 유지하지만, 쿼리 실행 계획과 인덱스 선택도 문제를 함께 분석하지 못한다."
-    - "민감 데이터 보호 조치를 강화하지만, 조회 조건과 데이터 분포에 따른 성능 병목은 직접 해결하지 못한다."
+    - WHERE 조건 일부에만 맞는 단일 인덱스를 추가하지만, 조인 조건과 데이터 분포 변화는 반영하지 못합니다.
+    - 실행 계획을 확인하지만 예상 행 수와 실제 행 수의 차이를 분석하지 않아 인덱스 선택 문제를 충분히 파악하지 못합니다.
+    - 읽기 성능 개선을 위해 인덱스를 늘리지만, 쓰기 부하와 락 경합 증가 가능성을 함께 평가하지 못합니다.
+    - 접근 제어 정책은 유지하지만, 쿼리 실행 계획과 인덱스 선택도 문제를 함께 분석하지 못합니다.
+    - 민감 데이터 보호 조치를 강화하지만, 조회 조건과 데이터 분포에 따른 성능 병목은 직접 해결하지 못합니다.
     - 정답만 종합 판단형으로 쓰고 오답은 단순 조치형으로 쓰지 마라.
+
     {_difficulty_rule(difficulty)}
     {_competency_rule(competency_type, topic)}
     {_question_type_rule(question_type)}
     {_explanation_rule(question_type)}
     {_answer_distribution_rule(count, question_type)}
+
     [선택지 재배치 대응 규칙]
     - 시스템은 생성 후 선택지 순서를 재배치할 수 있다.
     - 따라서 explanation에서 오답을 설명할 때 "1번은", "2번은", "4번과 5번은"처럼 선택지 번호를 기준으로 설명하지 마라.
@@ -975,25 +1047,49 @@ def generate_questions(
         normalized_competency_type = normalize_competency_type(competency_type) or "software_engineering"
 
         # ─────────────────────────────────────────────
-        # AI/RAG 고급 문제는 템플릿 기반으로 우선 생성
-        # - planner/generator를 타지 않음
-        # - query, top_k, chunk, similarity, metadata_filter, reranker가 포함된 문제를 생성
-        # ─────────────────────────────────────────────
+        # AI 고급 문제는 topic 기반 템플릿 라우터로 생성
+        # - RAG / LLM / Agent / ModelOps / ML 템플릿 중 topic에 맞게 선택
+        # - body는 템플릿으로 고정하고 choices/explanation만 LLM이 생성
+        # ─────────────────────────────────────────────────────────────────────────────────────────
         if normalized_competency_type == "ai" and difficulty == "고급":
-            template_questions = []
+            base_questions = []
+            used_ai_template_formats: list[str] = []
+            used_ai_titles: set[str] = set()
 
             for _ in range(count):
-                base_question = build_ai_rag_advanced_template(topic=topic)
+                base_question = build_ai_advanced_template(
+                    topic=topic,
+                    exclude_formats=used_ai_template_formats,
+                )
 
-                # body는 템플릿으로 고정하고, choices/explanation만 LLM이 생성한다.
-                # LLM 실패 시 base_question의 기존 choices/explanation을 fallback으로 사용한다.
-                generated_question = generate_choices_for_template_question(base_question)
+                selected_title = str(base_question.get("title") or "").strip()
 
-                # DB 저장/응답에는 내부 intent 필드가 필요 없으므로 제거한다.
-                generated_question.pop("answer_intent", None)
-                generated_question.pop("distractor_intents", None)
+                if selected_title in used_ai_titles:
+                    for _retry_title in range(5):
+                        retry_question = build_ai_advanced_template(
+                            topic=topic,
+                            exclude_formats=used_ai_template_formats,
+                        )
+                        retry_title = str(retry_question.get("title") or "").strip()
 
-                template_questions.append(generated_question)
+                        if retry_title and retry_title not in used_ai_titles:
+                            base_question = retry_question
+                            selected_title = retry_title
+                            break
+
+                selected_format = base_question.get("template_format")
+
+                if selected_format and str(selected_format) not in used_ai_template_formats:
+                    used_ai_template_formats.append(str(selected_format))
+
+                if selected_title:
+                    used_ai_titles.add(selected_title)
+
+                base_questions.append(base_question)
+
+            template_questions = generate_choices_for_template_questions_batch(
+                base_questions
+            )
 
             validated_questions = validate_questions(
                 questions=template_questions,
@@ -1003,11 +1099,36 @@ def generate_questions(
             )
 
             if len(validated_questions) == 0:
-                raise ValueError("AI/RAG 템플릿 문제 검증을 통과하지 못했습니다.")
+                raise ValueError("AI 고급 템플릿 문제 검증을 통과하지 못했습니다.")
+
+            validated_questions = _rebalance_answer_positions(
+                validated_questions,
+                question_type,
+            )
+            validated_questions = _repair_multiple_choice_explanations(validated_questions)
+            # DB 저장/응답에는 내부 템플릿 필드가 필요 없으므로 최종 반환 전에 제거한다.
+            for question in validated_questions:
+                question.pop("answer_intent", None)
+                question.pop("distractor_intents", None)
+                question.pop("template_format", None)
+                question.pop("lock_choices", None)
+
+            logger.info(
+                "AI 고급 템플릿 정답 위치 재배치 완료: "
+                f"final_answers={[q.get('answer') for q in validated_questions]}"
+            )
+
+            logger.info(
+                "AI 고급 템플릿 선택 완료: "
+                f"used_formats={used_ai_template_formats}"
+            )
+
+            if _has_answer_position_bias(validated_questions, question_type):
+                logger.warning("AI 고급 정답 번호 편향 경고: 정답 번호가 한쪽으로 몰릴 가능성이 있습니다.")
 
             elapsed_time = time.time() - start_time
             logger.info(
-                f"LLM Pipeline [Generate]: AI/RAG 템플릿 + LLM 선택지 기반 문제 생성 완료 "
+                f"LLM Pipeline [Generate]: AI 고급 템플릿 + LLM 선택지 기반 문제 생성 완료 "
                 f"(생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)"
             )
 
@@ -1056,6 +1177,7 @@ def generate_questions(
                 validated_questions,
                 question_type,
             )
+            validated_questions = _repair_multiple_choice_explanations(validated_questions)
             logger.info(
                 "SQL 고급 템플릿 선택 완료: "
                 f"used_formats={used_sql_template_formats}"
@@ -1223,9 +1345,9 @@ def generate_questions_from_context(
         [선택지 재배치 대응 규칙]
         - 시스템은 생성 후 선택지 순서를 재배치할 수 있다.
         - 따라서 explanation에서 오답을 설명할 때 "1번은", "2번은", "4번과 5번은"처럼 선택지 번호를 기준으로 설명하지 마라.
-        - 정답 번호는 "정답은 N번입니다." 첫 문장에만 사용한다.
-        - 오답 설명은 번호가 아니라 선택지 내용 또는 개념 기준으로 작성한다.
-        - 예: "명명 규칙 검토는 요구사항 완전성 확인과 직접 관련이 낮다."
+        - 정답 번호는 "정답은 N번입니다." 첫 문장에만 사용합니다.
+        - 오답 설명은 번호가 아니라 선택지 내용 또는 개념 기준으로 작성합니다.
+        - 예: "명명 규칙 검토는 요구사항 완전성 확인과 직접 관련이 낮습니다."
         [문서 기반 우선순위 판단 제한 규칙]
         - 문서에 여러 검토 기준이 나열되어 있을 뿐 우선순위가 명시되어 있지 않다면, 특정 기준을 "가장 우선"이라고 단정하지 않는다.
         - "가장 우선적으로 고려해야 할 사항"을 묻는 문제는 본문에 우선순위를 결정할 수 있는 구체적 상황을 반드시 포함한다.
