@@ -35,6 +35,7 @@ class AIQuestionGenerateFromDocumentRequest(BaseModel):
     question_type: Literal["multiple_choice", "essay", "coding"] = "multiple_choice"
     competency_type: str | None = None
     search_query: str | None = None
+    search_mode: Literal["vector", "keyword", "hybrid"] = "hybrid"
 
 def save_generated_questions(
     generated_questions,
@@ -44,6 +45,7 @@ def save_generated_questions(
     score: int,
     question_type: str = "multiple_choice",
     competency_type: str | None = None,
+    ai_generation_type: str | None = None,
 ):
     saved_questions = []
 
@@ -126,6 +128,7 @@ def save_generated_questions(
             competency_tags_json=json.dumps(normalized_tags, ensure_ascii=False),
             score=q.get("score", score),
             review_status="pending",
+            ai_generation_type=ai_generation_type,
             created_by=None
         )
 
@@ -143,7 +146,9 @@ def save_generated_questions(
             "competency_type": question.competency_type,
             "competency_tags": normalized_tags,
             "score": question.score,
-            "review_status": question.review_status
+            "review_status": question.review_status,
+            "ai_generation_type": question.ai_generation_type,
+            "created_at": question.created_at.isoformat() if question.created_at else None
         })
 
     return saved_questions
@@ -181,6 +186,7 @@ def generate_ai_questions(
             score=score,
             question_type=request.question_type,
             competency_type=normalized_competency,
+            ai_generation_type="general",
         )
 
         db.commit()
@@ -225,9 +231,11 @@ def generate_ai_questions_from_document(
         )
 
         context = build_context_from_search_results(
+            db=db,
             query=rag_query,
             top_k=request.top_k,
             category=normalized_competency,
+            search_mode="hybrid",
         )
 
         if not context or not context.strip():
@@ -255,6 +263,7 @@ def generate_ai_questions_from_document(
             score=score,
             question_type=request.question_type,
             competency_type=normalized_competency,
+            ai_generation_type="rag",
         )
 
         db.commit()

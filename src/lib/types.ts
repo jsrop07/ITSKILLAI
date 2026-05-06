@@ -42,6 +42,12 @@ export const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
   rejected: "반려",
 };
 
+export const AI_GENERATION_TYPE_LABELS: Record<string, string> = {
+  general: "설계서 기반",
+  rag: "문서 기반 RAG",
+  manual: "수동/기존",
+};
+
 // ──────────────────────────────────────────────
 // Admin
 // ──────────────────────────────────────────────
@@ -130,6 +136,7 @@ export interface Question {
   competency_tags_json?: string[];
   score: number;
   review_status: ReviewStatus;
+  ai_generation_type?: string | null;
   created_by?: number;
   created_at: string;
   updated_at: string;
@@ -147,6 +154,7 @@ export interface QuestionCreate {
   competency_type?: string;
   competency_tags_json?: string[];
   score?: number;
+  ai_generation_type?: string | null;
 }
 
 // ──────────────────────────────────────────────

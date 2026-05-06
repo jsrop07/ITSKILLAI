@@ -14,7 +14,38 @@ import { Textarea } from "../components/ui/textarea";
 
 import { questionsApi } from "../../lib/api";
 import type { Question } from "../../lib/types";
-import { getCompetencyLabel } from "../../lib/types";
+import { getCompetencyLabel, AI_GENERATION_TYPE_LABELS } from "../../lib/types";
+
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  } catch {
+    return "-";
+  }
+};
+
+const getGenerationBadgeClass = (type?: string | null) => {
+  switch (type) {
+    case "rag":
+      return "bg-indigo-100 text-indigo-700 border-indigo-200";
+    case "general":
+      return "bg-cyan-100 text-cyan-700 border-cyan-200";
+    case "manual":
+      return "bg-slate-100 text-slate-700 border-slate-200";
+    default:
+      return "bg-amber-100 text-amber-700 border-amber-200";
+  }
+};
+
+const getGenerationLabel = (q: Question) => {
+  if (q.ai_generation_type && AI_GENERATION_TYPE_LABELS[q.ai_generation_type]) {
+    return AI_GENERATION_TYPE_LABELS[q.ai_generation_type];
+  }
+  if (q.source_type === "ai") return "AI 생성";
+  return AI_GENERATION_TYPE_LABELS.manual;
+};
 
 const QUESTION_TYPE_LABELS: Record<string, string> = {
   multiple_choice: "객관식",
@@ -22,10 +53,16 @@ const QUESTION_TYPE_LABELS: Record<string, string> = {
   coding: "코드작성형",
 };
 
+const typeColor: Record<string, string> = {
+  multiple_choice: "bg-blue-100 text-blue-700 border-blue-200",
+  essay: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  coding: "bg-orange-100 text-orange-700 border-orange-200",
+};
+
 const difficultyColor: Record<string, string> = {
-  초급: "bg-green-100 text-green-700",
-  중급: "bg-amber-100 text-amber-700",
-  고급: "bg-red-100 text-red-700",
+  초급: "bg-green-100 text-green-700 border-green-200",
+  중급: "bg-amber-100 text-amber-700 border-amber-200",
+  고급: "bg-red-100 text-red-700 border-red-200",
 };
 
 function parseChoices(value: unknown): string[] {
@@ -194,31 +231,36 @@ export default function AIQuestionReview() {
                       }`}
                     onClick={() => setSelectedId(q.question_id)}
                   >
+                    <div className="flex items-center gap-2 mb-2 flex-wrap">
+                      <Badge variant="secondary" className="bg-sky-100 text-sky-700 text-[10px] h-5">
+                        {getCompetencyLabel(q.competency_type) || "미분류"}
+                      </Badge>
+                      <Badge
+                        variant="secondary"
+                        className={`${difficultyColor[q.difficulty ?? ""] || "bg-slate-100 text-slate-700"} text-[10px] h-5`}
+                      >
+                        {q.difficulty}
+                      </Badge>
+                    </div>
+
                     <p className="text-sm font-medium text-slate-800 mb-2 line-clamp-2">
                       {q.title || q.body}
                     </p>
 
-                    <div className="flex items-center gap-2 mb-2 flex-wrap">
-                      <Badge variant="secondary" className="bg-sky-100 text-sky-700 text-xs">
-                        {getCompetencyLabel(q.competency_type) || "미분류"}
-                      </Badge>
-
-                      <Badge
-                        variant="secondary"
-                        className={difficultyColor[q.difficulty ?? ""] || "bg-slate-100 text-slate-700"}
-                      >
-                        {q.difficulty}
-                      </Badge>
-
-                      <Badge variant="secondary" className="bg-violet-100 text-violet-700 text-xs">
-                        <Sparkles className="size-3 mr-1" />
-                        AI 생성
-                      </Badge>
+                    <div className="flex items-center justify-between mt-auto">
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className={`${getGenerationBadgeClass(q.ai_generation_type)} text-[10px] h-5 border`}>
+                          <Sparkles className="size-3 mr-1" />
+                          {getGenerationLabel(q)}
+                        </Badge>
+                        <Badge variant="outline" className={`${typeColor[q.question_type] || "bg-slate-100"} text-[10px] h-5`}>
+                          {QUESTION_TYPE_LABELS[q.question_type] || q.question_type}
+                        </Badge>
+                      </div>
+                      <span className="text-xs font-bold text-slate-600">
+                        {q.score}점
+                      </span>
                     </div>
-
-                    <p className="text-xs text-slate-500">
-                      점수 {q.score}점 · {QUESTION_TYPE_LABELS[q.question_type] || q.question_type}
-                    </p>
                   </div>
                 ))}
               </div>
@@ -238,33 +280,43 @@ export default function AIQuestionReview() {
               <Card className="border-slate-200">
                 <CardHeader className="border-b border-slate-200">
                   <div className="flex items-start justify-between gap-4">
-                    <div>
+                    <div className="w-full">
                       <CardTitle className="text-lg">
                         {selectedQuestion.title}
                       </CardTitle>
 
-                      <div className="flex items-center gap-2 mt-2 flex-wrap">
-                        <Badge variant="secondary" className="bg-blue-100 text-blue-700">
-                          {QUESTION_TYPE_LABELS[selectedQuestion.question_type ?? ""] || selectedQuestion.question_type}
-                        </Badge>
+                      <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <Badge variant="secondary" className={typeColor[selectedQuestion.question_type ?? ""] || "bg-slate-100 text-slate-700"}>
+                            {QUESTION_TYPE_LABELS[selectedQuestion.question_type ?? ""] || selectedQuestion.question_type}
+                          </Badge>
 
-                        <Badge
-                          variant="secondary"
-                          className={
-                            difficultyColor[selectedQuestion.difficulty ?? ""] ||
-                            "bg-slate-100 text-slate-700"
-                          }
-                        >
-                          {selectedQuestion.difficulty}
-                        </Badge>
+                          <Badge
+                            variant="secondary"
+                            className={
+                              difficultyColor[selectedQuestion.difficulty ?? ""] ||
+                              "bg-slate-100 text-slate-700"
+                            }
+                          >
+                            {selectedQuestion.difficulty}
+                          </Badge>
 
-                        <Badge variant="secondary" className="bg-slate-100 text-slate-700">
-                          {getCompetencyLabel(selectedQuestion.competency_type) || "미분류"}
-                        </Badge>
+                          <Badge variant="secondary" className="bg-sky-100 text-sky-700">
+                            {getCompetencyLabel(selectedQuestion.competency_type) || "미분류"}
+                          </Badge>
 
-                        <Badge variant="secondary" className="bg-violet-100 text-violet-700">
-                          {selectedQuestion.score}점
-                        </Badge>
+                          <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                            {selectedQuestion.score}점
+                          </Badge>
+
+                          <Badge variant="outline" className={`${getGenerationBadgeClass(selectedQuestion.ai_generation_type)} font-medium border`}>
+                            {getGenerationLabel(selectedQuestion)}
+                          </Badge>
+                        </div>
+
+                        <span className="text-sm text-slate-600 font-medium shrink-0">
+                          {formatDate(selectedQuestion.created_at)}
+                        </span>
                       </div>
                     </div>
                   </div>

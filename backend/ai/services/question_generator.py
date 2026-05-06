@@ -61,6 +61,85 @@ def _normalize_explanation_style_local(explanation: str, answer_int: int) -> str
 
     return text
 
+def _normalize_question_body_choice_style(text: str) -> str:
+    """
+    문제 본문과 선택지를 시험 문항체로 정리한다.
+    - body/choices는 존댓말을 쓰지 않는다.
+    - explanation은 별도 함수에서 존댓말로 정리한다.
+    """
+    if not text:
+        return ""
+
+    normalized = str(text).strip()
+
+    replacements = {
+        "어떤 접근 방식을 선택해야 할까요?": "가장 적절한 접근 방식은 무엇인가?",
+        "어떤 방안을 선택해야 할까요?": "가장 적절한 방안은 무엇인가?",
+        "어떤 판단을 해야 할까요?": "가장 적절한 판단은 무엇인가?",
+        "무엇을 선택해야 할까요?": "무엇을 선택해야 하는가?",
+        "무엇을 검토해야 할까요?": "무엇을 검토해야 하는가?",
+        "어떻게 해야 할까요?": "어떻게 해야 하는가?",
+        "해야 할까요?": "해야 하는가?",
+        "할까요?": "하는가?",
+        "무엇일까요?": "무엇인가?",
+
+        "해야 합니다.": "해야 한다.",
+        "해야 합니다": "해야 한다",
+        "할 수 있습니다.": "할 수 있다.",
+        "할 수 있습니다": "할 수 있다",
+        "수 있습니다.": "수 있다.",
+        "수 있습니다": "수 있다",
+        "입니다.": "이다.",
+        "입니다": "이다",
+        "합니다.": "한다.",
+        "합니다": "한다",
+        "됩니다.": "된다.",
+        "됩니다": "된다",
+        "높입니다.": "높인다.",
+        "높입니다": "높인다",
+        "개선합니다.": "개선한다.",
+        "개선합니다": "개선한다",
+        "적용합니다.": "적용한다.",
+        "적용합니다": "적용한다",
+        "검토합니다.": "검토한다.",
+        "검토합니다": "검토한다",
+        "판단합니다.": "판단한다.",
+        "판단합니다": "판단한다",
+        "구성합니다.": "구성한다.",
+        "구성합니다": "구성한다",
+        "제거합니다.": "제거한다.",
+        "제거합니다": "제거한다",
+    }
+
+    for source, target in replacements.items():
+        normalized = normalized.replace(source, target)
+
+    return normalized
+
+
+def _normalize_question_body_choice_styles(questions: list[dict]) -> list[dict]:
+    """
+    최종 검증 통과 문제의 body/choices 문체를 시험 문항체로 정리한다.
+    explanation은 존댓말 유지 대상이므로 여기서 건드리지 않는다.
+    """
+    if not questions:
+        return questions
+
+    for q in questions:
+        if not isinstance(q, dict):
+            continue
+
+        q["body"] = _normalize_question_body_choice_style(q.get("body", ""))
+
+        choices = q.get("choices", [])
+        if isinstance(choices, list):
+            q["choices"] = [
+                _normalize_question_body_choice_style(choice)
+                for choice in choices
+            ]
+
+    return questions
+    
 def _replace_answer_number_in_explanation(explanation: str, new_answer: int) -> str:
     """
     explanation 안의 '정답은 N번입니다' 형태를 새 정답 번호로 교체한다.
@@ -428,6 +507,10 @@ def _generate_with_retry(
                 validated_questions,
                 question_type,
             )
+
+            validated_questions = _normalize_question_body_choice_styles(
+                validated_questions
+            )
             logger.info(
                 f"객관식 정답 위치 재배치 완료: "
                 f"final_answers={[q.get('answer') for q in validated_questions]}"
@@ -668,6 +751,14 @@ def _question_type_rule(question_type: str) -> str:
         - 예: "인덱스를 추가한다" 금지
         - 예: "WHERE 조건과 정렬 조건을 함께 고려해 복합 인덱스를 설계한다" 허용
         - 선택지 5개는 모두 같은 깊이와 비슷한 길이로 작성한다.
+        - "항상", "무조건", "모든", "오직", "절대", "필요 없다", "삭제한다", "제거한다", "무시한다", "생략한다" 같은 극단 표현으로 쉽게 배제되는 오답을 만들지 않는다.
+        - 오답도 실무자가 실제로 선택할 수 있는 대안이어야 하며, 문제 상황의 일부 조건은 만족하지만 핵심 조건이나 제약을 놓치도록 작성한다.
+        - 정답 선택지만 길고 구체적이며 오답은 짧고 단정적인 형태로 작성하지 않는다.
+        - 고급 문제의 각 선택지는 최소 35자 이상으로 작성한다.
+        - 고급 문제의 선택지는 모두 구체적인 조건, 판단 기준, 예상 효과 또는 한계를 포함해야 한다.
+        - "충분하다", "필요 없다", "무관하다", "활성화한다", "조정한다", "사용한다"처럼 짧고 단정적인 선택지를 만들지 않는다.
+        - 정답 선택지만 길고 구체적으로 작성하지 않는다.
+        - 오답도 실무자가 실제로 선택할 수 있는 대안처럼 작성하되, 현재 문제의 핵심 조건이나 제약을 일부 놓치도록 구성한다.
         """
     if question_type == "essay":
         return """
@@ -893,34 +984,31 @@ def _build_plan_based_generation_prompt(
     - 난이도가 "중급" 또는 "고급"이면 문제 본문에 반드시 짧은 실무 상황을 포함한다.
     - 중급은 개념 적용, 비교, 원인 판단, 검토 기준 선택을 묻는다.
     - 고급은 원인 분석, 장애 대응, 성능 병목, 보안 리스크, 운영 트레이드오프, 우선순위 판단 중 하나를 포함한다.
-    [오답 품질 규칙]
-    - 오답은 장난스럽거나 비현실적인 문장으로 만들지 않는다.
-    - "자동으로 해결된다", "삭제한다", "무시한다", "생략한다", "항상", "무조건", "오직" 같은 극단적 표현을 반복하지 않는다.
-    - 오답도 실무자가 헷갈릴 수 있는 그럴듯한 선택지로 작성한다.
-    - 오답은 정답과 같은 주제 영역 안에서 만들어야 한다.
-    - 오답은 선택된 역량 유형과 같은 업무 맥락 안에서 구성한다.
-    - 예를 들어 데이터베이스 문제라면 오답도 SQL, 인덱스, 트랜잭션, 정규화 등 관련 개념 안에서 구성한다.
-    - 예를 들어 보안 문제라면 오답도 인증, 인가, 암호화, 접근 제어, 취약점 대응 등 관련 개념 안에서 구성한다.
-    - 난이도가 "고급"이면 "삭제한다", "무시한다", "무조건", "항상", "오직", "단순히", "완전히 제거한다"가 포함된 선택지를 만들지 마라.
-    - 난이도가 "고급"이면 오답도 실무자가 실제로 선택할 수 있는 대안이어야 한다.
-    - 오답은 일부 조건에서는 타당하지만, 현재 문제의 핵심 조건 또는 제약을 만족하지 못해야 한다.
-    - 선택지는 "인덱스를 추가한다", "쿼리를 단순화한다", "정규화한다"처럼 짧은 일반론으로 작성하지 마라.
-    - 선택지에는 판단 기준을 포함해라.
-    - 예: "주문 날짜 단일 인덱스를 추가해 기간 조건을 먼저 처리한다"는 일부 상황에서는 가능하지만, 고객 조인 조건과 쓰기 부하를 함께 고려하지 못하는 오답이 될 수 있다.
-    - 예: "조인 순서를 수동으로 고정한다"는 일부 상황에서는 도움이 될 수 있지만, 통계 정보와 실제 행 수 차이를 먼저 확인해야 하는 상황에서는 우선순위가 낮은 오답이 될 수 있다.
-    [고급 오답 생성 세부 규칙]
-    - 난이도가 "고급"이면 오답 선택지도 정답과 비슷한 문장 길이와 판단 구조를 가져야 한다.
-    - 오답을 "무시한다", "삭제한다", "완전히 제거한다", "모든", "무조건", "항상", "오직", "단순히", "차단한다" 같은 쉽게 제거되는 표현으로 만들지 마라.
-    - 오답은 실무자가 실제로 선택할 수 있는 대안이어야 한다.
-    - 오답은 문제 상황의 일부 조건은 해결하지만, 핵심 조건을 놓치거나 부작용을 고려하지 못해야 한다.
-    - 데이터베이스 고급 문제의 오답 예시는 다음처럼 작성한다.
-    - WHERE 조건 일부에만 맞는 단일 인덱스를 추가하지만, 조인 조건과 데이터 분포 변화는 반영하지 못합니다.
-    - 실행 계획을 확인하지만 예상 행 수와 실제 행 수의 차이를 분석하지 않아 인덱스 선택 문제를 충분히 파악하지 못합니다.
-    - 읽기 성능 개선을 위해 인덱스를 늘리지만, 쓰기 부하와 락 경합 증가 가능성을 함께 평가하지 못합니다.
-    - 접근 제어 정책은 유지하지만, 쿼리 실행 계획과 인덱스 선택도 문제를 함께 분석하지 못합니다.
-    - 민감 데이터 보호 조치를 강화하지만, 조회 조건과 데이터 분포에 따른 성능 병목은 직접 해결하지 못합니다.
-    - 정답만 종합 판단형으로 쓰고 오답은 단순 조치형으로 쓰지 마라.
-
+    [문서 기반 객관식 선택지 품질 및 문체 규칙]
+    - choices는 모두 시험 선택지체로 작성한다.
+    - choices는 존댓말을 사용하지 않는다.
+    - choices에서 "~합니다", "~입니다", "~해야 합니다", "~수 있습니다"를 사용하지 않는다.
+    - choices는 "~한다", "~검토한다", "~적용한다", "~판단한다", "~구성한다", "~제거한다"처럼 끝낸다.
+    - 고급 문제의 choices는 모두 최소 35자 이상으로 작성한다.
+    - 선택지는 단순 찬반형 문장으로 작성하지 않는다.
+    - "충분하다", "필요 없다", "무관하다", "활성화해야 한다", "조정한다", "사용한다"처럼 짧고 단정적인 선택지는 만들지 않는다.
+    - "항상", "무조건", "모든", "오직", "절대", "삭제한다", "제거한다", "무시한다", "생략한다", "자동으로 해결된다" 같은 쉽게 제거되는 표현을 사용하지 않는다.
+    - 각 선택지는 "어떤 조치를 어떤 기준으로 적용하는지"가 드러나는 문장으로 작성한다.
+    - 정답 선택지만 길고 구체적으로 쓰지 말고, 오답도 정답과 비슷한 길이와 판단 구조를 가져야 한다.
+    - 오답은 실무자가 실제로 선택할 수 있는 대안이어야 하지만, 현재 문제의 핵심 조건을 일부 놓치거나 부작용을 고려하지 못해야 한다.
+    - 오답의 한계를 "하지만", "그러나", "못한다", "않는다"로 너무 노골적으로 드러내지 않는다.
+    [문서 기반 문제 문체 규칙]
+    - title은 짧은 명사형으로 작성한다.
+    - body는 시험 문제 본문체로 작성한다.
+    - body는 존댓말을 사용하지 않는다.
+    - body에서 "~까요?", "~해야 할까요?", "~선택해야 할까요?", "~검토해야 할까요?" 같은 표현을 사용하지 않는다.
+    - body의 마지막 문장은 반드시 다음 형태 중 하나로 끝낸다:
+    - "이 상황에서 가장 적절한 판단은 무엇인가?"
+    - "이 상황에서 가장 타당한 대응은 무엇인가?"
+    - "가장 우선적으로 검토해야 할 사항은 무엇인가?"
+    - "검색 품질을 개선하기 위한 가장 적절한 접근은 무엇인가?"
+    - explanation만 존댓말로 작성한다.
+    - explanation은 반드시 "정답은 N번입니다."로 시작한다.
     {_difficulty_rule(difficulty)}
     {_competency_rule(competency_type, topic)}
     {_question_type_rule(question_type)}
@@ -1045,7 +1133,6 @@ def generate_questions(
 
     try:
         normalized_competency_type = normalize_competency_type(competency_type) or "software_engineering"
-
         # ─────────────────────────────────────────────
         # AI 고급 문제는 topic 기반 템플릿 라우터로 생성
         # - RAG / LLM / Agent / ModelOps / ML 템플릿 중 topic에 맞게 선택
@@ -1105,6 +1192,11 @@ def generate_questions(
                 validated_questions,
                 question_type,
             )
+            
+            validated_questions = _normalize_question_body_choice_styles(
+                validated_questions
+            )
+
             validated_questions = _repair_multiple_choice_explanations(validated_questions)
             # DB 저장/응답에는 내부 템플릿 필드가 필요 없으므로 최종 반환 전에 제거한다.
             for question in validated_questions:
@@ -1177,6 +1269,11 @@ def generate_questions(
                 validated_questions,
                 question_type,
             )
+
+            validated_questions = _normalize_question_body_choice_styles(
+                validated_questions
+            )
+
             validated_questions = _repair_multiple_choice_explanations(validated_questions)
             logger.info(
                 "SQL 고급 템플릿 선택 완료: "
@@ -1245,6 +1342,10 @@ def generate_questions_from_context(
     competency_type: str | None = None,
 ):
     normalized_competency_type = normalize_competency_type(competency_type)
+    candidate_count = count
+
+    if question_type == "multiple_choice" and difficulty in ["중급", "고급"]:
+        candidate_count = min(count + 2, 5)
 
     start_time = time.time()
     logger.info(
@@ -1265,7 +1366,7 @@ def generate_questions_from_context(
         - 세부 주제: {topic}
         - 난이도: {difficulty}
         - 배점: {score}
-        - 생성 개수: {count}
+        - 생성 개수: {candidate_count}
         - 문제 유형: {question_type}
         [역량 유형 제한 규칙]
         - 문제는 반드시 선택된 역량 유형에 맞아야 한다.
@@ -1293,7 +1394,7 @@ def generate_questions_from_context(
         - 같은 문장을 거의 그대로 반복하는 문제는 피한다.
         - 문제는 역량진단에 적합해야 한다.
         - 오답은 문서의 유사 개념을 활용해 그럴듯하게 만들되, 문서 기준으로 명확히 틀려야 한다.
-        - 생성되는 {count}개의 문제는 서로 다른 평가 포인트를 가져야 한다.
+        - 생성되는 {candidate_count}개의 문제는 서로 다른 평가 포인트를 가져야 한다.
         - 문서 내용이 부족하면 {count}개보다 적게 생성해도 된다.
         - 단, 이 경우에도 JSON 배열만 출력한다.
         [문제 본문 질문형 작성 규칙]
@@ -1321,6 +1422,61 @@ def generate_questions_from_context(
         - 선택지는 모두 실무자가 실제로 선택할 수 있는 검토 기준 또는 대응 방안 문장으로 작성한다.
         - 문제 본문에 이미 정답 키워드를 직접 노출하지 않는다.
         - 예: 정답이 "완전성"이면 본문에 "누락", "모든 기능" 같은 단서를 과도하게 반복하지 않는다.
+        [AI/RAG 고급 문제 evidence 강제 규칙]
+        - 역량 유형이 "ai"이고 난이도가 "고급"이며 주제가 RAG, 검색, 임베딩, 벡터, hybrid search와 관련된 경우 body에는 반드시 검색 결과 단서와 RAG 파이프라인 단서를 함께 포함한다.
+        - body에는 반드시 아래 표현 중 검색 결과 단서 4개 이상을 포함한다:
+        query, top_k, chunk, similarity, vector_score, keyword_score, hybrid_score, metadata, category
+        - body에는 반드시 아래 표현 중 파이프라인 단서 4개 이상을 포함한다:
+        embedding, vector search, keyword search, hybrid search, metadata_filter, reranker, context filtering
+        - body에는 반드시 최소 1개 이상의 수치를 포함한다.
+        - 예: top_k=5, similarity=0.61, vector_score=0.58, keyword_score=0.40, hybrid_score=0.526
+        - 단순히 "검색 품질이 낮다", "RAG 시스템을 개선해야 한다"처럼 일반론만 쓰는 문제는 생성하지 않는다.
+        - 검색 결과 단서와 파이프라인 단서가 모두 포함되지 않으면 해당 문제는 생성하지 않는다.
+
+        [AI/RAG 고급 문제 evidence 포함 및 본문 다양화 규칙]
+        - 역량 유형이 "ai"이고 난이도가 "고급"이며 주제가 RAG, 검색, 임베딩, 벡터, hybrid search와 관련된 경우 body에는 반드시 검색 결과 단서와 RAG 파이프라인 단서를 함께 포함한다.
+        - 단, 모든 문제를 같은 문장 구조로 작성하지 않는다.
+        - "현재 RAG 검색 로그는 다음과 같습니다"로 모든 문제를 시작하지 않는다.
+        - 같은 query, top_k, metadata_filter, chunk 정보를 매 문제마다 동일한 순서와 동일한 표현으로 반복하지 않는다.
+        - 각 문제는 아래 5개 출제 패턴 중 서로 다른 패턴을 사용한다.
+
+        [AI/RAG 고급 문제 출제 패턴]
+        1. 정확 키워드 누락 상황
+        - vector search 결과의 similarity는 높지만 정확 키워드가 누락된 상황을 제시한다.
+        - keyword search 또는 hybrid search 도입 필요성을 판단하게 한다.
+
+        2. metadata_filter 누락 상황
+        - category가 다른 chunk가 context에 섞인 상황을 제시한다.
+        - metadata_filter 적용 여부와 category 기반 필터링 필요성을 판단하게 한다.
+
+        3. chunk 품질 및 context filtering 상황
+        - 검색된 chunk 중 일부가 문맥상 부적절하거나 API 파라미터 설명처럼 얕은 내용인 상황을 제시한다.
+        - context filtering 또는 chunk 품질 개선 기준을 판단하게 한다.
+
+        4. reranker 적용 trade-off 상황
+        - first-stage retrieval 결과는 충분하지만 순위 품질이 낮고, reranker 적용 시 latency가 증가하는 상황을 제시한다.
+        - 정확도 개선과 응답 시간 증가 사이의 trade-off를 판단하게 한다.
+
+        5. hybrid_score 해석 상황
+        - vector_score와 keyword_score가 서로 다르게 나타나는 검색 결과를 제시한다.
+        - similarity만 볼지, keyword_score만 볼지, hybrid_score를 종합할지 판단하게 한다.
+
+        [AI/RAG evidence 최소 포함 기준]
+        - 각 문제 body에는 아래 검색 결과 단서 중 4개 이상을 포함한다:
+        query, top_k, chunk, similarity, vector_score, keyword_score, hybrid_score, metadata, category
+        - 각 문제 body에는 아래 파이프라인 단서 중 3개 이상을 포함한다:
+        embedding, vector search, keyword search, hybrid search, metadata_filter, reranker, context filtering
+        - 각 문제 body에는 숫자 단서를 최소 2개 이상 포함한다.
+        - 예: top_k=5, similarity=0.61, vector_score=0.68, keyword_score=1.0, hybrid_score=0.78, p95 latency=850ms
+        - chunk 예시는 필요한 경우 1~2개만 사용하고, 모든 문제에서 동일한 chunk #1, chunk #2 표현을 반복하지 않는다.
+        - body 마지막 문장은 반드시 물음표(?)로 끝낸다.
+
+        [AI/RAG 문제 반복 방지 규칙]
+        - {candidate_count}개의 문제는 제목, 문제 상황, 판단 기준이 서로 달라야 한다.
+        - 같은 query 문자열을 사용하더라도 문제마다 평가 포인트가 달라야 한다.
+        - "검색 결과의 적합성 평가", "hybrid search의 필요성", "검색 품질 개선 방안"처럼 제목만 바꾸고 같은 본문을 반복하지 않는다.
+        - 같은 로그 형식을 복사한 뒤 마지막 질문만 바꾸는 문제는 생성하지 않는다.
+
         [중급/고급 문제 본문 작성 방식]
         - 난이도가 "중급" 또는 "고급"이면 문제 본문은 반드시 상황 설명 + 판단 질문 구조로 작성한다.
         - 중급 문제 본문 구조:
@@ -1358,7 +1514,7 @@ def generate_questions_from_context(
         {_competency_rule(normalized_competency_type, topic)}
         {_question_type_rule(question_type)}
         {_explanation_rule(question_type)}
-        {_answer_distribution_rule(count, question_type)}
+        {_answer_distribution_rule(candidate_count, question_type)}
         [문서 내용]
         {context}
         [출력 검증 규칙]

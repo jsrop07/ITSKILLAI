@@ -34,6 +34,7 @@ import {
   aiDocumentApi,
   AIDocument,
   RAGSearchResult,
+  RAGSearchMode,
 } from "../../lib/api";
 import {
   COMPETENCY_OPTIONS,
@@ -57,6 +58,7 @@ export default function DocumentRAGManagement() {
   const [sourceType, setSourceType] = useState("NCS");
   const [category, setCategory] = useState("");
   const [searchCategory, setSearchCategory] = useState("");
+  const [searchMode, setSearchMode] = useState<"vector" | "keyword" | "hybrid">("hybrid");
   const [generateCategory, setGenerateCategory] = useState("");
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -179,12 +181,13 @@ export default function DocumentRAGManagement() {
         query: searchQuery,
         top_k: topK,
         category: searchCategory || undefined,
+        search_mode: searchMode,
       });
 
       setRetrievalResults(res.results || []);
     } catch (error: any) {
       console.error(error);
-      alert(error.response?.data?.detail || "벡터 검색 중 오류가 발생했습니다.");
+      alert(error.response?.data?.detail || "문서 검색 중 오류가 발생했습니다.");
     } finally {
       setIsSearching(false);
     }
@@ -431,6 +434,21 @@ export default function DocumentRAGManagement() {
                 ))}
               </select>
             </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                검색 모드
+              </label>
+              <select
+                value={searchMode}
+                onChange={(e) => setSearchMode(e.target.value as RAGSearchMode)}
+                className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="vector">Vector Search</option>
+                <option value="keyword">Keyword Search</option>
+                <option value="hybrid">Hybrid Search</option>
+              </select>
+            </div>
           </CardContent>
           <CardContent className="pt-6 space-y-4">
             <div className="space-y-2">
@@ -459,7 +477,9 @@ export default function DocumentRAGManagement() {
               ) : (
                 <>
                   <Search className="size-4 mr-2" />
-                  벡터 검색 실행
+                  {searchMode === "vector" && "벡터 검색 실행"}
+                  {searchMode === "keyword" && "키워드 검색 실행"}
+                  {searchMode === "hybrid" && "하이브리드 검색 실행"}
                 </>
               )}
             </Button>
@@ -493,6 +513,35 @@ export default function DocumentRAGManagement() {
                       </Badge>
 
                       <Badge variant="secondary" className="bg-sky-100 text-sky-700">
+                        {result.search_source || searchMode}
+                      </Badge>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                        vector{" "}
+                        {typeof result.vector_score === "number"
+                          ? result.vector_score.toFixed(3)
+                          : typeof result.similarity === "number"
+                            ? result.similarity.toFixed(3)
+                            : "-"}
+                      </Badge>
+
+                      <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                        keyword{" "}
+                        {typeof result.keyword_score === "number"
+                          ? result.keyword_score.toFixed(3)
+                          : "-"}
+                      </Badge>
+
+                      <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                        hybrid{" "}
+                        {typeof result.hybrid_score === "number"
+                          ? result.hybrid_score.toFixed(3)
+                          : "-"}
+                      </Badge>
+
+                      <Badge variant="secondary" className="bg-slate-100 text-slate-700">
                         similarity{" "}
                         {typeof result.similarity === "number"
                           ? result.similarity.toFixed(3)
@@ -516,7 +565,7 @@ export default function DocumentRAGManagement() {
               <div className="text-center py-8">
                 <Database className="size-12 text-slate-300 mx-auto mb-3" />
                 <p className="text-sm text-slate-500">
-                  검색 쿼리를 입력하고 '벡터 검색 실행'을 클릭하세요
+                  검색 쿼리를 입력하고 검색 모드를 선택한 뒤 검색을 실행하세요
                 </p>
               </div>
             )}

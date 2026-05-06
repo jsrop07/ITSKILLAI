@@ -453,7 +453,9 @@ export default function ApplicantDetail() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm text-slate-600 max-w-xs">{ans.answer_text || "-"}</TableCell>
+                    <TableCell className="text-sm text-slate-600 max-w-xs truncate" title={ans.answer_text || ""}>
+                      {ans.answer_text || "-"}
+                    </TableCell>
                     <TableCell>
                       {ans.is_correct != null ? (
                         <Badge

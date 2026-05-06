@@ -18,10 +18,45 @@ import {
 } from "../components/ui/select";
 import { questionsApi } from "../../lib/api";
 import type { Question, QuestionCreate } from "../../lib/types";
-import { REVIEW_STATUS_LABELS, COMPETENCY_OPTIONS, getCompetencyLabel } from "../../lib/types";
+import { REVIEW_STATUS_LABELS, COMPETENCY_OPTIONS, getCompetencyLabel, AI_GENERATION_TYPE_LABELS } from "../../lib/types";
+
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  } catch {
+    return "-";
+  }
+};
 
 type QuestionUpdate = Partial<QuestionCreate> & {
   review_status?: "pending" | "approved" | "rejected";
+};
+
+const getGenerationBadgeClass = (type?: string | null) => {
+  switch (type) {
+    case "rag":
+      return "bg-indigo-100 text-indigo-700 border-indigo-200";
+    case "general":
+      return "bg-cyan-100 text-cyan-700 border-cyan-200";
+    case "manual":
+      return "bg-slate-100 text-slate-700 border-slate-200";
+    default:
+      return "bg-amber-100 text-amber-700 border-amber-200";
+  }
+};
+
+const typeColor: Record<string, string> = {
+  multiple_choice: "bg-blue-100 text-blue-700 border-blue-200",
+  essay: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  coding: "bg-orange-100 text-orange-700 border-orange-200",
+};
+
+const difficultyColor: Record<string, string> = {
+  초급: "bg-green-100 text-green-700 border-green-200",
+  중급: "bg-amber-100 text-amber-700 border-amber-200",
+  고급: "bg-red-100 text-red-700 border-red-200",
 };
 
 const QUESTION_TYPE_LABELS: Record<string, string> = {
@@ -44,6 +79,7 @@ export default function QuestionManagement() {
   const [reviewFilter, setReviewFilter] = useState("all");
   const [difficultyFilter, setDifficultyFilter] = useState("all");
   const [competencyFilter, setCompetencyFilter] = useState("");
+  const [aiGenerationFilter, setAiGenerationFilter] = useState("all");
   const [page, setPage] = useState(1);
   const limit = 20;
 
@@ -81,6 +117,7 @@ export default function QuestionManagement() {
       if (reviewFilter !== "all") params.review_status = reviewFilter;
       if (difficultyFilter !== "all") params.difficulty = difficultyFilter;
       if (competencyFilter) params.competency_type = competencyFilter;
+      if (aiGenerationFilter !== "all") params.ai_generation_type = aiGenerationFilter;
 
       console.log("문제 목록 요청 params:", params);
 
@@ -100,7 +137,7 @@ export default function QuestionManagement() {
     }
   };
 
-  useEffect(() => { load(); }, [searchTerm, typeFilter, sourceFilter, reviewFilter, difficultyFilter, competencyFilter]);
+  useEffect(() => { load(); }, [searchTerm, typeFilter, sourceFilter, reviewFilter, difficultyFilter, competencyFilter, aiGenerationFilter]);
 
   const handleCreate = async () => {
     if (!form.title) return alert("문제 제목은 필수입니다.");
@@ -275,9 +312,9 @@ export default function QuestionManagement() {
               </SelectContent>
             </Select>
             <Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
-              <SelectTrigger className="w-28"><SelectValue placeholder="난이도" /></SelectTrigger>
+              <SelectTrigger className="w-30"><SelectValue placeholder="난이도" /></SelectTrigger>
               <SelectContent>
-                <SelectItem value="all">전체 난이도</SelectItem>
+                <SelectItem value="all">난이도</SelectItem>
                 <SelectItem value="초급">초급</SelectItem>
                 <SelectItem value="중급">중급</SelectItem>
                 <SelectItem value="고급">고급</SelectItem>
@@ -289,6 +326,14 @@ export default function QuestionManagement() {
                 <SelectItem value="all">전체 출처</SelectItem>
                 <SelectItem value="ai">AI 생성</SelectItem>
                 <SelectItem value="manual">수동 작성</SelectItem>
+              </SelectContent>
+            </Select>
+            <Select value={aiGenerationFilter} onValueChange={setAiGenerationFilter}>
+              <SelectTrigger className="w-40"><SelectValue placeholder="생성 방식" /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">생성 방식</SelectItem>
+                <SelectItem value="general">설계서 기반</SelectItem>
+                <SelectItem value="rag">문서 기반 RAG</SelectItem>
               </SelectContent>
             </Select>
             <Select value={reviewFilter} onValueChange={setReviewFilter}>
@@ -329,15 +374,17 @@ export default function QuestionManagement() {
                   <TableHead>난이도</TableHead>
                   <TableHead>역량</TableHead>
                   <TableHead>출처</TableHead>
+                  <TableHead>생성 방식</TableHead>
                   <TableHead>검토 상태</TableHead>
                   <TableHead>점수</TableHead>
+                  <TableHead>생성일시</TableHead>
                   <TableHead className="text-right">작업</TableHead>
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {questions.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={9} className="text-center text-slate-400 py-12">문제가 없습니다.</TableCell>
+                    <TableCell colSpan={12} className="text-center text-slate-400 py-12">문제가 없습니다.</TableCell>
                   </TableRow>
                 ) : (
                   paginatedQuestions.map((q, idx) => (
@@ -350,7 +397,7 @@ export default function QuestionManagement() {
                         <p className="text-slate-700 text-sm truncate">{q.title}</p>
                       </TableCell>
                       <TableCell>
-                        <Badge variant="secondary" className="bg-blue-100 text-blue-700">
+                        <Badge variant="secondary" className={typeColor[q.question_type] || "bg-slate-100 text-slate-700"}>
                           {QUESTION_TYPE_LABELS[q.question_type] || q.question_type}
                         </Badge>
                       </TableCell>
@@ -372,6 +419,11 @@ export default function QuestionManagement() {
                         </Badge>
                       </TableCell>
                       <TableCell>
+                        <Badge variant="outline" className={`${getGenerationBadgeClass(q.ai_generation_type)} text-xs font-medium border`}>
+                          {q.ai_generation_type ? AI_GENERATION_TYPE_LABELS[q.ai_generation_type] : "-"}
+                        </Badge>
+                      </TableCell>
+                      <TableCell>
                         <Badge
                           variant="secondary"
                           className={
@@ -383,7 +435,8 @@ export default function QuestionManagement() {
                           {REVIEW_STATUS_LABELS[q.review_status]}
                         </Badge>
                       </TableCell>
-                      <TableCell className="text-slate-600">{q.score}점</TableCell>
+                      <TableCell className="text-slate-600 font-medium">{q.score}점</TableCell>
+                      <TableCell className="text-sm text-slate-900 font-medium">{formatDate(q.created_at)}</TableCell>
                       <TableCell className="text-right">
                         <div className="flex items-center justify-end gap-1">
                           <Button variant="ghost" size="sm" onClick={() => openDetail(q)}>

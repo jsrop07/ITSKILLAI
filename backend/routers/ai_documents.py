@@ -153,12 +153,15 @@ def embed_document(document_id: int, conn=Depends(get_db)):
 @router.post("/search")
 def search_documents(
     request: AIDocumentSearchRequest,
+    db: Session = Depends(get_db),
 ):
     try:
         result = search_document_chunks(
+            db=db,
             query=request.query,
             top_k=request.top_k or 5,
             category=request.category,
+            search_mode=request.search_mode,
         )
 
         return {
