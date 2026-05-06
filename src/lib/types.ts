@@ -72,6 +72,8 @@ export interface Applicant {
   experience_level?: string;
   tech_stack?: string;
   status: ApplicantStatus;
+  target_diagnosis_id?: number;
+  target_deadline_at?: string;
   created_at: string;
   updated_at: string;
 }
@@ -83,6 +85,9 @@ export interface ApplicantCreate {
   target_role?: string;
   experience_level?: string;
   tech_stack?: string;
+  status?: ApplicantStatus;
+  target_diagnosis_id?: number;
+  target_deadline_at?: string;
 }
 
 // ──────────────────────────────────────────────
@@ -284,8 +289,10 @@ export interface AnswerDetail {
   answer_id: number;
   question_id: number;
   question_title: string;
+  question_type?: QuestionType;
   competency_type?: string;
   difficulty?: string;
+  choices_json?: string[];
   answer_text?: string;
   answer_json?: any;
   correct_answer_json?: any;
