@@ -278,8 +278,7 @@ AI 문제 검토, AI 문제 생성 결과, 문제 관리 화면에서 생성 방
 
 ### 6.1 화면 흐름도 이미지
 
-![Screen Flow](docs/images/screen-flow
-.svg)
+![Screen Flow](docs/images/screen-flow.svg)
 
 ### 6.2 관리자 흐름
 
@@ -659,8 +658,7 @@ hybrid_score = vector_score × 0.7 + keyword_score × 0.3
 ---
 
 ## 12. 주요 화면
-
-이미지 파일은 `docs/images` 폴더에 저장합니다.
+관리자 화면과 응시자 화면 기준입니다.
 
 ### 12.1 관리자 대시보드
 
@@ -698,6 +696,31 @@ AI가 생성한 pending 문제를 확인하고 승인, 반려, 수정할 수 있
 ![Hybrid RAG Search](docs/images/rag-document-management2.png)
 
 vector, keyword, hybrid 검색 모드를 선택하고 vector_score, keyword_score, hybrid_score를 확인할 수 있습니다.
+
+### 12.7 응시자 신청 화면
+
+![Applicant Apply](docs/images/applicant-apply.png)
+
+응시자는 신청화면에서 기본적인 정보를 입력한 후에 진단 신청을 할 수 있습니다.
+
+### 12.8 응시자 진단 시험 대기화면
+
+
+![Applicant Waiting Room](docs/images/applicant-test.png)
+
+
+### 12.9 응시자 진단 시험 화면
+
+![Applicant Test](docs/images/applicant-test2.png)
+
+### 12.10 응시자 시험 종료 화면
+
+![Applicant End](docs/images/applicant-end.png)
+
+### 12.11 관리자 및 응시자 결과 확인 화면
+
+![Applicant Result](docs/images/admin-applicant-detail1.png)
+![Applicant Result](docs/images/admin-applicant-detail2.png)
 
 ---
 
