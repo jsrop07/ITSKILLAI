@@ -20,36 +20,59 @@ import {
   SelectValue,
 } from "../components/ui/select";
 import { aiQuestionApi } from "../../lib/api";
+import {
+  COMPETENCY_OPTIONS,
+  TOPIC_PLACEHOLDER_MAP,
+  AI_GENERATION_TYPE_LABELS,
+  type CompetencyTypeValue,
+} from "../../lib/types";
 
-const topicPlaceholderMap: Record<string, string> = {
-  programming: "예: Python 예외 처리, Java 상속, 비동기 함수",
-  data_structure_algorithm: "예: 스택/큐, DFS/BFS, 시간복잡도, 다익스트라",
-  web_development: "예: REST API, JWT 인증, CORS, React 렌더링",
-  database: "예: 트랜잭션 격리 수준, 인덱스 최적화, JOIN, 정규화",
-  os_network: "예: 프로세스와 스레드, TCP/UDP, DNS, 데드락",
-  security: "예: XSS, CSRF, SQL Injection, OAuth 보안",
-  cloud_devops: "예: Docker, Kubernetes, CI/CD, AWS EC2 배포",
-  ai_data: "예: LLM, RAG, 임베딩, 모델 평가, 데이터 전처리",
-  software_engineering: "예: SOLID 원칙, 디자인 패턴, 테스트 전략, 애자일",
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  } catch {
+    return "-";
+  }
 };
 
-const competencyOptions = [
-  { value: "programming", label: "프로그래밍" },
-  { value: "data_structure_algorithm", label: "자료구조/알고리즘" },
-  { value: "web_development", label: "웹 개발" },
-  { value: "database", label: "데이터베이스" },
-  { value: "os_network", label: "운영체제/네트워크" },
-  { value: "security", label: "정보보안" },
-  { value: "cloud_devops", label: "클라우드/DevOps" },
-  { value: "ai_data", label: "인공지능/데이터" },
-  { value: "software_engineering", label: "소프트웨어공학" },
-];
+const getGenerationBadgeClass = (type?: string | null) => {
+  switch (type) {
+    case "rag":
+      return "bg-indigo-100 text-indigo-700 border-indigo-200";
+    case "general":
+      return "bg-cyan-100 text-cyan-700 border-cyan-200";
+    case "manual":
+      return "bg-slate-100 text-slate-700 border-slate-200";
+    default:
+      return "bg-amber-100 text-amber-700 border-amber-200";
+  }
+};
+
+const typeColor: Record<string, string> = {
+  multiple_choice: "bg-blue-100 text-blue-700 border-blue-200",
+  essay: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  coding: "bg-orange-100 text-orange-700 border-orange-200",
+};
+
+const difficultyColor: Record<string, string> = {
+  초급: "bg-green-100 text-green-700 border-green-200",
+  중급: "bg-amber-100 text-amber-700 border-amber-200",
+  고급: "bg-red-100 text-red-700 border-red-200",
+};
 
 const difficultyOptions = [
   { value: "초급", label: "초급" },
   { value: "중급", label: "중급" },
   { value: "고급", label: "고급" },
 ];
+
+const QUESTION_TYPE_LABELS: Record<string, string> = {
+  multiple_choice: "객관식",
+  essay: "서술형",
+  coding: "코드작성형",
+};
 
 const questionTypeOptions = [
   { value: "multiple_choice", label: "객관식" },
@@ -68,7 +91,8 @@ type DocumentScopeValue = "none" | "rag_all";
 
 export default function AIQuestionGeneration() {
   // const [role, setRole] = useState("backend");
-  const [competencyType, setCompetencyType] = useState("programming_language");
+  const [competencyType, setCompetencyType] =
+    useState<CompetencyTypeValue>("software_engineering");
   const [difficulty, setDifficulty] = useState<"초급" | "중급" | "고급">("초급");
   const [questionType, setQuestionType] = useState<"multiple_choice" | "essay" | "coding">("multiple_choice");
   const [documentScope, setDocumentScope] = useState<"none" | "rag_all">("none");
@@ -110,7 +134,7 @@ export default function AIQuestionGeneration() {
       alert("세부 주제는 IT 역량진단과 관련된 주제만 입력할 수 있습니다.");
       return;
     }
-    const selectedCompetency = competencyOptions.find(
+    const selectedCompetency = COMPETENCY_OPTIONS.find(
       (item) => item.value === competencyType
     );
 
@@ -185,12 +209,15 @@ export default function AIQuestionGeneration() {
           <CardContent className="pt-1 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="competency">역량 유형 *</Label>
-              <Select value={competencyType} onValueChange={setCompetencyType}>
+              <Select
+                value={competencyType}
+                onValueChange={(value) => setCompetencyType(value as CompetencyTypeValue)}
+              >
                 <SelectTrigger>
                   <SelectValue placeholder="역량 유형 선택" />
                 </SelectTrigger>
                 <SelectContent>
-                  {competencyOptions.map((option) => (
+                  {COMPETENCY_OPTIONS.map((option) => (
                     <SelectItem key={option.value} value={option.value}>
                       {option.label}
                     </SelectItem>
@@ -203,7 +230,7 @@ export default function AIQuestionGeneration() {
               <Label htmlFor="topic">세부 주제 *</Label>
               <Textarea
                 id="topic"
-                placeholder={topicPlaceholderMap[competencyType] || "예: 평가할 IT 세부 주제를 입력하세요"}
+                placeholder={TOPIC_PLACEHOLDER_MAP[competencyType] || "예: 평가할 IT 세부 주제를 입력하세요"}
                 value={detailedTopic}
                 onChange={(e) => setDetailedTopic(e.target.value)}
                 rows={3}
@@ -341,15 +368,21 @@ export default function AIQuestionGeneration() {
                         </CardTitle>
 
                         <div className="flex items-center gap-2 mt-2">
-                          <Badge variant="secondary" className="bg-sky-100 text-sky-700">
-                            {q.question_type || questionType}
+                          <Badge variant="secondary" className={typeColor[q.question_type || questionType] || "bg-slate-100 text-slate-700"}>
+                            {QUESTION_TYPE_LABELS[q.question_type || questionType] || q.question_type || questionType}
                           </Badge>
-                          <Badge variant="secondary" className="bg-green-100 text-green-700">
+                          <Badge variant="secondary" className={difficultyColor[q.difficulty || difficulty] || "bg-slate-100 text-slate-700"}>
                             {q.difficulty || difficulty}
                           </Badge>
-                          <Badge variant="secondary" className="bg-violet-100 text-violet-700">
+                          <Badge variant="secondary" className="bg-slate-100 text-slate-700">
                             {q.review_status || "pending"}
                           </Badge>
+                          <Badge variant="outline" className={`${getGenerationBadgeClass(q.ai_generation_type || (documentScope === "rag_all" ? "rag" : "general"))} font-medium border`}>
+                            {q.ai_generation_type ? AI_GENERATION_TYPE_LABELS[q.ai_generation_type] : (documentScope === "rag_all" ? "문서 기반 RAG" : "설계서 기반")}
+                          </Badge>
+                          <span className="text-sm text-slate-600 font-medium ml-auto">
+                            {formatDate(q.created_at)}
+                          </span>
                         </div>
                       </div>
                     </div>

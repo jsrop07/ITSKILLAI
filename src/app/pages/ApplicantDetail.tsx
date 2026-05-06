@@ -15,14 +15,14 @@ import {
 } from "../components/ui/dialog";
 import { Switch } from "../components/ui/switch";
 import { applicantsApi, recordsApi, diagnosesApi } from "../../lib/api";
-import type { Applicant, Record, AnswerDetail, Diagnosis } from "../../lib/types";
+import type { Applicant, ExamRecord, AnswerDetail, Diagnosis } from "../../lib/types";
 
 export default function ApplicantDetail() {
   const navigate = useNavigate();
   const { id } = useParams<{ id: string }>();
 
   const [applicant, setApplicant] = useState<Applicant | null>(null);
-  const [record, setRecord] = useState<Record | null>(null);
+  const [record, setRecord] = useState<ExamRecord | null>(null);
   const [answers, setAnswers] = useState<AnswerDetail[]>([]);
   const [gradedDiagnosis, setGradedDiagnosis] = useState<Diagnosis | null>(null);
   const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
@@ -453,7 +453,9 @@ export default function ApplicantDetail() {
                         </Badge>
                       )}
                     </TableCell>
-                    <TableCell className="text-sm text-slate-600 max-w-xs">{ans.answer_text || "-"}</TableCell>
+                    <TableCell className="text-sm text-slate-600 max-w-xs truncate" title={ans.answer_text || ""}>
+                      {ans.answer_text || "-"}
+                    </TableCell>
                     <TableCell>
                       {ans.is_correct != null ? (
                         <Badge

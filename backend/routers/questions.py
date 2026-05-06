@@ -17,6 +17,8 @@ def list_questions(
     source_type: Optional[str] = Query(None),
     competency_type: Optional[str] = Query(None),
     difficulty: Optional[str] = Query(None),
+    ai_generation_type: Optional[str] = Query(None),
+    question_type: Optional[str] = Query(None),
     skip: int = 0,
     limit: int = 100,
     db: Session = Depends(get_db),
@@ -32,6 +34,10 @@ def list_questions(
         query = query.filter(Question.competency_type == competency_type)
     if difficulty:
         query = query.filter(Question.difficulty == difficulty)
+    if ai_generation_type:
+        query = query.filter(Question.ai_generation_type == ai_generation_type)
+    if question_type:
+        query = query.filter(Question.question_type == question_type)
     return query.order_by(Question.created_at.desc()).offset(skip).limit(limit).all()
 
 

@@ -194,6 +194,7 @@ class QuestionBase(BaseModel):
     competency_type: Optional[str] = None
     competency_tags_json: Optional[List[str]] = None
     score: int = 1
+    ai_generation_type: Optional[str] = None
 
     @field_validator("choices_json", mode="before")
     @classmethod
@@ -472,6 +473,7 @@ class AIDocumentSearchRequest(BaseModel):
     query: str
     top_k: int = 5
     category: str | None = None
+    search_mode: Literal["vector", "keyword", "hybrid"] = "hybrid"
 
 
 class GenerateQuestionsFromDocumentRequest(BaseModel):

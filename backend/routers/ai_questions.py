@@ -12,6 +12,7 @@ from ai.services.question_generator import (
     generate_questions_from_context
 )
 from ai.rag.document_service import build_context_from_search_results
+from ai.services.competency_config import normalize_competency_type, COMPETENCY_KEYWORDS
 from typing import Literal
 
 router = APIRouter(prefix="/api/ai", tags=["AI Questions"])
@@ -34,6 +35,7 @@ class AIQuestionGenerateFromDocumentRequest(BaseModel):
     question_type: Literal["multiple_choice", "essay", "coding"] = "multiple_choice"
     competency_type: str | None = None
     search_query: str | None = None
+    search_mode: Literal["vector", "keyword", "hybrid"] = "hybrid"
 
 def save_generated_questions(
     generated_questions,
@@ -43,6 +45,7 @@ def save_generated_questions(
     score: int,
     question_type: str = "multiple_choice",
     competency_type: str | None = None,
+    ai_generation_type: str | None = None,
 ):
     saved_questions = []
 
@@ -125,6 +128,7 @@ def save_generated_questions(
             competency_tags_json=json.dumps(normalized_tags, ensure_ascii=False),
             score=q.get("score", score),
             review_status="pending",
+            ai_generation_type=ai_generation_type,
             created_by=None
         )
 
@@ -142,7 +146,9 @@ def save_generated_questions(
             "competency_type": question.competency_type,
             "competency_tags": normalized_tags,
             "score": question.score,
-            "review_status": question.review_status
+            "review_status": question.review_status,
+            "ai_generation_type": question.ai_generation_type,
+            "created_at": question.created_at.isoformat() if question.created_at else None
         })
 
     return saved_questions
@@ -153,8 +159,11 @@ def generate_ai_questions(
     db: Session = Depends(get_db)
 ):
     try:
+        # 역량 유형 정규화
+        normalized_competency = normalize_competency_type(request.competency_type)
+
         validate_topic_for_competency(
-            competency_type=request.competency_type,
+            competency_type=normalized_competency,
             topic=request.topic,
         )
 
@@ -166,7 +175,7 @@ def generate_ai_questions(
             count=request.count,
             score=score,
             question_type=request.question_type,
-            competency_type=request.competency_type,
+            competency_type=normalized_competency,
         )
 
         saved_questions = save_generated_questions(
@@ -176,7 +185,8 @@ def generate_ai_questions(
             difficulty=request.difficulty,
             score=score,
             question_type=request.question_type,
-            competency_type=request.competency_type,
+            competency_type=normalized_competency,
+            ai_generation_type="general",
         )
 
         db.commit()
@@ -205,17 +215,27 @@ def generate_ai_questions_from_document(
     db: Session = Depends(get_db)
 ):
     try:
+        # 역량 유형 정규화
+        normalized_competency = normalize_competency_type(request.competency_type)
+
         validate_topic_for_competency(
-            competency_type=request.competency_type,
+            competency_type=normalized_competency,
             topic=request.topic,
         )
 
         score = get_score_by_difficulty(request.difficulty)
 
+        rag_query = request.search_query or build_enhanced_rag_query(
+            topic=request.topic,
+            competency_type=normalized_competency,
+        )
+
         context = build_context_from_search_results(
-            query=request.search_query or request.topic,
+            db=db,
+            query=rag_query,
             top_k=request.top_k,
-            category=request.competency_type,
+            category=normalized_competency,
+            search_mode="hybrid",
         )
 
         if not context or not context.strip():
@@ -232,7 +252,7 @@ def generate_ai_questions_from_document(
             score=score,
             question_type=request.question_type,
             # role=request.role,
-            competency_type=request.competency_type,
+            competency_type=normalized_competency,
         )
 
         saved_questions = save_generated_questions(
@@ -242,7 +262,8 @@ def generate_ai_questions_from_document(
             difficulty=request.difficulty,
             score=score,
             question_type=request.question_type,
-            competency_type=request.competency_type,
+            competency_type=normalized_competency,
+            ai_generation_type="rag",
         )
 
         db.commit()
@@ -273,3 +294,14 @@ def get_score_by_difficulty(difficulty: str, default_score: int = 1):
         "고급": 5,
     }
     return score_map.get(difficulty, default_score)
+
+def build_enhanced_rag_query(topic: str, competency_type: str | None = None) -> str:
+    base_query = topic.strip()
+    
+    # 정규화
+    normalized_type = normalize_competency_type(competency_type)
+    
+    # competency_config의 키워드 활용 (상위 5개 정도만 추가)
+    extra_keywords = COMPETENCY_KEYWORDS.get(normalized_type or "", [])[:5]
+
+    return " ".join([base_query] + extra_keywords)

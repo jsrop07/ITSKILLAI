@@ -26,7 +26,7 @@ import type {
 // Axios 인스턴스
 // ──────────────────────────────────────────────
 const api = axios.create({
-  baseURL: "http://localhost:8000",
+  baseURL: "http://localhost:9000",
   headers: { "Content-Type": "application/json" },
 });
 
@@ -317,6 +317,8 @@ export interface AIDocument {
   embedding_error?: string | null;
 }
 
+export type RAGSearchMode = "vector" | "keyword" | "hybrid";
+
 export interface RAGSearchResult {
   content: string;
   metadata: {
@@ -328,15 +330,21 @@ export interface RAGSearchResult {
     category?: string;
     source_type?: string;
   };
-  distance?: number;
-  similarity?: number;
+  distance?: number | null;
+  similarity?: number | null;
+  vector_score?: number | null;
+  keyword_score?: number | null;
+  hybrid_score?: number | null;
+  search_source?: "vector" | "keyword" | "hybrid";
 }
 
 export interface AIDocumentSearchPayload {
   query: string;
   top_k?: number;
   category?: string;
+  search_mode?: RAGSearchMode;
 }
+
 export type QuestionTypeValue = "multiple_choice" | "essay" | "coding";
 
 export interface GenerateAIQuestionsPayload {
@@ -392,6 +400,7 @@ export const aiDocumentApi = {
       query: payload.query,
       top_k: payload.top_k ?? 5,
       category: payload.category || undefined,
+      search_mode: payload.search_mode ?? "hybrid",
     });
 
     return res.data?.data ?? res.data;

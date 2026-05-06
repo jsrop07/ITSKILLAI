@@ -34,7 +34,13 @@ import {
   aiDocumentApi,
   AIDocument,
   RAGSearchResult,
+  RAGSearchMode,
 } from "../../lib/api";
+import {
+  COMPETENCY_OPTIONS,
+  TOPIC_PLACEHOLDER_MAP,
+  getCompetencyLabel,
+} from "../../lib/types";
 
 export default function DocumentRAGManagement() {
   const [documents, setDocuments] = useState<AIDocument[]>([]);
@@ -52,6 +58,7 @@ export default function DocumentRAGManagement() {
   const [sourceType, setSourceType] = useState("NCS");
   const [category, setCategory] = useState("");
   const [searchCategory, setSearchCategory] = useState("");
+  const [searchMode, setSearchMode] = useState<"vector" | "keyword" | "hybrid">("hybrid");
   const [generateCategory, setGenerateCategory] = useState("");
   const [description, setDescription] = useState("");
   const [file, setFile] = useState<File | null>(null);
@@ -61,29 +68,8 @@ export default function DocumentRAGManagement() {
   const [count, setCount] = useState(1);
   const [topK, setTopK] = useState(3);
 
-  const topicPlaceholderMap: Record<string, string> = {
-    programming: "예: Python 예외 처리, Java 상속, 비동기 함수",
-    data_structure_algorithm: "예: 스택/큐, DFS/BFS, 시간복잡도, 다익스트라",
-    web_development: "예: REST API, JWT 인증, CORS, React 렌더링",
-    database: "예: 트랜잭션 격리 수준, 인덱스 최적화, JOIN, 정규화",
-    os_network: "예: 프로세스와 스레드, TCP/UDP, DNS, 데드락",
-    security: "예: XSS, CSRF, SQL Injection, OAuth 보안",
-    cloud_devops: "예: Docker, Kubernetes, CI/CD, AWS EC2 배포",
-    ai_data: "예: LLM, RAG, 임베딩, 모델 평가, 데이터 전처리",
-    software_engineering: "예: SOLID 원칙, 디자인 패턴, 테스트 전략, 애자일",
-  };
+  // topicPlaceholderMap, competencyOptions는 ../../lib/types의 공통 상수(TOPIC_PLACEHOLDER_MAP, COMPETENCY_OPTIONS)로 통합됨
 
-  const competencyOptions = [
-    { value: "programming", label: "프로그래밍" },
-    { value: "data_structure_algorithm", label: "자료구조/알고리즘" },
-    { value: "web_development", label: "웹 개발" },
-    { value: "database", label: "데이터베이스" },
-    { value: "os_network", label: "운영체제/네트워크" },
-    { value: "security", label: "정보보안" },
-    { value: "cloud_devops", label: "클라우드/DevOps" },
-    { value: "ai_data", label: "인공지능/데이터" },
-    { value: "software_engineering", label: "소프트웨어공학" },
-  ];
 
   const loadDocuments = async () => {
     try {
@@ -195,12 +181,13 @@ export default function DocumentRAGManagement() {
         query: searchQuery,
         top_k: topK,
         category: searchCategory || undefined,
+        search_mode: searchMode,
       });
 
       setRetrievalResults(res.results || []);
     } catch (error: any) {
       console.error(error);
-      alert(error.response?.data?.detail || "벡터 검색 중 오류가 발생했습니다.");
+      alert(error.response?.data?.detail || "문서 검색 중 오류가 발생했습니다.");
     } finally {
       setIsSearching(false);
     }
@@ -218,7 +205,7 @@ export default function DocumentRAGManagement() {
     }
 
     const categoryLabel =
-      competencyOptions.find((item) => item.value === generateCategory)?.label || "";
+      COMPETENCY_OPTIONS.find((item) => item.value === generateCategory)?.label || "";
 
     try {
       setIsLoading(true);
@@ -346,7 +333,7 @@ export default function DocumentRAGManagement() {
 
                   <TableCell>
                     <Badge variant="secondary" className="bg-sky-100 text-sky-700">
-                      {doc.category || "-"}
+                      {getCompetencyLabel(doc.category)}
                     </Badge>
                   </TableCell>
 
@@ -440,11 +427,26 @@ export default function DocumentRAGManagement() {
                 className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
               >
                 <option value="">전체 문서</option>
-                {competencyOptions.map((option) => (
+                {COMPETENCY_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
                 ))}
+              </select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm font-medium text-slate-700">
+                검색 모드
+              </label>
+              <select
+                value={searchMode}
+                onChange={(e) => setSearchMode(e.target.value as RAGSearchMode)}
+                className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
+              >
+                <option value="vector">Vector Search</option>
+                <option value="keyword">Keyword Search</option>
+                <option value="hybrid">Hybrid Search</option>
               </select>
             </div>
           </CardContent>
@@ -475,7 +477,9 @@ export default function DocumentRAGManagement() {
               ) : (
                 <>
                   <Search className="size-4 mr-2" />
-                  벡터 검색 실행
+                  {searchMode === "vector" && "벡터 검색 실행"}
+                  {searchMode === "keyword" && "키워드 검색 실행"}
+                  {searchMode === "hybrid" && "하이브리드 검색 실행"}
                 </>
               )}
             </Button>
@@ -509,6 +513,35 @@ export default function DocumentRAGManagement() {
                       </Badge>
 
                       <Badge variant="secondary" className="bg-sky-100 text-sky-700">
+                        {result.search_source || searchMode}
+                      </Badge>
+                    </div>
+
+                    <div className="flex flex-wrap gap-2 mb-2">
+                      <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                        vector{" "}
+                        {typeof result.vector_score === "number"
+                          ? result.vector_score.toFixed(3)
+                          : typeof result.similarity === "number"
+                            ? result.similarity.toFixed(3)
+                            : "-"}
+                      </Badge>
+
+                      <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                        keyword{" "}
+                        {typeof result.keyword_score === "number"
+                          ? result.keyword_score.toFixed(3)
+                          : "-"}
+                      </Badge>
+
+                      <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                        hybrid{" "}
+                        {typeof result.hybrid_score === "number"
+                          ? result.hybrid_score.toFixed(3)
+                          : "-"}
+                      </Badge>
+
+                      <Badge variant="secondary" className="bg-slate-100 text-slate-700">
                         similarity{" "}
                         {typeof result.similarity === "number"
                           ? result.similarity.toFixed(3)
@@ -532,7 +565,7 @@ export default function DocumentRAGManagement() {
               <div className="text-center py-8">
                 <Database className="size-12 text-slate-300 mx-auto mb-3" />
                 <p className="text-sm text-slate-500">
-                  검색 쿼리를 입력하고 '벡터 검색 실행'을 클릭하세요
+                  검색 쿼리를 입력하고 검색 모드를 선택한 뒤 검색을 실행하세요
                 </p>
               </div>
             )}
@@ -572,7 +605,7 @@ export default function DocumentRAGManagement() {
                 className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
               >
                 <option value="">카테고리 선택</option>
-                {competencyOptions.map((option) => (
+                {COMPETENCY_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -623,7 +656,7 @@ export default function DocumentRAGManagement() {
                 className="w-full h-10 rounded-md border border-slate-200 bg-white px-3 text-sm"
               >
                 <option value="">역량 유형 선택</option>
-                {competencyOptions.map((option) => (
+                {COMPETENCY_OPTIONS.map((option) => (
                   <option key={option.value} value={option.value}>
                     {option.label}
                   </option>
@@ -631,7 +664,7 @@ export default function DocumentRAGManagement() {
               </select>
             </div>
             <Input
-              placeholder={topicPlaceholderMap[generateCategory] || "예: 평가할 IT 세부 주제를 입력하세요"}
+              placeholder={TOPIC_PLACEHOLDER_MAP[generateCategory] || "예: 평가할 IT 세부 주제를 입력하세요"}
               value={topic}
               onChange={(e) => setTopic(e.target.value)}
             />
@@ -700,7 +733,7 @@ export default function DocumentRAGManagement() {
             <div className="space-y-2 text-sm text-slate-700">
               <p>파일명: {selectedDoc.file_name}</p>
               <p>출처: {selectedDoc.source_type || "-"}</p>
-              <p>카테고리: {selectedDoc.category || "-"}</p>
+              <p>카테고리: {getCompetencyLabel(selectedDoc.category)}</p>
               <p>설명: {selectedDoc.description || "-"}</p>
               <p>상태: {getStatusText(selectedDoc.embedding_status)}</p>
               {selectedDoc.embedding_error && (
