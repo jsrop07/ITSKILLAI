@@ -52,11 +52,11 @@ export default function Dashboard() {
 
   const kpiData = stats
     ? [
-        { label: "전체 응시자", value: String(stats.total_applicants), icon: Users, color: "text-sky-600", bg: "bg-sky-50" },
-        { label: "진행 중인 시험", value: String(stats.in_progress_exams), icon: ClipboardList, color: "text-blue-600", bg: "bg-blue-50" },
-        { label: "검토 대기 문제", value: String(stats.pending_review_questions), icon: FileCheck, color: "text-amber-600", bg: "bg-amber-50" },
-        { label: "AI 생성 문제", value: String(stats.recent_question_count), icon: Sparkles, color: "text-violet-600", bg: "bg-violet-50" },
-      ]
+      { label: "전체 응시자", value: String(stats.total_applicants), icon: Users, color: "text-sky-600", bg: "bg-sky-50" },
+      { label: "진행 중인 시험", value: String(stats.in_progress_exams), icon: ClipboardList, color: "text-blue-600", bg: "bg-blue-50" },
+      { label: "검토 대기 문제", value: String(stats.pending_review_questions), icon: FileCheck, color: "text-amber-600", bg: "bg-amber-50" },
+      { label: "AI 생성 문제", value: String(stats.recent_question_count), icon: Sparkles, color: "text-violet-600", bg: "bg-violet-50" },
+    ]
     : [];
 
   if (loading) {
@@ -155,7 +155,7 @@ export default function Dashboard() {
                 <TableHeader>
                   <TableRow>
                     <TableHead>응시자</TableHead>
-                    <TableHead>직무</TableHead>
+                    {/* <TableHead>직무</TableHead> */}
                     <TableHead>시험</TableHead>
                     <TableHead>점수</TableHead>
                     <TableHead>결과</TableHead>
@@ -170,7 +170,6 @@ export default function Dashboard() {
                       onClick={() => navigate(`/applicants/${exam.applicant_id}`)}
                     >
                       <TableCell className="font-medium">{exam.name}</TableCell>
-                      <TableCell className="text-slate-600">{exam.role || "-"}</TableCell>
                       <TableCell className="text-slate-600">{exam.exam}</TableCell>
                       <TableCell>
                         {exam.score != null ? (
@@ -180,8 +179,8 @@ export default function Dashboard() {
                               exam.score >= 90
                                 ? "bg-green-100 text-green-700"
                                 : exam.score >= 80
-                                ? "bg-sky-100 text-sky-700"
-                                : "bg-amber-100 text-amber-700"
+                                  ? "bg-sky-100 text-sky-700"
+                                  : "bg-amber-100 text-amber-700"
                             }
                           >
                             {exam.score}점

@@ -106,7 +106,7 @@ export default function QuestionSetManagement() {
           <div className="relative">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 size-4 text-slate-400" />
             <Input
-              placeholder="세트명 또는 직무로 검색..."
+              placeholder="세트명"
               value={searchTerm}
               onChange={(e) => setSearchTerm(e.target.value)}
               className="pl-10"
@@ -118,7 +118,6 @@ export default function QuestionSetManagement() {
             <TableHeader>
               <TableRow>
                 <TableHead>세트명</TableHead>
-                <TableHead>대상 직무</TableHead>
                 <TableHead>난이도</TableHead>
                 <TableHead>문제 수</TableHead>
                 <TableHead>생성일</TableHead>
@@ -130,19 +129,14 @@ export default function QuestionSetManagement() {
                 <TableRow key={set.id}>
                   <TableCell className="font-medium">{set.name}</TableCell>
                   <TableCell>
-                    <Badge variant="secondary" className="bg-sky-100 text-sky-700">
-                      {set.role}
-                    </Badge>
-                  </TableCell>
-                  <TableCell>
                     <Badge
                       variant="secondary"
                       className={
                         set.level === "고급"
                           ? "bg-red-100 text-red-700"
                           : set.level === "중급"
-                          ? "bg-amber-100 text-amber-700"
-                          : "bg-green-100 text-green-700"
+                            ? "bg-amber-100 text-amber-700"
+                            : "bg-green-100 text-green-700"
                       }
                     >
                       {set.level}

@@ -98,7 +98,7 @@ export default function Sidebar() {
           </div>
           <div className="flex-1 min-w-0">
             <p className="text-sm font-medium text-slate-700 truncate">관리자</p>
-            <p className="text-xs text-slate-500 truncate">admin@company.com</p>
+            <p className="text-xs text-slate-500 truncate">jsrop07@naver.com</p>
           </div>
         </div>
         <button

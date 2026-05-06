@@ -9,6 +9,7 @@ import { Search, Filter, Eye, Plus, Loader2, X } from "lucide-react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../components/ui/table";
+import { Checkbox } from "../components/ui/checkbox";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "../components/ui/select";
@@ -18,16 +19,21 @@ import {
 import { applicantsApi, recordsApi, diagnosesApi } from "../../lib/api";
 import type { Applicant, ApplicantCreate, Diagnosis } from "../../lib/types";
 import { APPLICANT_STATUS_LABELS } from "../../lib/types";
+type ApplicantWithResult = Applicant & {
+  latest_score?: number | null;
+  latest_pass_yn?: boolean | number | string | null;
+};
 
 export default function ApplicantManagement() {
   const navigate = useNavigate();
-  const [applicants, setApplicants] = useState<Applicant[]>([]);
+  const [applicants, setApplicants] = useState<ApplicantWithResult[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchTerm, setSearchTerm] = useState("");
-  const [roleFilter, setRoleFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
+  const [passFilter, setPassFilter] = useState("all");
   const [showAdd, setShowAdd] = useState(false);
   const [diagnoses, setDiagnoses] = useState<Diagnosis[]>([]);
+  const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set());
 
   // 응시자 추가 폼
   const [form, setForm] = useState<ApplicantCreate>({
@@ -42,9 +48,9 @@ export default function ApplicantManagement() {
       const params: any = {};
       if (searchTerm) params.search = searchTerm;
       if (statusFilter !== "all") params.status = statusFilter;
-      if (roleFilter !== "all") params.target_role = roleFilter;
+      if (passFilter !== "all") params.pass_yn = passFilter === "pass";
       const data = await applicantsApi.list(params);
-      setApplicants(data);
+      setApplicants(Array.isArray(data) ? data : []);
     } catch (err) {
       console.error(err);
     } finally {
@@ -54,7 +60,7 @@ export default function ApplicantManagement() {
 
   useEffect(() => {
     load();
-  }, [searchTerm, roleFilter, statusFilter]);
+  }, [searchTerm, statusFilter, passFilter]);
 
   useEffect(() => {
     diagnosesApi.list({ status: "active" }).then(setDiagnoses).catch(console.error);
@@ -81,6 +87,54 @@ export default function ApplicantManagement() {
     } finally {
       setSaving(false);
     }
+  };
+
+  const handleDelete = async (e: React.MouseEvent, id: number) => {
+    e.stopPropagation();
+    if (!window.confirm("정말 이 응시자를 삭제하시겠습니까? 관련된 시험 기록도 함께 삭제됩니다.")) return;
+    try {
+      await applicantsApi.delete(id);
+      setCheckedIds(prev => {
+        const next = new Set(prev);
+        next.delete(id);
+        return next;
+      });
+      load();
+    } catch (err) {
+      alert("삭제 실패");
+    }
+  };
+
+  const handleBulkDelete = async () => {
+    if (checkedIds.size === 0) return alert("선택된 응시자가 없습니다.");
+    if (!window.confirm(`선택한 ${checkedIds.size}명의 응시자를 삭제하시겠습니까? 관련된 시험 기록도 함께 삭제됩니다.`)) return;
+    try {
+      await Promise.all(Array.from(checkedIds).map(id => applicantsApi.delete(id)));
+      setCheckedIds(new Set());
+      load();
+    } catch (err) {
+      alert("일부 응시자 삭제 실패");
+      load();
+    }
+  };
+
+  const allFilteredChecked = applicants.length > 0 && applicants.every(a => checkedIds.has(a.applicant_id));
+
+  const toggleCheckAll = () => {
+    const newKeys = new Set(checkedIds);
+    if (allFilteredChecked) {
+      applicants.forEach(a => newKeys.delete(a.applicant_id));
+    } else {
+      applicants.forEach(a => newKeys.add(a.applicant_id));
+    }
+    setCheckedIds(newKeys);
+  };
+
+  const toggleCheck = (id: number) => {
+    const newKeys = new Set(checkedIds);
+    if (newKeys.has(id)) newKeys.delete(id);
+    else newKeys.add(id);
+    setCheckedIds(newKeys);
   };
 
   const statusColor: Record<string, string> = {
@@ -115,7 +169,7 @@ export default function ApplicantManagement() {
                 className="pl-10"
               />
             </div>
-            <Select value={roleFilter} onValueChange={setRoleFilter}>
+            {/* <Select value={roleFilter} onValueChange={setRoleFilter}>
               <SelectTrigger className="w-48">
                 <Filter className="size-4 mr-2" />
                 <SelectValue placeholder="직무 필터" />
@@ -128,7 +182,7 @@ export default function ApplicantManagement() {
                 <SelectItem value="데이터 엔지니어">데이터 엔지니어</SelectItem>
                 <SelectItem value="DevOps 엔지니어">DevOps 엔지니어</SelectItem>
               </SelectContent>
-            </Select>
+            </Select> */}
             <Select value={statusFilter} onValueChange={setStatusFilter}>
               <SelectTrigger className="w-40">
                 <SelectValue placeholder="상태 필터" />
@@ -141,7 +195,25 @@ export default function ApplicantManagement() {
                 <SelectItem value="completed">완료</SelectItem>
               </SelectContent>
             </Select>
+            <Select value={passFilter} onValueChange={setPassFilter}>
+              <SelectTrigger className="w-32">
+                <SelectValue placeholder="결과 필터" />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="all">전체 결과</SelectItem>
+                <SelectItem value="pass">합격</SelectItem>
+                <SelectItem value="fail">불합격</SelectItem>
+              </SelectContent>
+            </Select>
           </div>
+          {checkedIds.size > 0 && (
+            <div className="flex items-center gap-2 mt-4 pt-4 border-t border-slate-100">
+              <span className="text-sm font-medium text-sky-700">{checkedIds.size}명 선택됨</span>
+              <Button variant="outline" size="sm" className="h-8 text-red-600 hover:text-red-700" onClick={handleBulkDelete}>
+                선택 삭제
+              </Button>
+            </div>
+          )}
         </CardHeader>
         <CardContent className="p-0">
           {loading ? (
@@ -152,9 +224,11 @@ export default function ApplicantManagement() {
             <Table>
               <TableHeader>
                 <TableRow>
+                  <TableHead className="w-12">
+                    <Checkbox checked={allFilteredChecked} onCheckedChange={toggleCheckAll} />
+                  </TableHead>
                   <TableHead>이름</TableHead>
                   <TableHead>이메일</TableHead>
-                  <TableHead>목표 직무</TableHead>
                   <TableHead>경력</TableHead>
                   <TableHead>점수</TableHead>
                   <TableHead>결과</TableHead>
@@ -166,22 +240,18 @@ export default function ApplicantManagement() {
               <TableBody>
                 {applicants.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-slate-400 py-12">
+                    <TableCell colSpan={8} className="text-center text-slate-400 py-12">
                       응시자가 없습니다.
                     </TableCell>
                   </TableRow>
                 ) : (
                   applicants.map((applicant) => (
                     <TableRow key={applicant.applicant_id} className="cursor-pointer hover:bg-slate-50 transition-colors" onClick={() => navigate(`/applicants/${applicant.applicant_id}`)}>
+                      <TableCell onClick={(e) => e.stopPropagation()}>
+                        <Checkbox checked={checkedIds.has(applicant.applicant_id)} onCheckedChange={() => toggleCheck(applicant.applicant_id)} />
+                      </TableCell>
                       <TableCell className="font-medium">{applicant.name}</TableCell>
                       <TableCell className="text-slate-600">{applicant.email}</TableCell>
-                      <TableCell>
-                        {applicant.target_role && (
-                          <Badge variant="secondary" className="bg-sky-100 text-sky-700">
-                            {applicant.target_role}
-                          </Badge>
-                        )}
-                      </TableCell>
                       <TableCell className="text-slate-600">{applicant.experience_level || "-"}</TableCell>
                       <TableCell>
                         {applicant.latest_score != null ? (
@@ -217,10 +287,17 @@ export default function ApplicantManagement() {
                         <Button
                           variant="ghost"
                           size="sm"
-                          onClick={() => navigate(`/applicants/${applicant.applicant_id}`)}
+                          onClick={(e) => { e.stopPropagation(); navigate(`/applicants/${applicant.applicant_id}`); }}
                         >
-                          <Eye className="size-4 mr-2" />
-                          상세보기
+                          <Eye className="size-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          className="text-red-500 hover:text-red-700"
+                          onClick={(e) => handleDelete(e, applicant.applicant_id)}
+                        >
+                          <X className="size-4" />
                         </Button>
                       </TableCell>
                     </TableRow>
@@ -260,7 +337,7 @@ export default function ApplicantManagement() {
                 <Input value={form.experience_level} onChange={(e) => setForm({ ...form, experience_level: e.target.value })} placeholder="3년" />
               </div>
             </div>
-            <div className="space-y-2">
+            {/* <div className="space-y-2">
               <Label>목표 직무</Label>
               <Select value={form.target_role} onValueChange={(v) => setForm({ ...form, target_role: v })}>
                 <SelectTrigger>
@@ -274,7 +351,7 @@ export default function ApplicantManagement() {
                   <SelectItem value="DevOps 엔지니어">DevOps 엔지니어</SelectItem>
                 </SelectContent>
               </Select>
-            </div>
+            </div> */}
             <div className="space-y-2">
               <Label>기술 스택</Label>
               <Input value={form.tech_stack} onChange={(e) => setForm({ ...form, tech_stack: e.target.value })} placeholder="Java, Spring Boot, MySQL" />

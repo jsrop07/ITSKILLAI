@@ -40,6 +40,8 @@ export default function ExamForm() {
   // Filters for pool
   const [searchTerm, setSearchTerm] = useState("");
   const [difficultyFilter, setDifficultyFilter] = useState("all");
+  const [competencyFilter, setCompetencyFilter] = useState("");
+  const [scoreFilter, setScoreFilter] = useState("all");
 
   useEffect(() => {
     const fetchData = async () => {
@@ -110,8 +112,12 @@ export default function ExamForm() {
   };
 
   const filteredPool = allQuestions.filter(q => {
+    // Only show approved questions
+    if (q.review_status !== "approved") return false;
     if (searchTerm && !q.title.toLowerCase().includes(searchTerm.toLowerCase())) return false;
     if (difficultyFilter !== "all" && q.difficulty !== difficultyFilter) return false;
+    if (competencyFilter && !(q.competency_type || "").toLowerCase().includes(competencyFilter.toLowerCase())) return false;
+    if (scoreFilter !== "all" && q.score !== Number(scoreFilter)) return false;
     // hide already selected?
     // if (selectedQuestions.some(sq => sq.question_id === q.question_id)) return false;
     return true;
@@ -179,7 +185,7 @@ export default function ExamForm() {
                 <Label>설명</Label>
                 <Input value={form.description} onChange={(e) => setForm({ ...form, description: e.target.value })} placeholder="시험 설명" />
               </div>
-              <div className="space-y-2">
+              {/* <div className="space-y-2">
                 <Label>대상 직무</Label>
                 <Select value={form.target_role} onValueChange={(v) => setForm({ ...form, target_role: v })}>
                   <SelectTrigger><SelectValue placeholder="직무 선택" /></SelectTrigger>
@@ -191,7 +197,7 @@ export default function ExamForm() {
                     <SelectItem value="DevOps 엔지니어">DevOps 엔지니어</SelectItem>
                   </SelectContent>
                 </Select>
-              </div>
+              </div> */}
               <div className="space-y-2">
                 <Label>난이도</Label>
                 <Select value={form.level} onValueChange={(v: any) => setForm({ ...form, level: v })}>
@@ -293,13 +299,30 @@ export default function ExamForm() {
                   onChange={e => setSearchTerm(e.target.value)}
                 />
               </div>
+              <Input
+                className="w-28 bg-white"
+                placeholder="역량 검색"
+                value={competencyFilter}
+                onChange={e => setCompetencyFilter(e.target.value)}
+              />
               <Select value={difficultyFilter} onValueChange={setDifficultyFilter}>
-                <SelectTrigger className="w-32 bg-white"><SelectValue placeholder="난이도" /></SelectTrigger>
+                <SelectTrigger className="w-28 bg-white"><SelectValue placeholder="난이도" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="all">전체</SelectItem>
                   <SelectItem value="초급">초급</SelectItem>
                   <SelectItem value="중급">중급</SelectItem>
                   <SelectItem value="고급">고급</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={scoreFilter} onValueChange={setScoreFilter}>
+                <SelectTrigger className="w-28 bg-white"><SelectValue placeholder="점수" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">전체 배점</SelectItem>
+                  <SelectItem value="1">1점</SelectItem>
+                  <SelectItem value="2">2점</SelectItem>
+                  <SelectItem value="3">3점</SelectItem>
+                  <SelectItem value="4">4점</SelectItem>
+                  <SelectItem value="5">5점</SelectItem>
                 </SelectContent>
               </Select>
             </div>

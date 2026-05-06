@@ -1,5 +1,5 @@
 from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional, List, Any
+from typing import Optional, List, Any, Literal
 from datetime import datetime
 from enum import Enum
 import json
@@ -36,8 +36,8 @@ class SourceTypeEnum(str, Enum):
 
 class QuestionTypeEnum(str, Enum):
     multiple_choice = "multiple_choice"
-    short_answer = "short_answer"
     essay = "essay"
+    coding ="coding"
 
 class ReviewStatusEnum(str, Enum):
     pending = "pending"
@@ -194,6 +194,7 @@ class QuestionBase(BaseModel):
     competency_type: Optional[str] = None
     competency_tags_json: Optional[List[str]] = None
     score: int = 1
+    ai_generation_type: Optional[str] = None
 
     @field_validator("choices_json", mode="before")
     @classmethod
@@ -449,6 +450,8 @@ class AIDocumentRead(BaseModel):
     description: Optional[str] = None
     uploaded_by: Optional[int] = None
     created_at: datetime
+    embedding_status: Optional[str] = None
+    embedding_error: Optional[str] = None
 
     class Config:
         from_attributes = True
@@ -465,3 +468,16 @@ class AIDocumentChunkRead(BaseModel):
 
     class Config:
         from_attributes = True
+
+class AIDocumentSearchRequest(BaseModel):
+    query: str
+    top_k: int = 5
+    category: str | None = None
+    search_mode: Literal["vector", "keyword", "hybrid"] = "hybrid"
+
+
+class GenerateQuestionsFromDocumentRequest(BaseModel):
+    topic: str
+    difficulty: Literal["초급", "중급", "고급"]
+    count: int = 5
+    top_k: int = 5

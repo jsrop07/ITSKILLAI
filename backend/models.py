@@ -39,8 +39,8 @@ class SourceType(str, enum.Enum):
 
 class QuestionType(str, enum.Enum):
     multiple_choice = "multiple_choice"
-    short_answer = "short_answer"
     essay = "essay"
+    coding = "coding"
 
 class ReviewStatus(str, enum.Enum):
     pending = "pending"
@@ -135,6 +135,7 @@ class Question(Base):
     competency_tags_json = Column(JSON, nullable=True)
     score = Column(Integer, default=1, nullable=False)
     review_status = Column(Enum(ReviewStatus), default=ReviewStatus.pending, nullable=False)
+    ai_generation_type = Column(String(50), nullable=True) # "general", "rag", "manual"
     created_by = Column(Integer, ForeignKey("admins.admin_id"), nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -191,6 +192,8 @@ class AIDocument(Base):
     description = Column(Text, nullable=True)
     uploaded_by = Column(Integer, ForeignKey("admins.admin_id"), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+    embedding_status = Column(String(20), default="pending")
+    embedding_error = Column(Text, nullable=True)
 
 
 class AIDocumentChunk(Base):

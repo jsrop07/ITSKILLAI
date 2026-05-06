@@ -1,11 +1,17 @@
 import { useState } from "react";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Badge } from "../components/ui/badge";
-import { Sparkles, CheckCircle2, XCircle, RotateCw, Save, Database, FileText } from "lucide-react";
+import { Sparkles, RotateCw } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -13,89 +19,169 @@ import {
   SelectTrigger,
   SelectValue,
 } from "../components/ui/select";
+import { aiQuestionApi } from "../../lib/api";
+import {
+  COMPETENCY_OPTIONS,
+  TOPIC_PLACEHOLDER_MAP,
+  AI_GENERATION_TYPE_LABELS,
+  type CompetencyTypeValue,
+} from "../../lib/types";
 
-const mockGeneratedQuestions = [
-  {
-    id: 1,
-    question: "Spring Boot에서 @Transactional 애노테이션의 전파(Propagation) 옵션 중 REQUIRES_NEW의 동작 방식은?",
-    options: [
-      "기존 트랜잭션이 있으면 참여하고, 없으면 새로 생성",
-      "항상 새로운 트랜잭션을 생성하고, 기존 트랜잭션은 일시 중단",
-      "기존 트랜잭션이 있어야만 실행 가능",
-      "트랜잭션 없이 실행",
-    ],
-    correctAnswer: "항상 새로운 트랜잭션을 생성하고, 기존 트랜잭션은 일시 중단",
-    explanation: "REQUIRES_NEW는 항상 새로운 트랜잭션을 시작하며, 기존 트랜잭션이 있는 경우 이를 일시 중단합니다. 이는 독립적인 트랜잭션 처리가 필요한 경우 유용합니다.",
-    competencyTags: ["Spring Framework", "트랜잭션 관리", "어노테이션"],
-    difficulty: "고급",
-    sourceReferences: [
-      "Spring Framework 공식 문서 - Transaction Propagation",
-      "doc_spring_transaction_guide.pdf (p. 24-27)",
-    ],
-    validationStatus: "검증됨",
-    similarity: 12,
-  },
-  {
-    id: 2,
-    question: "JPA에서 영속성 컨텍스트의 1차 캐시가 제공하는 이점은?",
-    options: [
-      "데이터베이스 접근 횟수 감소 및 동일성 보장",
-      "분산 환경에서의 캐시 공유",
-      "영구적인 데이터 저장",
-      "자동 인덱스 생성",
-    ],
-    correctAnswer: "데이터베이스 접근 횟수 감소 및 동일성 보장",
-    explanation: "1차 캐시는 영속성 컨텍스트 내에서 엔티티를 저장하여 동일한 엔티티에 대한 반복적인 데이터베이스 조회를 방지하고, 같은 식별자를 가진 엔티티에 대해 동일성(==)을 보장합니다.",
-    competencyTags: ["JPA", "영속성 컨텍스트", "캐싱"],
-    difficulty: "중급",
-    sourceReferences: [
-      "JPA 프로그래밍 가이드 - 영속성 관리",
-      "doc_jpa_persistence_context.pdf (p. 15-18)",
-    ],
-    validationStatus: "검증됨",
-    similarity: 8,
-  },
-  {
-    id: 3,
-    question: "Spring Security에서 CSRF 토큰의 주요 목적은?",
-    options: [
-      "사용자 인증 정보 저장",
-      "크로스 사이트 요청 위조 공격 방지",
-      "세션 관리 및 타임아웃 처리",
-      "암호화된 통신 보장",
-    ],
-    correctAnswer: "크로스 사이트 요청 위조 공격 방지",
-    explanation: "CSRF 토큰은 악의적인 웹사이트가 사용자의 인증된 세션을 이용하여 의도하지 않은 요청을 보내는 것을 방지합니다. 서버는 각 요청에 포함된 토큰을 검증하여 요청의 정당성을 확인합니다.",
-    competencyTags: ["Spring Security", "보안", "CSRF"],
-    difficulty: "중급",
-    sourceReferences: [
-      "Spring Security 레퍼런스 - CSRF Protection",
-      "doc_web_security_best_practices.pdf (p. 42-45)",
-    ],
-    validationStatus: "검증됨",
-    similarity: 15,
-  },
+const formatDate = (dateStr?: string) => {
+  if (!dateStr) return "-";
+  try {
+    const d = new Date(dateStr);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")} ${String(d.getHours()).padStart(2, "0")}:${String(d.getMinutes()).padStart(2, "0")}`;
+  } catch {
+    return "-";
+  }
+};
+
+const getGenerationBadgeClass = (type?: string | null) => {
+  switch (type) {
+    case "rag":
+      return "bg-indigo-100 text-indigo-700 border-indigo-200";
+    case "general":
+      return "bg-cyan-100 text-cyan-700 border-cyan-200";
+    case "manual":
+      return "bg-slate-100 text-slate-700 border-slate-200";
+    default:
+      return "bg-amber-100 text-amber-700 border-amber-200";
+  }
+};
+
+const typeColor: Record<string, string> = {
+  multiple_choice: "bg-blue-100 text-blue-700 border-blue-200",
+  essay: "bg-emerald-100 text-emerald-700 border-emerald-200",
+  coding: "bg-orange-100 text-orange-700 border-orange-200",
+};
+
+const difficultyColor: Record<string, string> = {
+  초급: "bg-green-100 text-green-700 border-green-200",
+  중급: "bg-amber-100 text-amber-700 border-amber-200",
+  고급: "bg-red-100 text-red-700 border-red-200",
+};
+
+const difficultyOptions = [
+  { value: "초급", label: "초급" },
+  { value: "중급", label: "중급" },
+  { value: "고급", label: "고급" },
 ];
 
-export default function AIQuestionGeneration() {
-  const [role, setRole] = useState("");
-  const [level, setLevel] = useState("");
-  const [competency, setCompetency] = useState("");
-  const [detailedTopic, setDetailedTopic] = useState("");
-  const [questionType, setQuestionType] = useState("");
-  const [questionCount, setQuestionCount] = useState("5");
-  const [difficulty, setDifficulty] = useState("");
-  const [documentScope, setDocumentScope] = useState("");
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [generatedQuestions, setGeneratedQuestions] = useState<typeof mockGeneratedQuestions>([]);
+const QUESTION_TYPE_LABELS: Record<string, string> = {
+  multiple_choice: "객관식",
+  essay: "서술형",
+  coding: "코드작성형",
+};
 
-  const handleGenerate = () => {
-    setIsGenerating(true);
-    // Simulate AI generation
-    setTimeout(() => {
-      setGeneratedQuestions(mockGeneratedQuestions);
+const questionTypeOptions = [
+  { value: "multiple_choice", label: "객관식" },
+  { value: "essay", label: "서술형" },
+  { value: "coding", label: "코드작성형" },
+];
+
+const documentScopeOptions = [
+  { value: "none", label: "문서 사용 안 함" },
+  { value: "rag_all", label: "전체 인덱싱 문서 기반 생성" },
+];
+
+type QuestionTypeValue = "multiple_choice" | "essay" | "coding";
+type DifficultyValue = "초급" | "중급" | "고급";
+type DocumentScopeValue = "none" | "rag_all";
+
+export default function AIQuestionGeneration() {
+  // const [role, setRole] = useState("backend");
+  const [competencyType, setCompetencyType] =
+    useState<CompetencyTypeValue>("software_engineering");
+  const [difficulty, setDifficulty] = useState<"초급" | "중급" | "고급">("초급");
+  const [questionType, setQuestionType] = useState<"multiple_choice" | "essay" | "coding">("multiple_choice");
+  const [documentScope, setDocumentScope] = useState<"none" | "rag_all">("none");
+  const [detailedTopic, setDetailedTopic] = useState("");
+  const [count, setCount] = useState(5);
+  const [topK, setTopK] = useState(5);
+  const [isGenerating, setIsGenerating] = useState(false);
+  const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
+
+  const handleGenerate = async () => {
+    if (!competencyType) {
+      alert("역량 유형을 선택해주세요.");
+      return;
+    }
+    if (!detailedTopic.trim()) {
+      alert("세부 주제를 입력해주세요.");
+      return;
+    }
+
+    const blockedNonItKeywords = [
+      "음식",
+      "맛집",
+      "요리",
+      "레시피",
+      "여행",
+      "연애",
+      "소개팅",
+      "운세",
+      "영화",
+      "노래",
+      "쇼핑",
+    ];
+
+    const hasBlockedKeyword = blockedNonItKeywords.some((keyword) =>
+      detailedTopic.toLowerCase().includes(keyword.toLowerCase())
+    );
+
+    if (hasBlockedKeyword) {
+      alert("세부 주제는 IT 역량진단과 관련된 주제만 입력할 수 있습니다.");
+      return;
+    }
+    const selectedCompetency = COMPETENCY_OPTIONS.find(
+      (item) => item.value === competencyType
+    );
+
+    const searchQuery = [
+      // selectedRole?.label,
+      selectedCompetency?.label,
+      detailedTopic,
+    ]
+      .filter(Boolean)
+      .join(" ");
+
+    const payload = {
+      topic: detailedTopic,
+      difficulty,
+      count,
+      question_type: questionType,
+      // role,
+      competency_type: competencyType,
+      search_query: searchQuery,
+      top_k: topK,
+    };
+
+    try {
+      setIsGenerating(true);
+
+      const result =
+        documentScope === "rag_all"
+          ? await aiQuestionApi.generateFromDocument(payload)
+          : await aiQuestionApi.generateGeneral(payload);
+
+      console.log("AI 문제 생성 결과:", result);
+
+      const savedQuestions = result.data || result.questions || [];
+      setGeneratedQuestions(savedQuestions);
+
+      alert("AI 문제가 생성되었습니다. 검수 화면에서 확인해주세요.");
+    } catch (error: any) {
+      console.error("AI 문제 생성 실패:", error);
+      console.error("백엔드 응답:", error.response?.data);
+
+      alert(
+        error.response?.data?.detail ||
+        "AI 문제 생성 중 오류가 발생했습니다. 백엔드 터미널 로그를 확인해주세요."
+      );
+    } finally {
       setIsGenerating(false);
-    }, 2000);
+    }
   };
 
   return (
@@ -120,49 +206,22 @@ export default function AIQuestionGeneration() {
             </CardTitle>
             <CardDescription>문제 생성을 위한 파라미터 설정</CardDescription>
           </CardHeader>
-          <CardContent className="pt-6 space-y-4">
-            <div className="space-y-2">
-              <Label htmlFor="role">대상 직무 *</Label>
-              <Select value={role} onValueChange={setRole}>
-                <SelectTrigger id="role">
-                  <SelectValue placeholder="직무 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="backend">백엔드 개발자</SelectItem>
-                  <SelectItem value="frontend">프론트엔드 개발자</SelectItem>
-                  <SelectItem value="fullstack">풀스택 개발자</SelectItem>
-                  <SelectItem value="data">데이터 엔지니어</SelectItem>
-                  <SelectItem value="devops">DevOps 엔지니어</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
-            <div className="space-y-2">
-              <Label htmlFor="level">수준 *</Label>
-              <Select value={level} onValueChange={setLevel}>
-                <SelectTrigger id="level">
-                  <SelectValue placeholder="수준 선택" />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="junior">초급</SelectItem>
-                  <SelectItem value="intermediate">중급</SelectItem>
-                  <SelectItem value="senior">고급</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-
+          <CardContent className="pt-1 space-y-4">
             <div className="space-y-2">
               <Label htmlFor="competency">역량 유형 *</Label>
-              <Select value={competency} onValueChange={setCompetency}>
-                <SelectTrigger id="competency">
-                  <SelectValue placeholder="역량 선택" />
+              <Select
+                value={competencyType}
+                onValueChange={(value) => setCompetencyType(value as CompetencyTypeValue)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="역량 유형 선택" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="spring">Spring Framework</SelectItem>
-                  <SelectItem value="jpa">JPA/Hibernate</SelectItem>
-                  <SelectItem value="security">보안 구현</SelectItem>
-                  <SelectItem value="api">REST API 설계</SelectItem>
-                  <SelectItem value="microservice">마이크로서비스</SelectItem>
+                  {COMPETENCY_OPTIONS.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -171,7 +230,7 @@ export default function AIQuestionGeneration() {
               <Label htmlFor="topic">세부 주제 *</Label>
               <Textarea
                 id="topic"
-                placeholder="예: 트랜잭션 전파 옵션, N+1 쿼리 최적화, CSRF 보안"
+                placeholder={TOPIC_PLACEHOLDER_MAP[competencyType] || "예: 평가할 IT 세부 주제를 입력하세요"}
                 value={detailedTopic}
                 onChange={(e) => setDetailedTopic(e.target.value)}
                 rows={3}
@@ -181,56 +240,81 @@ export default function AIQuestionGeneration() {
 
             <div className="space-y-2">
               <Label htmlFor="type">문제 유형 *</Label>
-              <Select value={questionType} onValueChange={setQuestionType}>
-                <SelectTrigger id="type">
-                  <SelectValue placeholder="유형 선택" />
+              <Select
+                value={questionType}
+                onValueChange={(value) => setQuestionType(value as QuestionTypeValue)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="문제 유형 선택" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="multiple">객관식</SelectItem>
-                  <SelectItem value="essay">서술형</SelectItem>
-                  <SelectItem value="code">코드 작성</SelectItem>
+                  {questionTypeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="count">생성 문제 수 *</Label>
-              <Input
-                id="count"
-                type="number"
-                min="1"
-                max="20"
-                value={questionCount}
-                onChange={(e) => setQuestionCount(e.target.value)}
-              />
+              <Select
+                value={String(count)}
+                onValueChange={(value) => setCount(Number(value))}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="문제 수 선택" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="1">1문제</SelectItem>
+                  <SelectItem value="2">2문제</SelectItem>
+                  <SelectItem value="3">3문제</SelectItem>
+                  <SelectItem value="4">4문제</SelectItem>
+                  <SelectItem value="5">5문제</SelectItem>
+                  <SelectItem value="6">6문제</SelectItem>
+                  <SelectItem value="7">7문제</SelectItem>
+                  <SelectItem value="8">8문제</SelectItem>
+                  <SelectItem value="9">9문제</SelectItem>
+                  <SelectItem value="10">10문제</SelectItem>
+                </SelectContent>
+              </Select>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="difficulty">난이도 *</Label>
-              <Select value={difficulty} onValueChange={setDifficulty}>
-                <SelectTrigger id="difficulty">
+              <Select
+                value={difficulty}
+                onValueChange={(value) => setDifficulty(value as DifficultyValue)}
+              >
+                <SelectTrigger>
                   <SelectValue placeholder="난이도 선택" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="easy">초급</SelectItem>
-                  <SelectItem value="medium">중급</SelectItem>
-                  <SelectItem value="hard">고급</SelectItem>
-                  <SelectItem value="mixed">혼합</SelectItem>
+                  {difficultyOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
 
             <div className="space-y-2">
               <Label htmlFor="scope">문서 범위 (RAG)</Label>
-              <Select value={documentScope} onValueChange={setDocumentScope}>
-                <SelectTrigger id="scope">
-                  <SelectValue placeholder="전체 문서" />
+              <Select
+                value={documentScope}
+                onValueChange={(value) => setDocumentScope(value as DocumentScopeValue)}
+              >
+                <SelectTrigger>
+                  <SelectValue placeholder="문서 범위 선택" />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="all">전체 문서</SelectItem>
-                  <SelectItem value="spring">Spring 관련 문서만</SelectItem>
-                  <SelectItem value="jpa">JPA 관련 문서만</SelectItem>
-                  <SelectItem value="security">보안 관련 문서만</SelectItem>
+                  {documentScopeOptions.map((option) => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
                 </SelectContent>
               </Select>
             </div>
@@ -257,9 +341,8 @@ export default function AIQuestionGeneration() {
 
         {/* Generated Questions */}
         <div className="col-span-2 space-y-6">
-          {generatedQuestions.length > 0 && (
+          {generatedQuestions.length > 0 ? (
             <>
-              {/* Generation Summary */}
               <Card className="border-violet-200 bg-gradient-to-br from-violet-50 to-white">
                 <CardHeader>
                   <CardTitle className="text-lg flex items-center gap-2">
@@ -268,176 +351,82 @@ export default function AIQuestionGeneration() {
                   </CardTitle>
                 </CardHeader>
                 <CardContent>
-                  <div className="grid grid-cols-4 gap-4">
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-violet-700">
-                        {generatedQuestions.length}
-                      </p>
-                      <p className="text-sm text-slate-600 mt-1">생성된 문제</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-green-700">
-                        {generatedQuestions.filter((q) => q.validationStatus === "검증됨").length}
-                      </p>
-                      <p className="text-sm text-slate-600 mt-1">검증 통과</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-sky-700">
-                        {Math.round(
-                          generatedQuestions.reduce((acc, q) => acc + q.similarity, 0) /
-                            generatedQuestions.length
-                        )}
-                        %
-                      </p>
-                      <p className="text-sm text-slate-600 mt-1">평균 유사도</p>
-                    </div>
-                    <div className="text-center">
-                      <p className="text-2xl font-bold text-amber-700">
-                        {generatedQuestions[0]?.sourceReferences.length || 0}
-                      </p>
-                      <p className="text-sm text-slate-600 mt-1">참조 문서</p>
-                    </div>
-                  </div>
+                  <p className="text-2xl font-bold text-violet-700">
+                    {generatedQuestions.length}
+                  </p>
+                  <p className="text-sm text-slate-600 mt-1">생성된 문제</p>
                 </CardContent>
               </Card>
 
-              {/* Question Cards */}
-              {generatedQuestions.map((q) => (
-                <Card key={q.id} className="border-slate-200">
+              {generatedQuestions.map((q, index) => (
+                <Card key={q.id ?? index} className="border-slate-200">
                   <CardHeader className="border-b border-slate-100">
                     <div className="flex items-start justify-between gap-4">
                       <div className="flex-1">
                         <CardTitle className="text-base font-medium text-slate-800">
-                          {q.question}
+                          {q.body || q.question || "문제 내용 없음"}
                         </CardTitle>
+
                         <div className="flex items-center gap-2 mt-2">
-                          {q.competencyTags.map((tag, idx) => (
-                            <Badge key={idx} variant="secondary" className="bg-sky-100 text-sky-700">
-                              {tag}
-                            </Badge>
-                          ))}
-                          <Badge
-                            variant="secondary"
-                            className={
-                              q.difficulty === "고급"
-                                ? "bg-red-100 text-red-700"
-                                : q.difficulty === "중급"
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-green-100 text-green-700"
-                            }
-                          >
-                            {q.difficulty}
+                          <Badge variant="secondary" className={typeColor[q.question_type || questionType] || "bg-slate-100 text-slate-700"}>
+                            {QUESTION_TYPE_LABELS[q.question_type || questionType] || q.question_type || questionType}
                           </Badge>
+                          <Badge variant="secondary" className={difficultyColor[q.difficulty || difficulty] || "bg-slate-100 text-slate-700"}>
+                            {q.difficulty || difficulty}
+                          </Badge>
+                          <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                            {q.review_status || "pending"}
+                          </Badge>
+                          <Badge variant="outline" className={`${getGenerationBadgeClass(q.ai_generation_type || (documentScope === "rag_all" ? "rag" : "general"))} font-medium border`}>
+                            {q.ai_generation_type ? AI_GENERATION_TYPE_LABELS[q.ai_generation_type] : (documentScope === "rag_all" ? "문서 기반 RAG" : "설계서 기반")}
+                          </Badge>
+                          <span className="text-sm text-slate-600 font-medium ml-auto">
+                            {formatDate(q.created_at)}
+                          </span>
                         </div>
                       </div>
-                      <Badge
-                        variant="secondary"
-                        className={
-                          q.validationStatus === "검증됨"
-                            ? "bg-green-100 text-green-700"
-                            : "bg-amber-100 text-amber-700"
-                        }
-                      >
-                        <CheckCircle2 className="size-3 mr-1" />
-                        {q.validationStatus}
-                      </Badge>
                     </div>
                   </CardHeader>
+
                   <CardContent className="pt-4 space-y-4">
-                    {/* Options */}
-                    <div className="space-y-2">
-                      <p className="text-sm font-medium text-slate-700">선택지</p>
-                      {q.options.map((option, idx) => (
-                        <div
-                          key={idx}
-                          className={`p-3 rounded-lg border text-sm ${
-                            option === q.correctAnswer
-                              ? "bg-green-50 border-green-200"
-                              : "bg-slate-50 border-slate-200"
-                          }`}
-                        >
-                          <div className="flex items-start gap-2">
-                            <span className="font-medium text-slate-600">{idx + 1}.</span>
-                            <span className="flex-1 text-slate-700">{option}</span>
-                            {option === q.correctAnswer && (
-                              <Badge variant="secondary" className="bg-green-100 text-green-700">
-                                정답
-                              </Badge>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    {/* Explanation */}
-                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                      <p className="text-sm font-medium text-blue-900 mb-1">해설</p>
-                      <p className="text-sm text-blue-800 leading-relaxed">{q.explanation}</p>
-                    </div>
-
-                    {/* Source Grounding */}
-                    <div className="bg-violet-50 border border-violet-200 rounded-lg p-3">
-                      <div className="flex items-center gap-2 mb-2">
-                        <Database className="size-4 text-violet-700" />
-                        <p className="text-sm font-medium text-violet-900">RAG 출처 검증</p>
-                      </div>
-                      <div className="space-y-1">
-                        {q.sourceReferences.map((ref, idx) => (
-                          <div key={idx} className="flex items-start gap-2">
-                            <FileText className="size-3 text-violet-600 mt-0.5 flex-shrink-0" />
-                            <p className="text-xs text-violet-800">{ref}</p>
+                    {Array.isArray(q.choices) && q.choices.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-sm font-medium text-slate-700">선택지</p>
+                        {q.choices.map((choice: string, idx: number) => (
+                          <div
+                            key={idx}
+                            className="p-3 rounded-lg border text-sm bg-slate-50 border-slate-200"
+                          >
+                            <span className="font-medium text-slate-600">
+                              {idx + 1}.
+                            </span>{" "}
+                            <span className="text-slate-700">{choice}</span>
                           </div>
                         ))}
                       </div>
-                      <div className="mt-2 pt-2 border-t border-violet-200">
-                        <div className="flex items-center justify-between">
-                          <span className="text-xs text-violet-700">유사 문제 유사도</span>
-                          <Badge
-                            variant="secondary"
-                            className={
-                              q.similarity < 20
-                                ? "bg-green-100 text-green-700"
-                                : q.similarity < 40
-                                ? "bg-amber-100 text-amber-700"
-                                : "bg-red-100 text-red-700"
-                            }
-                          >
-                            {q.similarity}%
-                          </Badge>
-                        </div>
-                      </div>
-                    </div>
+                    )}
 
-                    {/* Actions */}
-                    <div className="flex items-center gap-2 pt-2">
-                      <Button size="sm" className="bg-green-600 hover:bg-green-700">
-                        <CheckCircle2 className="size-4 mr-2" />
-                        승인 및 저장
-                      </Button>
-                      <Button size="sm" variant="outline">
-                        <Save className="size-4 mr-2" />
-                        임시 저장
-                      </Button>
-                      <Button size="sm" variant="outline">
-                        <RotateCw className="size-4 mr-2" />
-                        재생성
-                      </Button>
-                      <Button size="sm" variant="outline" className="text-red-600 hover:text-red-700">
-                        <XCircle className="size-4 mr-2" />
-                        거부
-                      </Button>
+                    <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                      <p className="text-sm font-medium text-blue-900 mb-1">
+                        정답 / 모범답안
+                      </p>
+                      <p className="text-sm text-blue-800 leading-relaxed">
+                        {typeof q.answer === "object"
+                          ? JSON.stringify(q.answer)
+                          : q.answer || "-"}
+                      </p>
                     </div>
                   </CardContent>
                 </Card>
               ))}
             </>
-          )}
-
-          {generatedQuestions.length === 0 && (
+          ) : (
             <Card className="border-slate-200">
               <CardContent className="py-16 text-center">
                 <Sparkles className="size-16 text-slate-300 mx-auto mb-4" />
-                <p className="text-lg font-medium text-slate-700">AI 문제 생성 대기 중</p>
+                <p className="text-lg font-medium text-slate-700">
+                  AI 문제 생성 대기 중
+                </p>
                 <p className="text-sm text-slate-500 mt-2">
                   좌측 설정 폼을 작성하고 'AI 문제 생성' 버튼을 클릭하세요
                 </p>

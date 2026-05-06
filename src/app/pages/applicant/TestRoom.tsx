@@ -183,21 +183,19 @@ export default function TestRoom() {
               {current.question_type === "multiple_choice" && current.choices_json && (
                 <div className="space-y-2">
                   {current.choices_json.map((choice, i) => {
-                    const isSelected = answers[current.question_id]?.answer_json === i;
+                    const isSelected = answers[current.question_id]?.answer_json === i + 1;
                     return (
                       <button
                         key={i}
-                        onClick={() => setAnswer(current.question_id, i, true)}
-                        className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-all ${
-                          isSelected
+                        onClick={() => setAnswer(current.question_id, i + 1, true)}
+                        className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-all ${isSelected
                             ? "border-sky-500 bg-sky-50 text-sky-700 font-medium"
                             : "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
-                        }`}
+                          }`}
                       >
-                        <span className={`inline-flex items-center justify-center size-6 rounded-full mr-3 text-xs font-bold ${
-                          isSelected ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-600"
-                        }`}>
-                          {String.fromCharCode(65 + i)}
+                        <span className={`inline-flex items-center justify-center size-6 rounded-full mr-3 text-xs font-bold ${isSelected ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-600"
+                          }`}>
+                          {i + 1}
                         </span>
                         {choice}
                       </button>
@@ -206,16 +204,6 @@ export default function TestRoom() {
                 </div>
               )}
 
-              {/* Short Answer */}
-              {current.question_type === "short_answer" && (
-                <input
-                  type="text"
-                  className="w-full border border-slate-200 rounded-lg px-4 py-3 text-sm focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  placeholder="답변을 입력해 주세요..."
-                  value={answers[current.question_id]?.answer_text || ""}
-                  onChange={(e) => setAnswer(current.question_id, e.target.value, false)}
-                />
-              )}
 
               {/* Essay */}
               {current.question_type === "essay" && (
@@ -276,13 +264,12 @@ export default function TestRoom() {
                     <button
                       key={i}
                       onClick={() => setCurrentIdx(i)}
-                      className={`size-9 rounded text-xs font-medium transition-all ${
-                        isCurrent
+                      className={`size-9 rounded text-xs font-medium transition-all ${isCurrent
                           ? "bg-sky-600 text-white ring-2 ring-sky-300"
                           : answered
-                          ? "bg-green-100 text-green-700"
-                          : "bg-slate-100 text-slate-500 hover:bg-slate-200"
-                      }`}
+                            ? "bg-green-100 text-green-700"
+                            : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                        }`}
                     >
                       {i + 1}
                     </button>
