@@ -18,6 +18,9 @@ from ai.services.question_choice_generator import (
 )
 logger = logging.getLogger("uvicorn.info")
 
+USE_AI_ADVANCED_TEMPLATE = True
+USE_SQL_ADVANCED_TEMPLATE = True
+
 def _normalize_explanation_style_local(explanation: str, answer_int: int) -> str:
     """
     question_generator 내부에서 해설 재생성 결과를 존댓말 문체로 정리한다.
@@ -607,6 +610,13 @@ def _competency_rule(competency_type: str | None, topic: str) -> str:
         - 중급 문제는 실행 결과 예측, KeyError/TypeError 같은 오류 원인, 누락된 조건 보완, 적절한 자료형 선택을 묻는다.
         - 고급 문제는 예외 상황, 성능, 메모리 사용, 가독성, 유지보수성, 리팩토링 방향을 판단하게 한다.
         - 코드 없이 "입력 데이터를 분석한다", "가장 적절한 판단은 무엇인가?"처럼 긴 상황 설명만 있는 문제를 만들지 않는다.
+        [Python 얕은 복사/참조 할당 출제 규칙]
+        - topic이 "얕은 복사", "shallow copy", "리스트 복사"와 관련되면 copied = original 형태만 제시하지 않는다.
+        - copied = original은 얕은 복사가 아니라 참조 할당으로 설명한다.
+        - 얕은 복사 문제를 만들 때는 반드시 list.copy(), slicing [:], copy.copy() 중 하나를 코드에 포함한다.
+        - 중급 이상에서는 가능하면 중첩 리스트를 사용해 내부 리스트 공유 여부를 묻는다.
+        - 예: original = [[1, 2], [3, 4]]; copied = original.copy(); copied[0][0] = 99; print(original)
+        - 정답은 실행 결과뿐 아니라 왜 내부 객체가 공유되는지 판단 가능해야 한다.
         """,
         "c_language": """
         [C언어 역량 출제 규칙]
@@ -615,6 +625,25 @@ def _competency_rule(competency_type: str | None, topic: str) -> str:
         - 중급 문제는 실행 결과 예측, 포인터 접근 오류, 문자열 종료 문자, 배열 범위, 함수 인자 전달 방식을 묻는다.
         - 고급 문제는 메모리 누수, dangling pointer, buffer overflow, 동적 할당 해제, 구조체 설계 문제를 판단하게 한다.
         - 코드 없이 긴 상황 설명만 있는 문제를 만들지 않는다.
+        [C언어 중급/고급 코드 출제 규칙]
+        - C 중급 문제는 한 줄짜리 코드 조각으로 만들지 않는다.
+        - body에는 최소 4줄 이상의 C 코드 블록을 포함한다.
+        - 포인터와 배열 문제는 단순히 arr + 1의 위치만 묻지 말고, 함수 호출 후 배열 원소가 어떻게 변경되는지 또는 어떤 메모리 위치가 변경되는지 묻는다.
+        - 문자열 문제는 char str[]와 char *str의 차이를 명확히 구분하게 한다.
+        - char *str = "Hello"; str[0] = 'h'; 같은 코드는 문자열 리터럴 수정으로 정의되지 않은 동작임을 판단하게 한다.
+        - 중급 문제는 포인터 산술, 배열 전달, 문자열 종료 문자, 메모리 수정 가능성 중 2개 이상을 결합한다.
+        - 선택지는 단순히 "출력은 1이다"처럼 짧게 쓰지 말고, 왜 해당 메모리 위치가 바뀌는지 또는 왜 정의되지 않은 동작인지 판단하게 작성한다.
+        [C언어 문제 질문/선택지 정합성 규칙]
+        - C 코드 기반 문제의 마지막 질문은 코드의 평가 대상과 정확히 맞아야 한다.
+        - 배열 원소 변경을 묻는 문제는 "함수 호출 후 배열의 첫 번째 원소는 어떻게 되는가?", "printf의 출력 결과는 무엇인가?"처럼 값 또는 출력 결과를 직접 묻는다.
+        - 문자열 리터럴 수정, 범위 초과 접근, 해제 후 접근처럼 오류 원인을 묻는 문제는 "이 코드에서 발생할 수 있는 핵심 문제는 무엇인가?", "이 코드가 정의되지 않은 동작이 되는 이유는 무엇인가?"처럼 묻는다.
+        - C 중급 문제에서 "이 상황에서 가장 적절한 판단은 무엇인가?"라는 질문 문장을 사용하지 않는다.
+        - 질문이 값/출력 결과를 묻는 경우 choices는 모두 값 또는 출력 결과 형태로 작성한다.
+        - 질문이 오류 원인을 묻는 경우 choices는 모두 오류 원인 형태로 작성한다.
+        - "포인터를 올바르게 사용해야 한다", "다른 방법을 사용해야 한다", "문제가 없다"처럼 일반 조언형 선택지를 정답으로 만들지 않는다.
+        - 동적 메모리 할당 문제에서 malloc 실패를 다루지 않는다면 선택지에 "메모리 할당 오류로 인해 수정되지 않는다" 같은 보기를 만들지 않는다.
+        - malloc 실패 가능성을 다루려면 body에 malloc 반환값 NULL 검사 여부를 명시한다.
+        - 코드에서 malloc으로 할당한 배열을 함수에 전달해 arr[0] = 10으로 수정했다면, 질문은 "함수 호출 후 array[0]의 값은 무엇인가?"가 되어야 하고 정답은 "10" 또는 "배열의 첫 번째 원소는 10이다"가 되어야 한다.
         """,
         "sql": """
         [SQL 역량 출제 규칙]
@@ -962,7 +991,22 @@ def _build_plan_based_generation_prompt(
     - metric_interpretation:
     - body에는 반드시 precision, recall, F1, accuracy 중 하나 이상의 수치가 포함되어야 한다.
     - 질문은 지표 해석 또는 개선 방향을 물어야 한다.
-  
+    - c_pointer_array_result:
+    - body에는 반드시 최소 4줄 이상의 C 코드 블록이 포함되어야 한다.
+    - 코드에는 배열 선언, 포인터 또는 함수 인자 전달, 배열 원소 수정, printf 출력 중 3개 이상이 포함되어야 한다.
+    - 질문은 "가장 적절한 판단은 무엇인가?"가 아니라 "함수 호출 후 배열의 특정 원소는 어떻게 되는가?", "printf의 출력 결과는 무엇인가?"처럼 작성한다.
+    - choices는 모두 값 변화 또는 출력 결과 중심으로 작성한다.
+
+    - c_string_literal_error:
+    - body에는 char *str = "..." 형태 또는 문자열 리터럴을 포인터로 가리키는 코드가 포함되어야 한다.
+    - 질문은 "이 코드에서 발생할 수 있는 핵심 문제는 무엇인가?" 또는 "정의되지 않은 동작이 발생하는 이유는 무엇인가?"처럼 작성한다.
+    - choices는 모두 오류 원인 중심으로 작성한다.
+    - 문자열 리터럴 수정이 핵심이면 body에 "문자열 리터럴" 또는 "수정할 수 없는 영역"이라는 단서를 포함한다.
+
+    - c_memory_allocation_result:
+    - body에는 malloc/free, 함수 인자 전달, 배열 원소 수정이 포함되어야 한다.
+    - malloc 실패 여부를 묻지 않는다면 NULL, 메모리 할당 오류를 선택지에 넣지 않는다.
+    - 질문은 "함수 호출 후 array[0]의 값은 무엇인가?" 또는 "printf의 출력 결과는 무엇인가?"처럼 작성한다.
     [설계서 반영 규칙]
     - 각 문제는 문제 설계서 1개를 기반으로 생성한다.
     - 설계서 개수보다 문제 개수가 적으면 설계서 개수만큼만 생성한다.
@@ -1121,9 +1165,12 @@ def generate_questions(
     """
     일반 AI 문제 생성.
 
-    변경된 흐름:
-    - ai + 고급 문제는 LLM 자유 생성 품질이 불안정하므로 템플릿 기반으로 먼저 생성한다.
-    - 그 외 문제는 기존 planner -> generator 흐름을 사용한다.
+    현재 생성 정책:
+    - 고급 문제는 Templates 기반으로 안정화한다.
+        - 현재 적용 대상: ai, sql
+        - 다음 확장 대상: python, java, c_language
+    - 초급/중급 문제는 planner -> generator -> validator 흐름을 사용한다.
+    - Templates 기반 고급 문제는 lock_choices=True를 우선 사용해 선택지 품질을 안정화한다.
     """
     start_time = time.time()
     logger.info(
@@ -1138,7 +1185,7 @@ def generate_questions(
         # - RAG / LLM / Agent / ModelOps / ML 템플릿 중 topic에 맞게 선택
         # - body는 템플릿으로 고정하고 choices/explanation만 LLM이 생성
         # ─────────────────────────────────────────────────────────────────────────────────────────
-        if normalized_competency_type == "ai" and difficulty == "고급":
+        if USE_AI_ADVANCED_TEMPLATE and normalized_competency_type == "ai" and difficulty == "고급":
             base_questions = []
             used_ai_template_formats: list[str] = []
             used_ai_titles: set[str] = set()
@@ -1231,7 +1278,7 @@ def generate_questions(
         # - planner/generator를 타지 않음
         # - 테이블 구조, SQL 쿼리, 데이터 규모, 실행 계획, 인덱스/락 조건이 포함된 문제를 생성
         # ─────────────────────────────────────────────
-        if normalized_competency_type == "sql" and difficulty == "고급":
+        if USE_SQL_ADVANCED_TEMPLATE and normalized_competency_type == "sql" and difficulty == "고급":
             template_questions = []
             used_sql_template_formats: list[str] = []
 
@@ -1389,6 +1436,12 @@ def generate_questions_from_context(
         - 문서에서 약어의 의미가 정의되어 있지 않으면 약어를 임의로 확장하지 마라.
         - SLLM, vLLM, VLM처럼 비슷한 약어는 반드시 구분해라.
         - vLLM을 VLM 또는 다국어 모델로 설명하지 마라.
+        [문서 기반 중급 문제 생성 규칙]
+        - 중급 문제는 문서에 있는 용어를 그대로 묻는 단순 정의형으로 만들지 않는다.
+        - 문서의 절차, 검토 기준, 비교 기준, 판단 조건을 활용해 상황 판단형으로 만든다.
+        - "가장 우선적으로 고려해야 할 사항"처럼 문서 순서만 맞히는 문제를 피한다.
+        - 선택지는 모두 같은 범주의 개념으로 구성하되, 정답만 문서 근거와 직접 연결되게 한다.
+        - 해설에는 정답 근거와 오답이 부족한 이유를 함께 설명한다.
         [품질 기준]
         - 단순히 문장 일부를 빈칸처럼 바꾸는 문제는 피한다.
         - 같은 문장을 거의 그대로 반복하는 문제는 피한다.

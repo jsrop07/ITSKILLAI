@@ -623,6 +623,7 @@ def build_ai_rag_advanced_template(
         # LLM이 choices/explanation만 생성할 때 사용할 의도 정보
         "answer_intent": selected["answer_intent"],
         "distractor_intents": selected["distractor_intents"],
+        "lock_choices": True,
     }
 
 def build_ai_llm_advanced_template(
@@ -809,6 +810,7 @@ def build_ai_llm_advanced_template(
         "template_format": selected.get("format"),
         "answer_intent": selected["answer_intent"],
         "distractor_intents": selected["distractor_intents"],
+        "lock_choices": True,
     }
 
 def build_ai_agent_advanced_template(
@@ -1168,10 +1170,11 @@ def build_ai_model_ops_advanced_template(
             "format": "modelops_vllm_serving_tradeoff",
             "body": (
                 "문제 생성 비용을 줄이기 위해 OpenAI API 대신 QLoRA로 튜닝한 오픈소스 모델을 vLLM으로 자체 서빙하는 방안을 검토하고 있다. "
-                "현재 OpenAI API는 평균 latency 4.2초, 월 비용 80만원 수준이며 품질 검증 통과율은 92%다. "
-                "사내 GPU 서버 후보는 초기 구축 비용이 크고, 자체 모델의 초기 검증 통과율은 76%로 측정되었다. "
-                "또한 운영팀은 장애 대응, 모델 배포, 모니터링, autoscaling 경험이 부족하다. "
-                "이 상황에서 자체 서빙 도입 여부를 판단할 때 가장 적절한 접근은 무엇인가?"
+                "현재 OpenAI API는 평균 latency 4.2초, p95 latency 6.8초, 월 cost 80만원 수준이며 품질 검증 통과율은 92%다. "
+                "사내 GPU 서버에서 vLLM serving을 테스트한 결과 평균 latency는 2.9초로 줄었지만, 초기 품질 검증 통과율은 76%이고 answer/explanation 불일치 사례가 증가했다. "
+                "또한 GPU 운영 비용, 장애 대응, monitoring, autoscaling, canary 배포 경험이 부족하다. "
+                "운영팀은 전체 트래픽을 즉시 전환하기보다 일부 관리자 요청에만 canary로 적용하고 quality_score, 검증 통과율, p95 latency, cost를 함께 비교하려고 한다. "
+                "이 상황에서 vLLM 자체 서빙 도입 여부를 판단할 때 가장 적절한 접근은 무엇인가?"
             ),
             "choices": [
                 "품질 통과율, p95 latency, 월 추론 비용, 운영 부담을 함께 비교하고 일부 트래픽에서 canary 방식으로 검증한다.",
@@ -1197,7 +1200,31 @@ def build_ai_model_ops_advanced_template(
 
     ]
 
-    selected = _pick_template_by_exclusion(templates, exclude_formats)
+    topic_lower = str(topic or "").lower()
+
+    if any(keyword in topic_lower for keyword in [
+        "vllm",
+        "serving",
+        "서빙",
+        "latency",
+        "p95",
+        "cost",
+        "비용",
+        "자체 서빙",
+        "추론",
+    ]):
+        forced_candidates = [
+            template for template in templates
+            if template.get("format") == "modelops_vllm_serving_tradeoff"
+        ]
+
+        if forced_candidates:
+            selected = forced_candidates[0]
+        else:
+            selected = _pick_template_by_exclusion(templates, exclude_formats)
+    else:
+        selected = _pick_template_by_exclusion(templates, exclude_formats)
+
     selected_title = _pick_title_variant(selected)
 
     return {
@@ -1213,6 +1240,7 @@ def build_ai_model_ops_advanced_template(
         "template_format": selected.get("format"),
         "answer_intent": selected["answer_intent"],
         "distractor_intents": selected["distractor_intents"],
+        "lock_choices": True,
     }
 
 def build_ai_ml_advanced_template(
@@ -1491,6 +1519,7 @@ def build_ai_ml_advanced_template(
         "template_format": selected.get("format"),
         "answer_intent": selected["answer_intent"],
         "distractor_intents": selected["distractor_intents"],
+        "lock_choices": True,
     }
 
 def build_ai_advanced_template(
@@ -2289,4 +2318,6 @@ def build_sql_advanced_template(
         # LLM이 choices/explanation만 생성할 때 사용할 의도 정보
         "answer_intent": selected["answer_intent"],
         "distractor_intents": selected["distractor_intents"],
+        
+        "lock_choices": True,
     }

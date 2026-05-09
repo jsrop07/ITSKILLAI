@@ -17,12 +17,33 @@ QUESTION_FORMAT_RULES = {
         "고급": ["index_plan_choice", "transaction_lock_case", "query_optimization"],
     },
     "ai": {
-        "중급": ["retrieval_result_analysis", "metric_interpretation", "chunking_issue"],
-        "고급": ["rag_pipeline_diagnosis", "reranker_tradeoff", "hybrid_search_choice"],
+        "중급": [
+            "retrieval_result_analysis",
+            "metric_interpretation",
+            "chunking_issue",
+            "prompt_output_validation",
+        ],
+        "고급": [
+            "rag_pipeline_diagnosis",
+            "reranker_tradeoff",
+            "hybrid_search_choice",
+            "context_filtering_failure",
+            "query_rewrite_failure",
+            "llm_output_schema_validation",
+        ],
     },
     "c_language": {
-        "중급": ["pointer_trace", "array_string_bug", "function_parameter"],
-        "고급": ["memory_error", "malloc_free_bug", "struct_pointer"],
+        "중급": [
+            "c_pointer_array_result",
+            "c_string_literal_error",
+            "c_memory_allocation_result",
+        ],
+        "고급": [
+            "c_malloc_free_bug",
+            "c_dangling_pointer",
+            "c_buffer_overflow",
+            "c_struct_pointer",
+        ],
     },
     "data_structure_algorithm": {
         "중급": ["complexity_analysis", "operation_trace", "data_structure_choice"],
@@ -93,6 +114,14 @@ FORMAT_EVIDENCE_TYPE_MAP = {
     "change_impact": "change_request",
     "quality_attribute": "requirement_list",
     "traceability_gap": "requirement_list",
+
+    "c_pointer_array_result": "code_snippet",
+    "c_string_literal_error": "code_snippet",
+    "c_memory_allocation_result": "code_snippet",
+    "c_malloc_free_bug": "code_snippet",
+    "c_dangling_pointer": "code_snippet",
+    "c_buffer_overflow": "code_snippet",
+    "c_struct_pointer": "code_snippet",
 }
 
 

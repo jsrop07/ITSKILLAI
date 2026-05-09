@@ -336,6 +336,11 @@ export interface RAGSearchResult {
   keyword_score?: number | null;
   hybrid_score?: number | null;
   search_source?: "vector" | "keyword" | "hybrid";
+  vector_rank?: number | null;
+  keyword_rank?: number | null;
+  rrf_score?: number | null;
+  keyword_raw_score?: number | null;
+  search_sources?: string[];
 }
 
 export interface AIDocumentSearchPayload {
@@ -365,6 +370,7 @@ export interface GenerateQuestionsFromDocumentPayload {
   question_type: QuestionTypeValue;
   competency_type?: string;
   search_query?: string;
+  search_mode?: RAGSearchMode;
 }
 
 export const aiDocumentApi = {
@@ -421,7 +427,7 @@ export const aiQuestionApi = {
     return res.data;
   },
 
-  generateFromDocument: async (payload: GenerateAIQuestionsPayload) => {
+  generateFromDocument: async (payload: GenerateQuestionsFromDocumentPayload) => {
     const res = await api.post(
       "/api/ai/generate-questions-from-document",
       payload

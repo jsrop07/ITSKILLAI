@@ -177,6 +177,8 @@ def generate_ai_questions(
             question_type=request.question_type,
             competency_type=normalized_competency,
         )
+        
+        generated_questions = generated_questions[:request.count]
 
         saved_questions = save_generated_questions(
             generated_questions=generated_questions,
@@ -235,7 +237,7 @@ def generate_ai_questions_from_document(
             query=rag_query,
             top_k=request.top_k,
             category=normalized_competency,
-            search_mode="hybrid",
+            search_mode=request.search_mode,
         )
 
         if not context or not context.strip():
@@ -254,7 +256,9 @@ def generate_ai_questions_from_document(
             # role=request.role,
             competency_type=normalized_competency,
         )
-
+        
+        generated_questions = generated_questions[:request.count]
+        
         saved_questions = save_generated_questions(
             generated_questions=generated_questions,
             db=db,

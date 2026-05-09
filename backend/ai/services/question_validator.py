@@ -3,6 +3,7 @@
 import re
 import logging
 from typing import Any
+from ai.services.competency_config import normalize_competency_type
 
 logger = logging.getLogger("uvicorn.info")
 
@@ -378,7 +379,7 @@ def _has_required_evidence_for_competency(
     if difficulty not in {"중급", "고급"}:
         return True, None
 
-    competency_type = str(q.get("competency_type") or "").strip()
+    competency_type = normalize_competency_type(q.get("competency_type")) or str(q.get("competency_type") or "").strip()
     body = str(q.get("body", "") or "")
 
     if competency_type == "java":
@@ -419,7 +420,169 @@ def _has_required_evidence_for_competency(
         ]
         if not any(signal in body for signal in signals):
             return False, "python 중급/고급 문제에는 Python 코드 조각 또는 실제 리스트/딕셔너리 예시가 필요합니다."
+        if any(keyword in body for keyword in ["얕은 복사", "shallow copy", "리스트 복사"]):
+            shallow_copy_signals = [
+                ".copy()",
+                "[:]",
+                "copy.copy",
+            ]
 
+            reference_assignment_patterns = [
+                r"\w+\s*=\s*\w+\s*\n",
+                r"copied_list\s*=\s*original_list",
+                r"list_b\s*=\s*list_a",
+                r"copied\s*=\s*original",
+            ]
+
+            has_shallow_copy_signal = any(signal in body for signal in shallow_copy_signals)
+            has_reference_assignment_only = any(
+                re.search(pattern, body)
+                for pattern in reference_assignment_patterns
+            )
+
+            if has_reference_assignment_only and not has_shallow_copy_signal:
+                return False, (
+                    "얕은 복사 문제에서 copied = original 형태의 참조 할당만 제시하고 있습니다. "
+                    "list.copy(), slicing [:], copy.copy() 중 하나를 포함해야 합니다."
+                )
+    if competency_type == "c_language":
+        c_signals = [
+            "#include",
+            "int main",
+            "printf",
+            "scanf",
+            "int ",
+            "char ",
+            "void ",
+            "return",
+            "*",
+            "&",
+            "->",
+            "malloc",
+            "free",
+            "sizeof",
+            "struct",
+            "arr[",
+            "str[",
+        ]
+
+        if not any(signal in body for signal in c_signals):
+            return False, (
+                "c_language 중급/고급 문제에는 C 코드 조각, 포인터/배열/문자열/구조체/동적 할당 예시 중 하나가 필요합니다."
+            )
+
+        if difficulty == "중급":
+            semicolon_count = body.count(";")
+
+            if semicolon_count < 4:
+                return False, (
+                    "C 중급 문제에는 최소 4개 이상의 실행 문장이 포함된 코드 조각이 필요합니다."
+                )
+
+            normalized_body = body.replace("\n", " ")
+
+            too_simple_pointer_patterns = [
+                r"int\s+arr\s*\[\s*\]\s*=\s*\{[^}]+\}\s*;\s*int\s*\*\s*\w+\s*=\s*arr\s*\+\s*1\s*;\s*\*\s*\w+\s*=",
+            ]
+
+            if any(re.search(pattern, normalized_body) for pattern in too_simple_pointer_patterns):
+                if not any(keyword in body for keyword in [
+                    "함수",
+                    "void ",
+                    "return",
+                    "인자",
+                    "매개변수",
+                    "문자열",
+                    "구조체",
+                    "동적 할당",
+                    "malloc",
+                    "free",
+                ]):
+                    return False, (
+                        "C 중급 포인터 문제가 단순 arr + 1 위치 확인에 머물러 있습니다. "
+                        "함수 인자 전달, 배열 원소 변경 흐름, 문자열 처리, 구조체, 동적 할당 등 추가 조건이 필요합니다."
+                    )
+
+            compact_body = body.replace(" ", "").replace("\n", "")
+
+            if 'char*str="Hello"' in compact_body or 'char*str="hello"' in compact_body:
+                if not any(keyword in body for keyword in [
+                    "문자열 리터럴",
+                    "정의되지 않은 동작",
+                    "undefined behavior",
+                    "수정할 수 없는 영역",
+                    "읽기 전용",
+                ]):
+                    return False, (
+                        "문자열 리터럴 수정 문제는 정의되지 않은 동작 또는 문자열 리터럴 수정 불가를 명확히 다뤄야 합니다."
+                    )
+            # C 중급 코드 문제는 질문 문장과 선택지 유형이 맞아야 한다.
+            # "가장 적절한 판단"처럼 추상적인 질문은 C 코드 실행 결과 문제와 맞지 않는 경우가 많다.
+            if "가장 적절한 판단" in body:
+                if any(keyword in body for keyword in [
+                    "printf",
+                    "출력",
+                    "배열의 첫 번째 원소",
+                    "arr[0]",
+                    "array[0]",
+                    "scores[",
+                    "*(ptr",
+                ]):
+                    return False, (
+                        "C 중급 코드 실행 문제에서 질문이 '가장 적절한 판단'처럼 추상적으로 작성되었습니다. "
+                        "출력 결과, 변경된 배열 원소, 오류 원인 중 하나를 직접 묻도록 작성해야 합니다."
+                    )
+
+            choices = q.get("choices", [])
+
+            if isinstance(choices, list) and len(choices) == 5:
+                choice_text = " ".join(str(choice) for choice in choices)
+
+                # 값/출력 결과를 묻는 문제인데 선택지가 조언형이면 탈락
+                if any(keyword in body for keyword in [
+                    "어떻게 될 것인가",
+                    "출력 결과",
+                    "무엇이 출력",
+                    "값은 무엇",
+                    "원소는 어떻게",
+                    "arr[0]",
+                    "array[0]",
+                ]):
+                    advice_patterns = [
+                        "사용해야",
+                        "수정해야",
+                        "다른 방법",
+                        "올바르게 접근",
+                        "필요가 없다",
+                        "문제가 없다",
+                        "항상 안전",
+                    ]
+
+                    if any(pattern in choice_text for pattern in advice_patterns):
+                        return False, (
+                            "C 실행 결과 문제의 선택지에 일반 조언형 문장이 포함되어 있습니다. "
+                            "값 변화 또는 출력 결과 중심의 선택지로 작성해야 합니다."
+                        )
+
+                # undefined behavior 문제는 body나 choices에 원인 단서가 있어야 함
+                if any(keyword in body for keyword in [
+                    "문자열 리터럴",
+                    "char *",
+                    "strcpy",
+                    "str[",
+                ]):
+                    if "정의되지 않은 동작" in choice_text or "undefined behavior" in choice_text:
+                        if not any(keyword in body for keyword in [
+                            "문자열 리터럴",
+                            "수정할 수 없는",
+                            "읽기 전용",
+                            "정의되지 않은 동작",
+                            "undefined behavior",
+                        ]):
+                            return False, (
+                                "C 문자열 문제에서 undefined behavior를 정답으로 쓰려면 "
+                                "본문에 문자열 리터럴 수정 불가 또는 읽기 전용 메모리 단서를 명확히 포함해야 합니다."
+                            )
     if competency_type == "sql":
         upper_body = body.upper()
         signals = [
