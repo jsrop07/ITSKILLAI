@@ -1,10 +1,9 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from typing import List, Optional
-
 from database import get_db
+from typing import List, Optional
+from sqlalchemy.orm import Session
 from models import Record, Applicant, Diagnosis, Question
 from schemas import RecordCreate, RecordUpdate, RecordRead
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/api/records", tags=["records"])
 

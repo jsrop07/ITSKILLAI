@@ -1,16 +1,12 @@
-from fastapi import APIRouter, Depends, HTTPException
-from sqlalchemy.orm import Session
-from datetime import datetime
-import secrets
 import os
+import secrets
 from jose import jwt
-
 from database import get_db
+from datetime import datetime
+from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException
 from models import Record, Applicant, Diagnosis, Question
-from schemas import (
-    ExamLoginRequest, ExamLoginResponse,
-    QuestionForExam, ExamSubmit, ExamResultResponse,
-)
+from schemas import (ExamLoginRequest, ExamLoginResponse,QuestionForExam, ExamSubmit, ExamResultResponse,)
 
 router = APIRouter(prefix="/api/exam", tags=["exam"])
 

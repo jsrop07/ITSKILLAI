@@ -1,23 +1,9 @@
 # backend/ai/questions/graph_runner.py
 
 import logging
-
 from langgraph.graph import StateGraph, START, END
-
 from ai.questions.graph_state import QuestionGenerationState
-from ai.questions.graph_nodes import (
-    normalize_node,
-    topic_validation_node,
-    route_node,
-    route_by_generation_mode,
-    planner_node,
-    template_node,
-    generation_node,
-    validation_node,
-    save_node,
-    retrieval_node,
-    rag_generation_node,
-)
+from ai.questions.graph_nodes import ( normalize_node, topic_validation_node, route_node, route_by_generation_mode, planner_node, template_node, generation_node, validation_node, save_node, retrieval_node, rag_generation_node,)
 
 logger = logging.getLogger("uvicorn.info")
 

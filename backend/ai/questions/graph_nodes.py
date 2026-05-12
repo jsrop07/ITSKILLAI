@@ -3,24 +3,15 @@ import json
 import re
 import logging
 from models import Question
-
-from ai.questions.graph_state import QuestionGenerationState
 from ai.core.config import normalize_competency_type
-from ai.questions.topic_validator import validate_topic_for_competency
-from ai.questions.planner import generate_question_plans
-from ai.questions.templates import (
-    build_ai_advanced_template,
-    build_sql_advanced_template,
-    build_python_advanced_template,
-    build_java_advanced_template,
-)
-from ai.questions.generator import ( generate_questions_from_plans, generate_questions_from_context)
-from ai.questions.choice_generator import (
-    generate_choices_for_template_question,
-    generate_choices_for_template_questions_batch,
-)
 from ai.questions.validator import validate_questions
+from ai.questions.planner import generate_question_plans
+from ai.questions.graph_state import QuestionGenerationState
 from ai.rag.document_service import build_context_from_search_results
+from ai.questions.topic_validator import validate_topic_for_competency
+from ai.questions.generator import ( generate_questions_from_plans, generate_questions_from_context )
+from ai.questions.choice_generator import ( generate_choices_for_template_question, generate_choices_for_template_questions_batch,)
+from ai.questions.templates import ( build_ai_advanced_template, build_sql_advanced_template, build_python_advanced_template, build_java_advanced_template,)
 logger = logging.getLogger("uvicorn.info")
 
 

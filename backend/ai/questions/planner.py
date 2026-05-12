@@ -6,11 +6,7 @@ from typing import Any
 
 from ai.core.openai_client import client
 from ai.core.config import normalize_competency_type
-from ai.questions.question_format_config import (
-    build_question_format_instruction,
-    get_allowed_question_formats,
-    get_expected_evidence_type,
-)
+from ai.questions.question_format_config import ( build_question_format_instruction, get_allowed_question_formats, get_expected_evidence_type,)
 
 VALID_DIFFICULTIES = {"초급", "중급", "고급"}
 VALID_QUESTION_TYPES = {"multiple_choice", "essay", "code"}

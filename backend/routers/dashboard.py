@@ -1,12 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
 from sqlalchemy import func
-from typing import List, Optional
-from datetime import datetime
-
 from database import get_db
+from datetime import datetime
+from typing import List, Optional
+from sqlalchemy.orm import Session
 from models import Record, Question, Diagnosis
 from schemas import DashboardStats, WeakCompetency
+from fastapi import APIRouter, Depends, HTTPException, Query
 
 router = APIRouter(prefix="/api/dashboard", tags=["dashboard"])
 

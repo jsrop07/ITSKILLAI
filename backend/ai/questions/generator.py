@@ -3,21 +3,14 @@ import json
 import time
 import random
 import logging
-from ai.core.openai_client import client
 from collections import Counter
+from ai.core.openai_client import client
+from ai.core.config import normalize_competency_type
 from ai.questions.validator import validate_questions
 from ai.questions.planner import generate_question_plans
-from ai.core.config import normalize_competency_type
-from ai.questions.templates import (
-    build_ai_advanced_template,
-    build_sql_advanced_template,
-    build_python_advanced_template,
-    build_java_advanced_template,
-)
-from ai.questions.choice_generator import (
-    generate_choices_for_template_question,
-    generate_choices_for_template_questions_batch,
-)
+from ai.questions.choice_generator import (generate_choices_for_template_question,generate_choices_for_template_questions_batch,)
+from ai.questions.templates import (build_ai_advanced_template, build_sql_advanced_template, build_python_advanced_template, build_java_advanced_template,)
+
 logger = logging.getLogger("uvicorn.info")
 
 USE_AI_ADVANCED_TEMPLATE = True

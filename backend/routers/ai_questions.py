@@ -1,12 +1,11 @@
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel,Field
-from sqlalchemy.orm import Session
-
+from typing import Literal
 from database import get_db
+from sqlalchemy.orm import Session
+from pydantic import BaseModel,Field
+from fastapi import APIRouter, Depends, HTTPException
+from ai.questions.graph_runner import run_question_generation_graph
 from ai.questions.topic_validator import validate_topic_for_competency
 from ai.core.config import normalize_competency_type, COMPETENCY_KEYWORDS
-from typing import Literal
-from ai.questions.graph_runner import run_question_generation_graph
 
 router = APIRouter(prefix="/api/ai", tags=["AI Questions"])
 

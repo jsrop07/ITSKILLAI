@@ -1,11 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from typing import List, Optional
-
 from database import get_db
+from typing import List, Optional
+from sqlalchemy.orm import Session
 from models import Question, Admin
-from schemas import QuestionCreate, QuestionUpdate, QuestionRead
 from routers.auth import get_current_admin
+from fastapi import APIRouter, Depends, HTTPException, Query
+from schemas import QuestionCreate, QuestionUpdate, QuestionRead
 
 router = APIRouter(prefix="/api/questions", tags=["questions"])
 
