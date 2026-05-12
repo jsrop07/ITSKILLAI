@@ -1,6 +1,6 @@
-# backend/ai/services/question_format_config.py
+# backend/ai/questions/question_format_config.py
 
-from ai.services.competency_config import normalize_competency_type
+from ai.questions.competency_config import normalize_competency_type
 
 
 QUESTION_FORMAT_RULES = {

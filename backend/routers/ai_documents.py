@@ -14,7 +14,7 @@ from ai.rag.document_loader import load_text_from_file
 from ai.rag.text_splitter import split_text_into_chunks
 from ai.rag.document_service import embed_document_chunks
 from ai.rag.document_service import search_document_chunks
-from ai.services.competency_config import normalize_competency_type, get_competency_label
+from ai.questions.competency_config import normalize_competency_type, get_competency_label
 
 router = APIRouter(prefix="/api/ai/documents", tags=["AI Documents"])
 

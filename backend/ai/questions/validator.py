@@ -1,9 +1,9 @@
-# backend/ai/services/question_validator.py
+# backend/ai/questions/validator.py
 
 import re
 import logging
 from typing import Any
-from ai.services.competency_config import normalize_competency_type
+from ai.questions.competency_config import normalize_competency_type
 
 logger = logging.getLogger("uvicorn.info")
 

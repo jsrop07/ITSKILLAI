@@ -5,16 +5,16 @@ import random
 import logging
 from ai.core.openai_client import client
 from collections import Counter
-from ai.services.question_validator import validate_questions
-from ai.services.question_planner import generate_question_plans
-from ai.services.competency_config import normalize_competency_type
-from ai.services.question_templates import (
+from ai.questions.validator import validate_questions
+from ai.questions.planner import generate_question_plans
+from ai.questions.competency_config import normalize_competency_type
+from ai.questions.templates import (
     build_ai_advanced_template,
     build_sql_advanced_template,
     build_python_advanced_template,
     build_java_advanced_template,
 )
-from ai.services.question_choice_generator import (
+from ai.questions.choice_generator import (
     generate_choices_for_template_question,
     generate_choices_for_template_questions_batch,
 )

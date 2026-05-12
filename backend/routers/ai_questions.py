@@ -6,13 +6,13 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import Question
-from ai.services.topic_validator import validate_topic_for_competency
-from ai.services.question_generator import (
+from ai.questions.topic_validator import validate_topic_for_competency
+from ai.questions.generator import (
     generate_questions,
     generate_questions_from_context
 )
 from ai.rag.document_service import build_context_from_search_results
-from ai.services.competency_config import normalize_competency_type, COMPETENCY_KEYWORDS
+from ai.questions.competency_config import normalize_competency_type, COMPETENCY_KEYWORDS
 from typing import Literal
 from ai.graph.question_generation_graph import run_question_generation_graph
 

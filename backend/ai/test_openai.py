@@ -1,4 +1,4 @@
-from ai.services.question_generator import generate_questions
+from ai.questions.generator import generate_questions
 
 questions = generate_questions(
     topic="Java 기초",

@@ -1,4 +1,4 @@
-# backend/ai/services/question_templates.py
+# backend/ai/questions/question_templates.py
 
 from __future__ import annotations
 

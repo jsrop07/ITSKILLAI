@@ -1,12 +1,12 @@
-# backend/ai/services/question_planner.py
+# backend/ai/questions/question_planner.py
 
 import json
 import re
 from typing import Any
 
 from ai.core.openai_client import client
-from ai.services.competency_config import normalize_competency_type
-from ai.services.question_format_config import (
+from ai.questions.competency_config import normalize_competency_type
+from ai.questions.question_format_config import (
     build_question_format_instruction,
     get_allowed_question_formats,
     get_expected_evidence_type,
