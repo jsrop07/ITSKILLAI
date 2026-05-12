@@ -1692,7 +1692,7 @@ def generate_questions(
             elapsed_time = time.time() - start_time
             logger.info(
                 f"LLM Pipeline [Generate]: AI 고급 템플릿 + LLM 선택지 기반 문제 생성 완료 "
-                f"(생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)"
+                f"(생성된 문제 수: {count}, 소요 시간: {elapsed_time:.3f}초)"
             )
 
             return validated_questions[:count]
@@ -1753,7 +1753,7 @@ def generate_questions(
             elapsed_time = time.time() - start_time
             logger.info(
                 f"LLM Pipeline [Generate]: SQL 고급 템플릿 + LLM 선택지 기반 문제 생성 완료 "
-                f"(생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)"
+                f"(생성된 문제 수: {count}, 소요 시간: {elapsed_time:.3f}초)"
             )
 
             return validated_questions[:count]
@@ -1814,7 +1814,7 @@ def generate_questions(
             elapsed_time = time.time() - start_time
             logger.info(
                 f"LLM Pipeline [Generate]: Java 고급 템플릿 + LLM 선택지 기반 문제 생성 완료 "
-                f"(생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)"
+                f"(생성된 문제 수: {count}, 소요 시간: {elapsed_time:.3f}초)"
             )
 
             return validated_questions[:count]
@@ -1876,7 +1876,7 @@ def generate_questions(
             elapsed_time = time.time() - start_time
             logger.info(
                 f"LLM Pipeline [Generate]: Python 고급 템플릿 + LLM 선택지 기반 문제 생성 완료 "
-                f"(생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)"
+                f"(생성된 문제 수: {count}, 소요 시간: {elapsed_time:.3f}초)"
             )
 
             return validated_questions[:count]
@@ -1914,7 +1914,7 @@ def generate_questions(
         elapsed_time = time.time() - start_time
         logger.info(
             f"LLM Pipeline [Generate]: 설계서 기반 AI 문제 생성 완료 "
-            f"(생성된 문제 수: {len(validated_questions[:count])}/{count}, "
+            f"(생성된 문제 수: {count}, "
             f"후보 통과 수: {len(validated_questions)}, 소요 시간: {elapsed_time:.3f}초)"
         )
 
@@ -2151,7 +2151,7 @@ def generate_questions_from_context(
             max_retries=0,
         )
         elapsed_time = time.time() - start_time
-        logger.info(f"LLM Pipeline [RAG Generate]: RAG 기반 AI 문제 생성 완료 (생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)")
+        logger.info(f"LLM Pipeline [RAG Generate]: RAG 기반 AI 문제 생성 완료 (생성된 문제 수: {count}, 소요 시간: {elapsed_time:.3f}초)")
         return validated_questions[:count]
     except Exception as e:
         elapsed_time = time.time() - start_time
