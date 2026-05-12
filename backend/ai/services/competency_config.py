@@ -45,14 +45,67 @@ COMPETENCY_KEYWORDS = {
         "추적성", "애자일", "스크럼", "UML", "테스트케이스",
     ],
     "java": [
-        "java", "자바", "jvm", "클래스", "객체", "상속", "다형성",
-        "인터페이스", "예외", "컬렉션", "stream", "스트림",
-        "제네릭", "오버로딩", "오버라이딩",
-    ],
+        "java", "Java", "자바", "jvm", "JVM",
+
+        # OOP
+        "클래스", "class", "객체", "object",
+        "상속", "extends", "다형성", "polymorphism",
+        "인터페이스", "interface", "implements",
+        "추상", "abstract",
+        "오버로딩", "overloading",
+        "오버라이딩", "override", "Override",
+
+        # exception
+        "예외", "exception", "try", "catch", "finally", "throws",
+
+        # collection
+        "컬렉션", "collection",
+        "List", "ArrayList",
+        "Set", "HashSet",
+        "Map", "HashMap",
+        "contains", "add", "put", "get", "size",
+
+        # equals/hashCode
+        "equals", "hashCode", "hashcode",
+        "동등성", "해시",
+
+        # generic / stream
+        "제네릭", "generic", "generics",
+        "stream", "Stream", "스트림",
+        "lambda", "람다",
+        ],
     "python": [
-        "python", "파이썬", "리스트", "딕셔너리", "튜플", "셋",
-        "함수", "클래스", "모듈", "패키지", "예외", "파일",
-        "컴프리헨션", "이터레이터", "제너레이터",
+        "python", "Python", "파이썬",
+
+        # 기본 문법/자료형
+        "리스트", "list", "딕셔너리", "dict", "튜플", "tuple", "셋", "set",
+        "함수", "def", "클래스", "class", "모듈", "패키지", "파일",
+        "반복문", "for", "while", "컴프리헨션", "comprehension",
+
+        # 예외/런타임 오류
+        "예외", "exception", "try", "except", "finally",
+        "runtime error", "런타임 에러",
+        "KeyError", "TypeError", "ValueError", "IndexError",
+
+        # iterator / generator
+        "이터레이터", "iterator",
+        "제너레이터", "generator",
+        "yield", "next", "StopIteration",
+
+        # copy / mutable / reference
+        "얕은 복사", "깊은 복사",
+        "shallow copy", "deep copy",
+        "copy", "list.copy", "copy.copy", "copy.deepcopy",
+        "슬라이싱", "slicing",
+        "참조", "reference",
+        "mutable", "불변", "immutable",
+
+        # scope / closure / decorator
+        "스코프", "scope",
+        "클로저", "closure",
+        "nonlocal", "global",
+        "decorator", "데코레이터",
+        "wrapper",
     ],
     "c_language": [
         "c", "c언어", "포인터", "배열", "문자열", "구조체",
