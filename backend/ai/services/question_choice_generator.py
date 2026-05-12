@@ -5,7 +5,7 @@ import json
 import logging
 from copy import deepcopy
 
-from ai.client import client
+from ai.core.openai_client import client
 
 logger = logging.getLogger("uvicorn.info")
 

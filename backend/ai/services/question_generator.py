@@ -3,7 +3,7 @@ import json
 import time
 import random
 import logging
-from ai.client import client
+from ai.core.openai_client import client
 from collections import Counter
 from ai.services.question_validator import validate_questions
 from ai.services.question_planner import generate_question_plans

@@ -4,7 +4,7 @@ import json
 import re
 from typing import Any
 
-from ai.client import client
+from ai.core.openai_client import client
 from ai.services.competency_config import normalize_competency_type
 from ai.services.question_format_config import (
     build_question_format_instruction,
