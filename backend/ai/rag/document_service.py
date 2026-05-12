@@ -13,10 +13,8 @@ logger = logging.getLogger("uvicorn.info")
 # RAG Search Config
 # ─────────────────────────────────────────────
 MIN_CONTEXT_SIMILARITY = 0.42
-MIN_HYBRID_SCORE = 0.35
+MIN_HYBRID_SCORE = 0.0
 
-DEFAULT_VECTOR_WEIGHT = 0.7
-DEFAULT_KEYWORD_WEIGHT = 0.3
 
 def get_document_by_id(db, document_id: int):
     sql = text("""
@@ -127,7 +125,17 @@ def embed_document_chunks(db, document_id: int):
                 embedding=embedding,
                 metadata=metadata,
             )
-
+            db.execute(
+                text("""
+                    UPDATE ai_document_chunks
+                    SET vector_id = :vector_id
+                    WHERE chunk_id = :chunk_id
+                """),
+                {
+                    "vector_id": vector_id,
+                    "chunk_id": chunk["chunk_id"],
+                }
+            )
             embedded_count += 1
 
         update_document_embedding_status(db, document_id, "completed")
@@ -199,57 +207,67 @@ def _extract_keywords(query: str) -> list[str]:
 
     return list(dict.fromkeys(keywords))[:8]
 
+def _build_fulltext_query(query: str) -> str:
+    """
+    MariaDB FULLTEXT BOOLEAN MODE용 query를 만든다.
+    - 너무 짧은 토큰은 제외한다.
+    - 각 토큰 뒤에 *를 붙여 prefix matching을 허용한다.
+    - 예: "비기능 요구사항 추적성" -> "+비기능* +요구사항* +추적성*"
+    """
+    keywords = _extract_keywords(query)
+
+    if not keywords:
+        return ""
+
+    boolean_terms = []
+
+    for keyword in keywords:
+        cleaned = (
+            keyword.strip()
+            .replace("+", "")
+            .replace("-", "")
+            .replace("@", "")
+            .replace("~", "")
+            .replace("*", "")
+            .replace('"', "")
+            .replace("'", "")
+            .replace("(", "")
+            .replace(")", "")
+        )
+
+        if len(cleaned) >= 2:
+            boolean_terms.append(f"{cleaned}*")
+
+    return " ".join(boolean_terms)
+
+
 def search_keyword_chunks(
     db,
     query: str,
     top_k: int = 5,
     category: str | None = None,
 ):
-    keywords = _extract_keywords(query)
+    """
+    MariaDB FULLTEXT 기반 keyword search.
 
-    if not keywords:
+    기존 LIKE 검색이 아니라 MATCH(content) AGAINST(...)를 사용한다.
+    이 단계부터는 단순 문자열 포함 검색이 아니라 DB의 전문 검색 점수를 사용한다.
+    """
+    fulltext_query = _build_fulltext_query(query)
+
+    if not fulltext_query:
         return []
 
-    where_clauses = []
     params = {
+        "query": fulltext_query,
         "limit": top_k,
     }
 
-    keyword_conditions = []
-
-    for idx, keyword in enumerate(keywords):
-        param_name = f"kw_{idx}"
-        params[param_name] = f"%{keyword}%"
-
-        keyword_conditions.append(
-            f"""(
-                c.content LIKE :{param_name}
-                OR d.title LIKE :{param_name}
-                OR d.source_type LIKE :{param_name}
-                OR d.description LIKE :{param_name}
-            )"""
-        )
-
-    where_clauses.append("(" + " OR ".join(keyword_conditions) + ")")
+    category_sql = ""
 
     if category:
-        where_clauses.append("d.category = :category")
+        category_sql = "AND d.category = :category"
         params["category"] = category
-
-    where_sql = " AND ".join(where_clauses)
-
-    score_expr_parts = []
-
-    for idx, keyword in enumerate(keywords):
-        param_name = f"kw_{idx}"
-        score_expr_parts.append(f"""
-            CASE
-                WHEN c.content LIKE :{param_name} THEN 1
-                ELSE 0
-            END
-        """)
-
-    score_expr = " + ".join(score_expr_parts)
 
     sql = text(f"""
         SELECT
@@ -261,22 +279,26 @@ def search_keyword_chunks(
             d.file_name,
             d.category,
             d.source_type,
-            ({score_expr}) AS raw_keyword_score
+            MATCH(c.content) AGAINST (:query IN BOOLEAN MODE) AS raw_keyword_score
         FROM ai_document_chunks c
         JOIN ai_documents d ON c.document_id = d.document_id
-        WHERE {where_sql}
+        WHERE MATCH(c.content) AGAINST (:query IN BOOLEAN MODE)
+        {category_sql}
         ORDER BY raw_keyword_score DESC, c.chunk_id ASC
         LIMIT :limit
     """)
 
     rows = db.execute(sql, params).mappings().all()
 
-    max_score = max([row["raw_keyword_score"] for row in rows], default=1)
+    max_score = max(
+        [float(row["raw_keyword_score"] or 0.0) for row in rows],
+        default=1.0,
+    )
 
     results = []
 
-    for row in rows:
-        raw_score = row["raw_keyword_score"] or 0
+    for rank, row in enumerate(rows, start=1):
+        raw_score = float(row["raw_keyword_score"] or 0.0)
         keyword_score = raw_score / max_score if max_score else 0.0
 
         metadata = {
@@ -296,6 +318,8 @@ def search_keyword_chunks(
             "similarity": None,
             "vector_score": 0.0,
             "keyword_score": keyword_score,
+            "keyword_raw_score": raw_score,
+            "keyword_rank": rank,
             "hybrid_score": keyword_score,
             "search_source": "keyword",
         })
@@ -306,12 +330,19 @@ def merge_hybrid_search_results(
     vector_results: list[dict],
     keyword_results: list[dict],
     top_k: int = 5,
-    vector_weight: float = DEFAULT_VECTOR_WEIGHT,
-    keyword_weight: float = DEFAULT_KEYWORD_WEIGHT,
+    rrf_k: int = 60,
 ):
-    merged = {}
+    """
+    Vector 결과와 FULLTEXT keyword 결과를 RRF로 병합한다.
 
-    def get_key(item: dict):
+    RRF 장점:
+    - vector_score와 keyword_score의 스케일 차이를 직접 섞지 않는다.
+    - 각 검색기의 순위를 기준으로 병합한다.
+    - vector와 keyword 양쪽에 모두 등장한 chunk는 상위로 올라간다.
+    """
+    merged: dict[str, dict] = {}
+
+    def get_key(item: dict) -> str:
         metadata = item.get("metadata", {})
         chunk_id = metadata.get("chunk_id")
 
@@ -320,44 +351,53 @@ def merge_hybrid_search_results(
 
         document_id = metadata.get("document_id")
         chunk_index = metadata.get("chunk_index")
-
         return f"doc:{document_id}:chunk_index:{chunk_index}"
 
-    for item in vector_results:
-        key = get_key(item)
-        merged[key] = {
-            **item,
-            "vector_score": item.get("vector_score") or item.get("similarity") or 0.0,
-            "keyword_score": 0.0,
-            "search_source": "vector",
-        }
+    def add_ranked_results(results: list[dict], source_name: str):
+        for rank, item in enumerate(results, start=1):
+            key = get_key(item)
+            rrf_score = 1 / (rrf_k + rank)
 
-    for item in keyword_results:
-        key = get_key(item)
+            if key not in merged:
+                merged[key] = {
+                    **item,
+                    "vector_score": 0.0,
+                    "keyword_score": 0.0,
+                    "vector_rank": None,
+                    "keyword_rank": None,
+                    "rrf_score": 0.0,
+                    "search_sources": [],
+                }
 
-        if key in merged:
-            merged[key]["keyword_score"] = item.get("keyword_score") or 0.0
-            merged[key]["search_source"] = "hybrid"
-        else:
-            merged[key] = {
-                **item,
-                "vector_score": 0.0,
-                "keyword_score": item.get("keyword_score") or 0.0,
-                "search_source": "keyword",
-            }
+            merged[key]["rrf_score"] += rrf_score
+
+            if source_name not in merged[key]["search_sources"]:
+                merged[key]["search_sources"].append(source_name)
+
+            if source_name == "vector":
+                merged[key]["vector_score"] = item.get("vector_score") or item.get("similarity") or 0.0
+                merged[key]["vector_rank"] = rank
+
+            if source_name == "keyword":
+                merged[key]["keyword_score"] = item.get("keyword_score") or 0.0
+                merged[key]["keyword_rank"] = rank
+
+    add_ranked_results(vector_results, "vector")
+    add_ranked_results(keyword_results, "keyword")
 
     results = []
 
     for item in merged.values():
-        vector_score = item.get("vector_score") or 0.0
-        keyword_score = item.get("keyword_score") or 0.0
+        sources = item.get("search_sources", [])
 
-        hybrid_score = (
-            vector_score * vector_weight
-            + keyword_score * keyword_weight
-        )
+        if "vector" in sources and "keyword" in sources:
+            item["search_source"] = "hybrid"
+        elif "vector" in sources:
+            item["search_source"] = "vector"
+        else:
+            item["search_source"] = "keyword"
 
-        item["hybrid_score"] = hybrid_score
+        item["hybrid_score"] = item.get("rrf_score") or 0.0
         results.append(item)
 
     results.sort(
@@ -426,7 +466,13 @@ def search_document_chunks(
                 keyword_results=keyword_results,
                 top_k=top_k,
             )
-
+            logger.info(
+                "Hybrid RAG [Merge]: "
+                f"vector_results={len(vector_results)}, "
+                f"keyword_results={len(keyword_results)}, "
+                f"merged_results={len(search_results)}, "
+                f"top_k={top_k}"
+            )
         elapsed_time = time.time() - start_time
         logger.info(
             f"RAG Pipeline [Search]: 문서 검색 성공 "
@@ -449,10 +495,77 @@ def search_document_chunks(
         )
         raise
 
+def _is_noise_context(content: str) -> bool:
+    """
+    문제 생성 근거로 부적합한 교수·학습 안내성 chunk를 필터링한다.
+    NCS PDF에는 교수자 안내, 학습 활동, 평가자 질문 등이 섞여 있어
+    검색 점수가 높아도 문제 생성 근거로는 부적절할 수 있다.
+    """
+    if not content:
+        return True
+
+    text_value = str(content)
+
+    noise_keywords = [
+        "교수자",
+        "학습자",
+        "학습한다",
+        "수업",
+        "실습 시",
+        "평가자 질문",
+        "평가 방법",
+        "평가지",
+        "자기진단",
+        "체크리스트",
+        "학습 내용",
+        "학습 목표",
+        "교수·학습 방법",
+        "교수 방법",
+        "학습 방법",
+        "UML 저작도구",
+        "라이선스에 유의",
+        "파워포인트 자료",
+    ]
+
+    evidence_keywords = [
+        "요구사항",
+        "비기능",
+        "기능 요구사항",
+        "품질",
+        "성능",
+        "가용성",
+        "보안성",
+        "유지보수",
+        "검증",
+        "타당성",
+        "분석",
+        "인터페이스",
+        "제약사항",
+        "응답 시간",
+        "처리량",
+    ]
+
+    noise_count = sum(1 for keyword in noise_keywords if keyword in text_value)
+    evidence_count = sum(1 for keyword in evidence_keywords if keyword in text_value)
+
+    # 안내성 문구가 많고, 출제 근거 키워드가 적으면 제외
+    if noise_count >= 2 and evidence_count <= 1:
+        return True
+
+    # 평가/학습 안내 페이지 성격이 강한 chunk 제외
+    if noise_count >= 4:
+        return True
+
+    return False
+
+
 def _is_valid_context_item(item: dict, search_mode: str) -> bool:
     content = item.get("content", "")
 
     if not content or len(content.strip()) < 80:
+        return False
+
+    if _is_noise_context(content):
         return False
 
     if search_mode == "vector":
@@ -461,7 +574,7 @@ def _is_valid_context_item(item: dict, search_mode: str) -> bool:
     if search_mode == "keyword":
         return (item.get("keyword_score") or 0.0) > 0
 
-    return (item.get("hybrid_score") or 0.0) >= MIN_HYBRID_SCORE
+    return (item.get("hybrid_score") or 0.0) > MIN_HYBRID_SCORE
 
 def build_context_from_search_results(
     db,
@@ -487,6 +600,14 @@ def build_context_from_search_results(
         item for item in results
         if _is_valid_context_item(item, search_mode)
     ]
+
+    logger.info(
+        "RAG Context [Filter]: "
+        f"before={len(results)}, "
+        f"after={len(filtered_results)}, "
+        f"search_mode={search_mode}, "
+        f"category={category}"
+    )
 
     if not filtered_results:
         raise ValueError("관련 문서 내용의 검색 점수가 너무 낮습니다.")

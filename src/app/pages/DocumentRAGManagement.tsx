@@ -540,13 +540,6 @@ export default function DocumentRAGManagement() {
                           ? result.hybrid_score.toFixed(3)
                           : "-"}
                       </Badge>
-
-                      <Badge variant="secondary" className="bg-slate-100 text-slate-700">
-                        similarity{" "}
-                        {typeof result.similarity === "number"
-                          ? result.similarity.toFixed(3)
-                          : "-"}
-                      </Badge>
                     </div>
 
                     <p className="text-xs text-slate-500 mb-2">

@@ -26,7 +26,6 @@ import {
   AI_GENERATION_TYPE_LABELS,
   type CompetencyTypeValue,
 } from "../../lib/types";
-
 const formatDate = (dateStr?: string) => {
   if (!dateStr) return "-";
   try {
@@ -85,6 +84,12 @@ const documentScopeOptions = [
   { value: "rag_all", label: "전체 인덱싱 문서 기반 생성" },
 ];
 
+const searchModeOptions = [
+  { value: "hybrid", label: "Hybrid 검색 (Vector + FULLTEXT + RRF)" },
+  { value: "vector", label: "Vector 검색 (ChromaDB)" },
+  { value: "keyword", label: "Keyword 검색 (MariaDB FULLTEXT)" },
+];
+
 type QuestionTypeValue = "multiple_choice" | "essay" | "coding";
 type DifficultyValue = "초급" | "중급" | "고급";
 type DocumentScopeValue = "none" | "rag_all";
@@ -101,6 +106,8 @@ export default function AIQuestionGeneration() {
   const [topK, setTopK] = useState(5);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
+  const [searchMode, setSearchMode] = useState<"vector" | "keyword" | "hybrid">("hybrid");
+  const isRagEnabled = documentScope === "rag_all";
 
   const handleGenerate = async () => {
     if (!competencyType) {
@@ -146,24 +153,31 @@ export default function AIQuestionGeneration() {
       .filter(Boolean)
       .join(" ");
 
-    const payload = {
+    const basePayload = {
       topic: detailedTopic,
       difficulty,
       count,
       question_type: questionType,
-      // role,
       competency_type: competencyType,
+    };
+
+    const generalPayload = {
+      ...basePayload,
+    };
+
+    const ragPayload = {
+      ...basePayload,
       search_query: searchQuery,
       top_k: topK,
+      search_mode: searchMode,
     };
 
     try {
       setIsGenerating(true);
 
-      const result =
-        documentScope === "rag_all"
-          ? await aiQuestionApi.generateFromDocument(payload)
-          : await aiQuestionApi.generateGeneral(payload);
+      const result = isRagEnabled
+        ? await aiQuestionApi.generateFromDocument(ragPayload)
+        : await aiQuestionApi.generateGeneral(generalPayload);
 
       console.log("AI 문제 생성 결과:", result);
 
@@ -192,7 +206,7 @@ export default function AIQuestionGeneration() {
           AI 문제 생성
         </h1>
         <p className="text-sm text-slate-500 mt-1">
-          OpenAI LLM과 ChromaDB RAG를 활용한 지능형 문제 생성
+          OpenAI LLM + Hybrid RAG 기반 지능형 문제 생성
         </p>
       </div>
 
@@ -318,7 +332,28 @@ export default function AIQuestionGeneration() {
                 </SelectContent>
               </Select>
             </div>
-
+            {isRagEnabled && (
+              <div className="space-y-2">
+                <Label htmlFor="searchMode">검색 방식(RAG)</Label>
+                <Select
+                  value={searchMode}
+                  onValueChange={(value) =>
+                    setSearchMode(value as "vector" | "keyword" | "hybrid")
+                  }
+                >
+                  <SelectTrigger id="searchMode">
+                    <SelectValue placeholder="검색 방식 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {searchModeOptions.map((option) => (
+                      <SelectItem key={option.value} value={option.value}>
+                        {option.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <Button
               className="w-full bg-gradient-to-r from-violet-600 to-sky-600 hover:from-violet-700 hover:to-sky-700 mt-6"
               onClick={handleGenerate}

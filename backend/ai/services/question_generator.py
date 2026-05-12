@@ -11,12 +11,19 @@ from ai.services.competency_config import normalize_competency_type
 from ai.services.question_templates import (
     build_ai_advanced_template,
     build_sql_advanced_template,
+    build_python_advanced_template,
+    build_java_advanced_template,
 )
 from ai.services.question_choice_generator import (
     generate_choices_for_template_question,
     generate_choices_for_template_questions_batch,
 )
 logger = logging.getLogger("uvicorn.info")
+
+USE_AI_ADVANCED_TEMPLATE = True
+USE_SQL_ADVANCED_TEMPLATE = True
+USE_PYTHON_ADVANCED_TEMPLATE = True
+USE_JAVA_ADVANCED_TEMPLATE = True
 
 def _normalize_explanation_style_local(explanation: str, answer_int: int) -> str:
     """
@@ -475,6 +482,275 @@ def _request_llm_json(prompt: str, system_message: str, temperature: float = 0.1
     logger.info(f"LLM raw response preview: {str(content)[:1000]}")
     return _clean_json_response(content)
 
+
+def _has_code_evidence_in_body(body: str, competency_type: str | None) -> bool:
+    body = str(body or "")
+    competency_type = normalize_competency_type(competency_type)
+
+    if competency_type == "java":
+        if "```java" in body:
+            return True
+
+        strong_code_signals = [
+            "\nclass ",
+            "\ninterface ",
+            "\npublic ",
+            "\nprivate ",
+            "\nvoid ",
+            "@Override",
+            "new ",
+            "System.out.println",
+            "HashSet<",
+            "HashMap<",
+            "ArrayList<",
+            "List<",
+            "Map<",
+            "equals(",
+            "hashCode(",
+        ]
+
+        return any(signal in body for signal in strong_code_signals)
+
+    if competency_type == "python":
+        # 단어만 있는 설명형 body를 코드로 오인하지 않기 위해
+        # 코드 블록 또는 실제 코드 구조가 있을 때만 True로 판단한다.
+        if "```python" in body:
+            return True
+
+        strong_code_signals = [
+            "\ndef ",
+            "\nclass ",
+            "\nprint(",
+            "\ntry:",
+            "\nexcept",
+            "\nfor ",
+            "\nwhile ",
+            "self.",
+            "yield ",
+            "next(",
+            ".copy()",
+            "copy.copy",
+            "copy.deepcopy",
+            "nonlocal ",
+        ]
+
+        return any(signal in body for signal in strong_code_signals)
+
+    return True
+
+
+def _format_evidence_as_code_block(evidence_detail: str, competency_type: str | None) -> str:
+    evidence_detail = str(evidence_detail or "").strip()
+    # Planner가 "\\n" 문자열로 넘긴 코드를 실제 줄바꿈으로 변환한다.
+    evidence_detail = evidence_detail.replace("\\n", "\n")
+    evidence_detail = evidence_detail.replace("\\t", "    ")
+    
+    competency_type = normalize_competency_type(competency_type)
+
+    if not evidence_detail:
+        return ""
+
+    if "```" in evidence_detail:
+        return evidence_detail
+
+    if competency_type == "java":
+        return f"```java\n{evidence_detail}\n```"
+
+    if competency_type == "python":
+        return f"```python\n{evidence_detail}\n```"
+
+    return evidence_detail
+
+
+def _force_plan_evidence_into_generated_questions(
+    questions: list,
+    plans: list[dict],
+    competency_type: str | None,
+    difficulty: str,
+) -> list:
+    if difficulty not in {"중급", "고급"}:
+        return questions
+
+    competency_type = normalize_competency_type(competency_type)
+
+    if competency_type not in {"java", "python"}:
+        return questions
+
+    if not isinstance(questions, list) or not isinstance(plans, list):
+        return questions
+
+    for idx, q in enumerate(questions):
+        if not isinstance(q, dict):
+            continue
+
+        plan = plans[idx] if idx < len(plans) and isinstance(plans[idx], dict) else {}
+        evidence_type = str(plan.get("evidence_type", "")).strip()
+        evidence_detail = str(plan.get("evidence_detail", "")).strip()
+        logger.info(
+            f"Evidence Force Debug: index={idx}, "
+            f"competency={competency_type}, "
+            f"question_format={plan.get('question_format')}, "
+            f"evidence_type={evidence_type}, "
+            f"has_evidence_detail={bool(evidence_detail)}, "
+            f"evidence_preview={evidence_detail[:200]}"
+        )
+        # Java/Python 중급·고급은 planner가 evidence_type을 잘못 주더라도
+        # question_format 기준으로 code_snippet처럼 처리한다.
+        question_format = str(plan.get("question_format", "")).strip()
+        if competency_type == "python" and question_format == "generator_behavior":
+            if (
+                not evidence_detail
+                or "yield" not in evidence_detail
+                or "next(" not in evidence_detail
+            ):
+                evidence_detail = """
+        def make_numbers():
+            print("start")
+            yield 1
+            print("middle")
+            yield 2
+
+        gen = make_numbers()
+        print(next(gen))
+        print(next(gen))
+        """.strip()
+        if competency_type == "python" and question_format == "shallow_deep_copy":
+            if (
+                not evidence_detail
+                or (
+                    "copy" not in evidence_detail
+                    and "[:]" not in evidence_detail
+                )
+            ):
+                evidence_detail = """
+        original = [[1, 2], [3, 4]]
+        copied = original.copy()
+
+        copied[0][0] = 99
+
+        print(original)
+        print(copied)
+        """.strip()
+        if competency_type == "java" and question_format in {"equals_hashcode", "collection_behavior"}:
+            if (
+                not evidence_detail
+                or "class " not in evidence_detail
+                or "HashSet" not in evidence_detail
+                or "equals" not in evidence_detail
+                or "hashCode" not in evidence_detail
+                or "new User(" in evidence_detail and "User(" not in evidence_detail.split("new User(")[0]
+            ):
+                evidence_detail = """
+                import java.util.HashSet;
+                import java.util.Objects;
+                import java.util.Set;
+
+                class User {
+                    private final String id;
+                    private final String name;
+
+                    User(String id, String name) {
+                        this.id = id;
+                        this.name = name;
+                    }
+
+                    @Override
+                    public boolean equals(Object obj) {
+                        if (!(obj instanceof User)) return false;
+                        User other = (User) obj;
+                        return Objects.equals(this.id, other.id);
+                    }
+
+                    @Override
+                    public int hashCode() {
+                        return Objects.hash(id);
+                    }
+                }
+
+                Set<User> users = new HashSet<>();
+                users.add(new User("1", "Alice"));
+                users.add(new User("1", "Bob"));
+
+                System.out.println(users.size());
+                """.strip()
+        if competency_type in {"java", "python"} and not evidence_detail:
+            logger.warning(
+                f"evidence_detail 없음: index={idx}, "
+                f"question_format={plan.get('question_format')}, "
+                f"evidence_type={evidence_type}"
+            )
+            continue
+
+        if competency_type not in {"java", "python"} and evidence_type != "code_snippet":
+            continue
+
+        body = str(q.get("body", "") or "")
+
+        # Java/Python은 설명문 안의 yield, equals 같은 단어를 코드로 오인하지 않도록
+        # fenced code block이 있을 때만 이미 코드가 있다고 판단한다.
+        if competency_type == "python" and "```python" in body:
+            continue
+
+        if competency_type == "java" and "```java" in body:
+            continue
+
+        code_block = _format_evidence_as_code_block(
+            evidence_detail=evidence_detail,
+            competency_type=competency_type,
+        )
+
+        if not code_block:
+            continue
+
+        answer_style = str(plan.get("answer_style", "")).strip()
+
+        if answer_style == "output_prediction":
+            final_question = "위 코드의 실행 결과로 가장 적절한 것은 무엇인가?"
+        elif answer_style == "find_incorrect":
+            final_question = "다음 중 옳지 않은 설명은 무엇인가?"
+        elif answer_style == "error_reason":
+            final_question = "이 코드에서 발생할 수 있는 오류 원인으로 가장 적절한 것은 무엇인가?"
+        elif question_format in {"equals_hashcode", "collection_behavior"}:
+            final_question = "위 코드의 출력 결과와 HashSet의 중복 처리 방식에 대한 설명으로 가장 적절한 것은 무엇인가?"
+        elif question_format == "generator_behavior":
+            final_question = "위 코드의 출력 결과와 실행 흐름에 대한 설명으로 가장 적절한 것은 무엇인가?"
+        elif question_format == "shallow_deep_copy":
+            final_question = "위 코드의 실행 결과와 복사 방식에 대한 설명으로 가장 적절한 것은 무엇인가?"
+        elif question_format in {"scope_closure", "decorator_behavior"}:
+            final_question = "위 코드의 실행 결과와 동작 원리에 대한 설명으로 가장 적절한 것은 무엇인가?"
+        else:
+            final_question = "위 코드의 동작에 대한 설명으로 가장 적절한 것은 무엇인가?"
+
+        scenario = str(plan.get("scenario", "") or "").strip()
+        constraints = str(plan.get("constraints", "") or "").strip()
+
+        if not scenario:
+            # 기존 body에서 마지막 질문 문장을 제거하고 상황 설명만 남긴다.
+            scenario = re.sub(
+                r"(이 상황에서|위 코드의|다음 중|가장).*\?$",
+                "",
+                body.strip(),
+                flags=re.DOTALL,
+            ).strip()
+
+        if constraints:
+            scenario_text = f"{scenario}\n\n조건: {constraints}".strip()
+        else:
+            scenario_text = scenario
+
+        q["body"] = (
+            f"{scenario_text}\n\n"
+            f"[코드]\n"
+            f"{code_block}\n\n"
+            f"{final_question}"
+        ).strip()
+
+        logger.info(
+            f"Evidence Force Applied: index={idx}, "
+            f"body_preview={q['body'][:300]}"
+        )
+    return questions
+
 def _generate_with_retry(
     prompt: str,
     system_message: str,
@@ -483,6 +759,8 @@ def _generate_with_retry(
     score: int,
     temperature: float = 0.1,
     max_retries: int = 0,
+    plans: list[dict] | None = None,
+    competency_type: str | None = None,
 ):
     last_error = None
     for attempt in range(max_retries + 1):
@@ -491,6 +769,12 @@ def _generate_with_retry(
                 prompt=prompt,
                 system_message=system_message,
                 temperature=temperature,
+            )
+            questions = _force_plan_evidence_into_generated_questions(
+                questions=questions,
+                plans=plans or [],
+                competency_type=competency_type,
+                difficulty=difficulty,
             )
             validated_questions = validate_questions(
                 questions=questions,
@@ -607,6 +891,13 @@ def _competency_rule(competency_type: str | None, topic: str) -> str:
         - 중급 문제는 실행 결과 예측, KeyError/TypeError 같은 오류 원인, 누락된 조건 보완, 적절한 자료형 선택을 묻는다.
         - 고급 문제는 예외 상황, 성능, 메모리 사용, 가독성, 유지보수성, 리팩토링 방향을 판단하게 한다.
         - 코드 없이 "입력 데이터를 분석한다", "가장 적절한 판단은 무엇인가?"처럼 긴 상황 설명만 있는 문제를 만들지 않는다.
+        [Python 얕은 복사/참조 할당 출제 규칙]
+        - topic이 "얕은 복사", "shallow copy", "리스트 복사"와 관련되면 copied = original 형태만 제시하지 않는다.
+        - copied = original은 얕은 복사가 아니라 참조 할당으로 설명한다.
+        - 얕은 복사 문제를 만들 때는 반드시 list.copy(), slicing [:], copy.copy() 중 하나를 코드에 포함한다.
+        - 중급 이상에서는 가능하면 중첩 리스트를 사용해 내부 리스트 공유 여부를 묻는다.
+        - 예: original = [[1, 2], [3, 4]]; copied = original.copy(); copied[0][0] = 99; print(original)
+        - 정답은 실행 결과뿐 아니라 왜 내부 객체가 공유되는지 판단 가능해야 한다.
         """,
         "c_language": """
         [C언어 역량 출제 규칙]
@@ -615,6 +906,25 @@ def _competency_rule(competency_type: str | None, topic: str) -> str:
         - 중급 문제는 실행 결과 예측, 포인터 접근 오류, 문자열 종료 문자, 배열 범위, 함수 인자 전달 방식을 묻는다.
         - 고급 문제는 메모리 누수, dangling pointer, buffer overflow, 동적 할당 해제, 구조체 설계 문제를 판단하게 한다.
         - 코드 없이 긴 상황 설명만 있는 문제를 만들지 않는다.
+        [C언어 중급/고급 코드 출제 규칙]
+        - C 중급 문제는 한 줄짜리 코드 조각으로 만들지 않는다.
+        - body에는 최소 4줄 이상의 C 코드 블록을 포함한다.
+        - 포인터와 배열 문제는 단순히 arr + 1의 위치만 묻지 말고, 함수 호출 후 배열 원소가 어떻게 변경되는지 또는 어떤 메모리 위치가 변경되는지 묻는다.
+        - 문자열 문제는 char str[]와 char *str의 차이를 명확히 구분하게 한다.
+        - char *str = "Hello"; str[0] = 'h'; 같은 코드는 문자열 리터럴 수정으로 정의되지 않은 동작임을 판단하게 한다.
+        - 중급 문제는 포인터 산술, 배열 전달, 문자열 종료 문자, 메모리 수정 가능성 중 2개 이상을 결합한다.
+        - 선택지는 단순히 "출력은 1이다"처럼 짧게 쓰지 말고, 왜 해당 메모리 위치가 바뀌는지 또는 왜 정의되지 않은 동작인지 판단하게 작성한다.
+        [C언어 문제 질문/선택지 정합성 규칙]
+        - C 코드 기반 문제의 마지막 질문은 코드의 평가 대상과 정확히 맞아야 한다.
+        - 배열 원소 변경을 묻는 문제는 "함수 호출 후 배열의 첫 번째 원소는 어떻게 되는가?", "printf의 출력 결과는 무엇인가?"처럼 값 또는 출력 결과를 직접 묻는다.
+        - 문자열 리터럴 수정, 범위 초과 접근, 해제 후 접근처럼 오류 원인을 묻는 문제는 "이 코드에서 발생할 수 있는 핵심 문제는 무엇인가?", "이 코드가 정의되지 않은 동작이 되는 이유는 무엇인가?"처럼 묻는다.
+        - C 중급 문제에서 "이 상황에서 가장 적절한 판단은 무엇인가?"라는 질문 문장을 사용하지 않는다.
+        - 질문이 값/출력 결과를 묻는 경우 choices는 모두 값 또는 출력 결과 형태로 작성한다.
+        - 질문이 오류 원인을 묻는 경우 choices는 모두 오류 원인 형태로 작성한다.
+        - "포인터를 올바르게 사용해야 한다", "다른 방법을 사용해야 한다", "문제가 없다"처럼 일반 조언형 선택지를 정답으로 만들지 않는다.
+        - 동적 메모리 할당 문제에서 malloc 실패를 다루지 않는다면 선택지에 "메모리 할당 오류로 인해 수정되지 않는다" 같은 보기를 만들지 않는다.
+        - malloc 실패 가능성을 다루려면 body에 malloc 반환값 NULL 검사 여부를 명시한다.
+        - 코드에서 malloc으로 할당한 배열을 함수에 전달해 arr[0] = 10으로 수정했다면, 질문은 "함수 호출 후 array[0]의 값은 무엇인가?"가 되어야 하고 정답은 "10" 또는 "배열의 첫 번째 원소는 10이다"가 되어야 한다.
         """,
         "sql": """
         [SQL 역량 출제 규칙]
@@ -823,6 +1133,45 @@ def _build_plan_based_generation_prompt(
     설계서 기반 생성 단계에서 다시 적용한다.
     """
     plans_json = json.dumps(plans, ensure_ascii=False, indent=2)
+
+    # 설계서에서 answer_style 추출 (첫 번째 설계서 기준)
+    first_plan_answer_style = ""
+    first_plan_choice_policy = ""
+    if plans and isinstance(plans[0], dict):
+        first_plan_answer_style = str(plans[0].get("answer_style", "")).strip()
+        first_plan_choice_policy = str(plans[0].get("choice_policy", "")).strip()
+
+    # answer_style별 추가 지시문
+    answer_style_instruction = ""
+    if first_plan_answer_style == "find_incorrect":
+        answer_style_instruction = """
+    [관리자 출제 의도: find_incorrect - 틀린 것 찾기]
+    - 이 문제는 "틀린 것", "옳지 않은 것", "잘못된 것"을 고르는 문제다.
+    - choices 5개 중 정확히 4개는 올바른 설명이어야 하고, 정확히 1개만 틀린 설명이어야 한다.
+    - answer는 틀린 설명의 번호여야 한다.
+    - body 마지막 질문은 반드시 "다음 중 옳지 않은 설명은 무엇인가?" 또는 "가장 부적절한 설명은 무엇인가?" 형태여야 한다.
+    - explanation은 정답 선택지(틀린 설명)가 왜 틀렸는지 설명하고, 나머지 선택지는 왜 올바른 설명인지 확인해야 한다.
+    - explanation에서 올바른 4개 선택지를 "틀렸다"고 설명하면 절대 안 된다.
+    - "가장 적절한 것은?"처럼 올바른 것을 고르는 질문 형태로 만들지 않는다.
+"""
+    elif first_plan_answer_style == "output_prediction":
+        answer_style_instruction = """
+    [관리자 출제 의도: output_prediction - 출력 결과 예측]
+    - 출력 결과 선택지는 숫자만 단독으로 쓰지 않는다.
+    - 선택지는 "출력 결과는 2이다.", "users.size()는 2를 출력한다."처럼 문장형으로 작성한다.
+    - 모든 선택지는 비슷한 길이의 출력 결과 설명으로 작성한다.
+    - body에는 반드시 실행 가능한 코드 블록이 포함되어야 한다.
+    - choices는 모두 출력 결과 후보여야 한다 (예: "0", "1", "None", "[1, 2]" 등).
+    - answer는 실제 코드 실행 결과의 번호여야 한다.
+    - body 마지막 질문은 "위 코드의 출력 결과는 무엇인가?" 형태여야 한다.
+"""
+    elif first_plan_answer_style == "error_reason":
+        answer_style_instruction = """
+    [관리자 출제 의도: error_reason - 오류 원인 찾기]
+    - body에는 반드시 오류가 발생하는 코드 블록이 포함되어야 한다.
+    - choices는 오류 원인 또는 수정 방향 후보여야 한다.
+"""
+
     return f"""
     너는 IT 역량진단 문제은행의 전문 출제자다.
     목표는 실제 채용/역량진단에 사용할 수 있는 품질의 문제를 생성하는 것이다.
@@ -840,6 +1189,7 @@ def _build_plan_based_generation_prompt(
     - 문제 유형: {question_type}
     [문제 설계서]
     {plans_json}
+    {answer_style_instruction}
     [중요 검증 규칙]
     - 문제는 반드시 IT 역량진단과 관련된 내용이어야 한다.
     - 세부 주제가 음식, 여행, 연애, 취미, 쇼핑 등 IT와 무관하면 문제를 생성하지 않는다.
@@ -847,6 +1197,38 @@ def _build_plan_based_generation_prompt(
     - 역량 유형이 자료구조/알고리즘이면 LLM, RAG, 딥러닝 같은 인공지능 문제를 만들지 않는다.
     - 역량 유형이 sql이면 SQL 쿼리, 테이블 구조, JOIN, GROUP BY, 인덱스, 실행 계획, 트랜잭션, 정규화 중심 문제만 만든다.
     - 역량 유형이 ai이면 LLM, RAG, 임베딩, 벡터 검색, 모델 평가, 머신러닝, 데이터 전처리 중심 문제만 만든다.
+
+    [설계서 evidence_detail 강제 반영 규칙]
+    - 각 문제는 반드시 설계서의 evidence_detail 내용을 body에 그대로 반영한다.
+    - evidence_detail에 코드 조각이 있으면 body에서 그 코드를 제거하거나 설명형 상황으로 바꾸지 않는다.
+    - evidence_type이 "code_snippet"이면 body에 반드시 코드 블록이 포함되어야 한다.
+    - 역량 유형이 "java"이면 body에 반드시 ```java 코드 블록을 포함한다.
+    - 역량 유형이 "python"이면 body에 반드시 ```python 코드 블록을 포함한다.
+    - 코드 블록 없이 "사용자 정의 객체를 HashSet에 저장하는 상황이다..." 같은 설명만 있는 body는 생성하지 않는다.
+    - 설계서에 evidence_detail이 있는데 body에 코드가 없으면 해당 설계서 문제를 건너뛴다.
+
+    [Java 코드 블록 강제 규칙]
+    - Java 중급/고급 문제에서 body에 ```java 코드 블록이 없으면 생성하지 않는다.
+    - equals/hashCode 문제는 body에 반드시:
+      1) class 코드와 equals 또는 hashCode 메서드 재정의 코드
+      2) HashSet 또는 HashMap 사용 코드
+      3) 두 가지 모두 포함해야 한다.
+    - 상속/다형성 문제는 body에 반드시 부모 타입 참조 변수 + 자식 객체 생성 코드가 있어야 한다.
+    - 예외 처리 문제는 body에 반드시 try/catch 코드가 있어야 한다.
+
+    [Python 코드 블록 강제 규칙]
+    - Python 중급/고급 문제에서 body에 ```python 코드 블록이 없으면 생성하지 않는다.
+    - generator 문제는 body에 반드시 yield + next() + generator 객체 생성 코드가 있어야 한다.
+    - shallow_deep_copy 문제는 body에 반드시 중첩 리스트 + list.copy() 또는 copy.copy() 또는 copy.deepcopy() 또는 slicing 코드가 있어야 한다.
+    - decorator 문제는 body에 반드시 @decorator 적용 코드가 있어야 한다.
+    - 코드 없는 설명형 문제는 생성하지 않는다.
+
+    [answer/explanation 일치 강제 규칙]
+    - answer 값과 explanation 첫 문장의 "정답은 N번입니다."에서 N은 반드시 같아야 한다.
+    - answer=2인데 explanation이 "정답은 1번입니다."로 시작하면 절대 안 된다.
+    - 실제 정답 선택지(choices[answer-1])가 explanation에서 설명하는 정답과 일치해야 한다.
+    - 출력 전에 반드시 answer 번호와 explanation 첫 문장의 번호가 같은지 검증한다.
+
     [출제 기준]
     - 사용자가 선택한 역량 유형을 최우선 기준으로 문제를 생성한다.
     - 세부 주제는 역량 유형 안에서 더 좁은 출제 범위로만 사용한다.
@@ -885,7 +1267,18 @@ def _build_plan_based_generation_prompt(
     - 중급/고급 문제는 단순히 긴 상황 설명만으로 구성하지 않는다.
     - 문제는 선택한 역량의 실제 작업 단위를 평가해야 한다.
     - 역량이 "python"이면 중급/고급 body에 반드시 Python 코드 조각, 리스트/딕셔너리 예시, 함수 정의, 예외 발생 코드 중 하나를 포함한다.
-    - 역량이 "java"이면 중급/고급 body에 반드시 Java 코드 조각, 클래스/인터페이스 구조, 예외 처리 코드, 컬렉션 사용 예시 중 하나를 포함한다.
+    - 역량이 "java"이고 난이도가 "중급" 또는 "고급"이면 body에 반드시 4줄 이상의 Java 코드 블록을 포함한다.
+    - Java 중급/고급 문제는 "사용자 정의 객체를 HashSet에 추가하는 상황이다"처럼 설명만 쓰면 안 된다.
+    - Java 중급/고급 body에는 반드시 class, interface, extends, implements, new, Override, try/catch, HashSet, ArrayList, HashMap 중 하나 이상이 포함된 코드가 있어야 한다.
+    - Java 컬렉션 문제는 반드시 HashSet/List/Map 사용 코드와 출력 결과 또는 동작 판단 질문을 포함한다.
+    - Java equals/hashCode 문제는 body에 반드시 다음 3가지를 모두 포함해야 한다:
+      1) ```java 코드 블록
+      2) equals() 또는 hashCode() 메서드를 @Override로 재정의한 class 코드
+      3) HashSet 또는 HashMap 사용 코드 (객체를 컬렉션에 추가하고 contains/size 등을 확인하는 코드)
+    - Java equals/hashCode 문제에서 "사용자 정의 객체를 HashSet에 저장하는 상황이다..."처럼 설명만 있고 코드 블록이 없으면 해당 문제를 생성하지 않는다.
+    - Java 오버라이딩/다형성 문제는 반드시 부모 클래스 타입 참조 변수와 자식 객체 생성 코드가 포함되어야 한다.
+    - Java 예외 처리 문제는 반드시 try/catch 코드가 포함되어야 한다.
+    - Java 중급/고급 문제에서 코드 없이 "가장 적절한 판단은 무엇인가?"만 묻는 설명형 문제를 만들지 않는다.
     - 역량이 "c_language"이면 중급/고급 body에 반드시 C 코드 조각, 포인터/배열/문자열/구조체/메모리 할당 예시 중 하나를 포함한다.
     - 역량이 "sql"이면 중급/고급 body에 반드시 SQL 쿼리, 테이블 구조, WHERE/JOIN/GROUP BY 조건, 실행 계획 설명 중 하나를 포함한다.
     - 역량이 "data_structure_algorithm"이면 중급/고급 body에 반드시 입력 크기, 연산 빈도, 의사코드, 시간복잡도 조건, 자료구조 선택 조건 중 하나를 포함한다.
@@ -918,7 +1311,56 @@ def _build_plan_based_generation_prompt(
     - join_where_bug:
     - body에는 반드시 SQL 쿼리가 포함되어야 한다.
     - 질문은 JOIN 조건과 WHERE 조건 중 어떤 부분이 결과에 영향을 주는지 물어야 한다.
+    - compile_error:
+    - body에는 반드시 컴파일 오류가 발생하는 Java 코드 블록이 포함되어야 한다.
+    - 질문은 컴파일 오류 원인과 가장 적절한 수정 방향을 물어야 한다.
+    - 선택지는 모두 Java 문법 또는 타입 규칙 기준으로 판단 가능해야 한다.
 
+    - polymorphism_dispatch:
+    - body에는 반드시 Java 상속 코드가 포함되어야 한다.
+    - 부모 클래스 타입 참조 변수에 자식 객체를 대입하는 코드가 포함되어야 한다.
+    - 질문은 실제 호출되는 오버라이딩 메서드와 그 이유를 물어야 한다.
+
+    - collection_behavior:
+    - body에는 반드시 Java 컬렉션 사용 코드가 포함되어야 한다.
+    - HashSet, HashMap, ArrayList, List, Map 중 하나 이상을 사용해야 한다.
+    - 질문은 contains, add, get, put, size, 중복 처리, key 비교 중 하나의 동작을 물어야 한다.
+
+    - equals_hashcode:
+    - body에는 반드시 equals 또는 hashCode를 재정의한 Java class 코드가 포함되어야 한다.
+    - body에는 반드시 HashSet 또는 HashMap 사용 코드가 포함되어야 한다.
+    - 질문은 equals/hashCode 규약이 컬렉션 동작에 미치는 영향을 물어야 한다.
+
+    - interface_abstract:
+    - body에는 반드시 interface, abstract class, implements, extends 중 하나 이상이 포함된 Java 코드가 있어야 한다.
+    - 질문은 default method 충돌, 추상 메서드 구현, 참조 타입 사용 가능 여부 중 하나를 물어야 한다.
+
+    - exception_flow:
+    - Java 문제라면 body에는 반드시 try/catch/finally 또는 throws 코드가 포함되어야 한다.
+    - Python 문제라면 body에는 반드시 try/except/finally 코드가 포함되어야 한다.
+    - 질문은 예외 발생 흐름, catch 순서, finally 실행 여부 중 하나를 물어야 한다.
+    
+    - list_dict_mutation:
+    - body에는 반드시 Python 리스트 또는 딕셔너리 수정 코드가 포함되어야 한다.
+    - 질문은 코드 실행 후 값 변화, 참조 공유, mutable 객체 변경 결과를 물어야 한다.
+
+    - shallow_deep_copy:
+    - body에는 반드시 list.copy(), slicing [:], copy.copy(), copy.deepcopy() 중 하나가 포함되어야 한다.
+    - 중첩 리스트를 사용해 내부 객체 공유 여부를 판단하게 한다.
+    - copied = original만 사용하는 문제는 얕은 복사 문제가 아니라 참조 할당 문제로 다룬다.
+
+    - generator_behavior:
+    - body에는 반드시 yield, next(), generator 객체 생성 코드가 포함되어야 한다.
+    - 질문은 generator 함수 호출 시점과 next() 호출 시점의 실행 흐름을 물어야 한다.
+
+    - decorator_behavior:
+    - body에는 반드시 decorator 함수와 @decorator 적용 코드가 포함되어야 한다.
+    - 질문은 함수 호출 순서, wrapper 실행, 반환값 변화를 물어야 한다.
+
+    - scope_closure:
+    - body에는 반드시 nested function, closure, nonlocal 중 하나 이상이 포함된 Python 코드가 있어야 한다.
+    - 질문은 변수 스코프와 상태 유지 여부를 물어야 한다.
+    
     - query_result:
     - body에는 반드시 SQL 쿼리와 테이블/데이터 조건이 포함되어야 한다.
     - 질문은 쿼리 결과 또는 결과가 달라지는 이유를 물어야 한다.
@@ -962,7 +1404,22 @@ def _build_plan_based_generation_prompt(
     - metric_interpretation:
     - body에는 반드시 precision, recall, F1, accuracy 중 하나 이상의 수치가 포함되어야 한다.
     - 질문은 지표 해석 또는 개선 방향을 물어야 한다.
-  
+    - c_pointer_array_result:
+    - body에는 반드시 최소 4줄 이상의 C 코드 블록이 포함되어야 한다.
+    - 코드에는 배열 선언, 포인터 또는 함수 인자 전달, 배열 원소 수정, printf 출력 중 3개 이상이 포함되어야 한다.
+    - 질문은 "가장 적절한 판단은 무엇인가?"가 아니라 "함수 호출 후 배열의 특정 원소는 어떻게 되는가?", "printf의 출력 결과는 무엇인가?"처럼 작성한다.
+    - choices는 모두 값 변화 또는 출력 결과 중심으로 작성한다.
+
+    - c_string_literal_error:
+    - body에는 char *str = "..." 형태 또는 문자열 리터럴을 포인터로 가리키는 코드가 포함되어야 한다.
+    - 질문은 "이 코드에서 발생할 수 있는 핵심 문제는 무엇인가?" 또는 "정의되지 않은 동작이 발생하는 이유는 무엇인가?"처럼 작성한다.
+    - choices는 모두 오류 원인 중심으로 작성한다.
+    - 문자열 리터럴 수정이 핵심이면 body에 "문자열 리터럴" 또는 "수정할 수 없는 영역"이라는 단서를 포함한다.
+
+    - c_memory_allocation_result:
+    - body에는 malloc/free, 함수 인자 전달, 배열 원소 수정이 포함되어야 한다.
+    - malloc 실패 여부를 묻지 않는다면 NULL, 메모리 할당 오류를 선택지에 넣지 않는다.
+    - 질문은 "함수 호출 후 array[0]의 값은 무엇인가?" 또는 "printf의 출력 결과는 무엇인가?"처럼 작성한다.
     [설계서 반영 규칙]
     - 각 문제는 문제 설계서 1개를 기반으로 생성한다.
     - 설계서 개수보다 문제 개수가 적으면 설계서 개수만큼만 생성한다.
@@ -984,7 +1441,12 @@ def _build_plan_based_generation_prompt(
     - 난이도가 "중급" 또는 "고급"이면 문제 본문에 반드시 짧은 실무 상황을 포함한다.
     - 중급은 개념 적용, 비교, 원인 판단, 검토 기준 선택을 묻는다.
     - 고급은 원인 분석, 장애 대응, 성능 병목, 보안 리스크, 운영 트레이드오프, 우선순위 판단 중 하나를 포함한다.
-    [문서 기반 객관식 선택지 품질 및 문체 규칙]
+    [객관식 선택지 품질 및 문체 규칙]
+    - 선택지 하나에 두 개 이상의 판단을 과도하게 합치지 않는다.
+    - 선택지는 1문장으로 작성한다.
+    - 중급 문제의 각 선택지는 25~70자 정도로 작성한다.
+    - 정답 선택지만 길고 상세하게 쓰지 않는다.
+    - 실행 결과 문제는 선택지를 출력 결과 중심으로 짧게 구성한다.
     - choices는 모두 시험 선택지체로 작성한다.
     - choices는 존댓말을 사용하지 않는다.
     - choices에서 "~합니다", "~입니다", "~해야 합니다", "~수 있습니다"를 사용하지 않는다.
@@ -997,7 +1459,7 @@ def _build_plan_based_generation_prompt(
     - 정답 선택지만 길고 구체적으로 쓰지 말고, 오답도 정답과 비슷한 길이와 판단 구조를 가져야 한다.
     - 오답은 실무자가 실제로 선택할 수 있는 대안이어야 하지만, 현재 문제의 핵심 조건을 일부 놓치거나 부작용을 고려하지 못해야 한다.
     - 오답의 한계를 "하지만", "그러나", "못한다", "않는다"로 너무 노골적으로 드러내지 않는다.
-    [문서 기반 문제 문체 규칙]
+    [문제 문체 규칙]
     - title은 짧은 명사형으로 작성한다.
     - body는 시험 문제 본문체로 작성한다.
     - body는 존댓말을 사용하지 않는다.
@@ -1102,12 +1564,19 @@ def generate_questions_from_plans(
     )
     return _generate_with_retry(
         prompt=prompt,
-        system_message="너는 IT 역량진단 문제은행의 문제 출제 전문가다. 반드시 유효한 JSON 배열만 출력한다.",
+        system_message=(
+            "너는 IT 역량진단 문제은행의 문제 출제 전문가다. 반드시 유효한 JSON 배열만 출력한다. "
+            "Python/Java 중급·고급 문제는 반드시 코드 블록을 포함해야 한다. "
+            "코드 없는 설명형 문제는 절대 생성하지 않는다. "
+            "find_incorrect 유형이면 4개는 맞는 설명, 1개만 틀린 설명으로 구성한다."
+        ),
         question_type=question_type,
         difficulty=difficulty,
         score=score,
-        temperature=0.2,
-        max_retries=0,
+        temperature=0.1,
+        max_retries=1,
+        plans=plans,
+        competency_type=competency_type,
     )
 
 def generate_questions(
@@ -1121,9 +1590,11 @@ def generate_questions(
     """
     일반 AI 문제 생성.
 
-    변경된 흐름:
-    - ai + 고급 문제는 LLM 자유 생성 품질이 불안정하므로 템플릿 기반으로 먼저 생성한다.
-    - 그 외 문제는 기존 planner -> generator 흐름을 사용한다.
+    현재 생성 정책:
+    - 고급 문제는 Templates 기반으로 안정화한다.
+        - 현재 우선 적용 대상: ai, sql, python, java
+    - 초급/중급 문제는 planner -> generator -> validator 흐름을 사용한다.
+    - Templates 기반 고급 문제는 lock_choices=True를 우선 사용해 선택지 품질을 안정화한다.
     """
     start_time = time.time()
     logger.info(
@@ -1138,7 +1609,7 @@ def generate_questions(
         # - RAG / LLM / Agent / ModelOps / ML 템플릿 중 topic에 맞게 선택
         # - body는 템플릿으로 고정하고 choices/explanation만 LLM이 생성
         # ─────────────────────────────────────────────────────────────────────────────────────────
-        if normalized_competency_type == "ai" and difficulty == "고급":
+        if USE_AI_ADVANCED_TEMPLATE and normalized_competency_type == "ai" and difficulty == "고급":
             base_questions = []
             used_ai_template_formats: list[str] = []
             used_ai_titles: set[str] = set()
@@ -1231,7 +1702,7 @@ def generate_questions(
         # - planner/generator를 타지 않음
         # - 테이블 구조, SQL 쿼리, 데이터 규모, 실행 계획, 인덱스/락 조건이 포함된 문제를 생성
         # ─────────────────────────────────────────────
-        if normalized_competency_type == "sql" and difficulty == "고급":
+        if USE_SQL_ADVANCED_TEMPLATE and normalized_competency_type == "sql" and difficulty == "고급":
             template_questions = []
             used_sql_template_formats: list[str] = []
 
@@ -1286,11 +1757,136 @@ def generate_questions(
             )
 
             return validated_questions[:count]
+        # ─────────────────────────────────────────────
+        # Java 고급 문제는 템플릿 기반으로 우선 생성
+        # - polymorphism/equals_hashCode/interface/exception 등 고급 문법 동작을 코드 기반으로 출제
+        # - body는 템플릿으로 고정하고 choices/explanation만 LLM이 생성
+        # ─────────────────────────────────────────────
+        if USE_JAVA_ADVANCED_TEMPLATE and normalized_competency_type == "java" and difficulty == "고급":
+            template_questions = []
+            used_java_template_formats: list[str] = []
 
+            for _ in range(count):
+                base_question = build_java_advanced_template(
+                    topic=topic,
+                    exclude_formats=used_java_template_formats,
+                )
+
+                selected_format = base_question.get("template_format")
+                if selected_format:
+                    used_java_template_formats.append(str(selected_format))
+
+                generated_question = generate_choices_for_template_question(base_question)
+
+                generated_question.pop("answer_intent", None)
+                generated_question.pop("distractor_intents", None)
+                generated_question.pop("lock_choices", None)
+                generated_question.pop("template_format", None)
+
+                template_questions.append(generated_question)
+
+            validated_questions = validate_questions(
+                questions=template_questions,
+                question_type=question_type,
+                difficulty=difficulty,
+                score=score,
+            )
+
+            if len(validated_questions) == 0:
+                raise ValueError("Java 고급 템플릿 문제 검증을 통과하지 못했습니다.")
+
+            validated_questions = _rebalance_answer_positions(
+                validated_questions,
+                question_type,
+            )
+
+            validated_questions = _normalize_question_body_choice_styles(
+                validated_questions
+            )
+
+            validated_questions = _repair_multiple_choice_explanations(validated_questions)
+
+            logger.info(
+                "Java 고급 템플릿 선택 완료: "
+                f"used_formats={used_java_template_formats}"
+            )
+
+            elapsed_time = time.time() - start_time
+            logger.info(
+                f"LLM Pipeline [Generate]: Java 고급 템플릿 + LLM 선택지 기반 문제 생성 완료 "
+                f"(생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)"
+            )
+
+            return validated_questions[:count]
+
+        # ─────────────────────────────────────────────
+        # Python 고급 문제는 템플릿 기반으로 우선 생성
+        # - generator/scope/decorator/exception 등 고급 문법 동작을 코드 기반으로 출제
+        # - body는 템플릿으로 고정하고 choices/explanation만 LLM이 생성
+        # ─────────────────────────────────────────────
+        if USE_PYTHON_ADVANCED_TEMPLATE and normalized_competency_type == "python" and difficulty == "고급":
+            template_questions = []
+            used_python_template_formats: list[str] = []
+
+            for _ in range(count):
+                base_question = build_python_advanced_template(
+                    topic=topic,
+                    exclude_formats=used_python_template_formats,
+                )
+
+                selected_format = base_question.get("template_format")
+                if selected_format:
+                    used_python_template_formats.append(str(selected_format))
+
+                generated_question = generate_choices_for_template_question(base_question)
+
+                generated_question.pop("answer_intent", None)
+                generated_question.pop("distractor_intents", None)
+                generated_question.pop("lock_choices", None)
+                generated_question.pop("template_format", None)
+
+                template_questions.append(generated_question)
+
+            validated_questions = validate_questions(
+                questions=template_questions,
+                question_type=question_type,
+                difficulty=difficulty,
+                score=score,
+            )
+
+            if len(validated_questions) == 0:
+                raise ValueError("Python 고급 템플릿 문제 검증을 통과하지 못했습니다.")
+
+            validated_questions = _rebalance_answer_positions(
+                validated_questions,
+                question_type,
+            )
+
+            validated_questions = _normalize_question_body_choice_styles(
+                validated_questions
+            )
+
+            validated_questions = _repair_multiple_choice_explanations(validated_questions)
+
+            logger.info(
+                "Python 고급 템플릿 선택 완료: "
+                f"used_formats={used_python_template_formats}"
+            )
+
+            elapsed_time = time.time() - start_time
+            logger.info(
+                f"LLM Pipeline [Generate]: Python 고급 템플릿 + LLM 선택지 기반 문제 생성 완료 "
+                f"(생성된 문제 수: {len(validated_questions)}/{count}, 소요 시간: {elapsed_time:.3f}초)"
+            )
+
+            return validated_questions[:count]
         # ─────────────────────────────────────────────
         # 그 외 역량/난이도는 기존 설계서 기반 생성 흐름 사용
         # ─────────────────────────────────────────────
-        candidate_count = min(count + 2, 4)
+        if normalized_competency_type in {"python", "java"} and difficulty in {"초급", "중급"}:
+            candidate_count = count
+        else:
+            candidate_count = min(count + 2, 4)
 
         plans = generate_question_plans(
             topic=topic,
@@ -1389,6 +1985,12 @@ def generate_questions_from_context(
         - 문서에서 약어의 의미가 정의되어 있지 않으면 약어를 임의로 확장하지 마라.
         - SLLM, vLLM, VLM처럼 비슷한 약어는 반드시 구분해라.
         - vLLM을 VLM 또는 다국어 모델로 설명하지 마라.
+        [문서 기반 중급 문제 생성 규칙]
+        - 중급 문제는 문서에 있는 용어를 그대로 묻는 단순 정의형으로 만들지 않는다.
+        - 문서의 절차, 검토 기준, 비교 기준, 판단 조건을 활용해 상황 판단형으로 만든다.
+        - "가장 우선적으로 고려해야 할 사항"처럼 문서 순서만 맞히는 문제를 피한다.
+        - 선택지는 모두 같은 범주의 개념으로 구성하되, 정답만 문서 근거와 직접 연결되게 한다.
+        - 해설에는 정답 근거와 오답이 부족한 이유를 함께 설명한다.
         [품질 기준]
         - 단순히 문장 일부를 빈칸처럼 바꾸는 문제는 피한다.
         - 같은 문장을 거의 그대로 반복하는 문제는 피한다.

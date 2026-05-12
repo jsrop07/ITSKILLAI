@@ -1,7 +1,7 @@
 import re
 import json
 from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel
+from pydantic import BaseModel,Field
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -14,6 +14,7 @@ from ai.services.question_generator import (
 from ai.rag.document_service import build_context_from_search_results
 from ai.services.competency_config import normalize_competency_type, COMPETENCY_KEYWORDS
 from typing import Literal
+from ai.graph.question_generation_graph import run_question_generation_graph
 
 router = APIRouter(prefix="/api/ai", tags=["AI Questions"])
 
@@ -21,11 +22,9 @@ router = APIRouter(prefix="/api/ai", tags=["AI Questions"])
 class AIQuestionGenerateRequest(BaseModel):
     topic: str
     difficulty: Literal["초급", "중급", "고급"]
-    count: int = 1
+    count: int = Field(default=1, ge=1, le=10)
     question_type: Literal["multiple_choice", "essay", "coding"] = "multiple_choice"
     competency_type: str | None = None
-    search_query: str | None = None
-
 
 class AIQuestionGenerateFromDocumentRequest(BaseModel):
     topic: str
@@ -177,6 +176,8 @@ def generate_ai_questions(
             question_type=request.question_type,
             competency_type=normalized_competency,
         )
+        
+        generated_questions = generated_questions[:request.count]
 
         saved_questions = save_generated_questions(
             generated_questions=generated_questions,
@@ -195,6 +196,57 @@ def generate_ai_questions(
             "message": "AI 문제가 생성되었습니다.",
             "count": len(saved_questions),
             "questions": saved_questions
+        }
+
+    except HTTPException:
+        db.rollback()
+        raise
+
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/generate-questions-graph")
+def generate_ai_questions_graph(
+    request: AIQuestionGenerateRequest,
+    db: Session = Depends(get_db)
+):
+    """
+    LangGraph 기반 일반 AI 문제 생성 테스트 endpoint.
+
+    기존 /generate-questions는 유지하고,
+    이 endpoint에서만 LangGraph 흐름을 검증한다.
+    """
+    try:
+        score = get_score_by_difficulty(request.difficulty)
+
+        initial_state = {
+            "topic": request.topic,
+            "difficulty": request.difficulty,
+            "count": request.count,
+            "score": score,
+            "question_type": request.question_type,
+            "competency_type": request.competency_type,
+            "retry_count": 0,
+            "max_retries": 1,
+            "db": db,
+        }
+
+        result = run_question_generation_graph(initial_state)
+
+        saved_questions = result.get("saved_questions", [])
+
+        db.commit()
+
+        return {
+            "message": "LangGraph 기반 AI 문제가 생성되었습니다.",
+            "source": "general_graph",
+            "count": len(saved_questions),
+            "questions": saved_questions,
         }
 
     except HTTPException:
@@ -235,7 +287,7 @@ def generate_ai_questions_from_document(
             query=rag_query,
             top_k=request.top_k,
             category=normalized_competency,
-            search_mode="hybrid",
+            search_mode=request.search_mode,
         )
 
         if not context or not context.strip():
@@ -254,7 +306,9 @@ def generate_ai_questions_from_document(
             # role=request.role,
             competency_type=normalized_competency,
         )
-
+        
+        generated_questions = generated_questions[:request.count]
+        
         saved_questions = save_generated_questions(
             generated_questions=generated_questions,
             db=db,
