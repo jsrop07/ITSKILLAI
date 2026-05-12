@@ -3,9 +3,8 @@
 import time
 import logging
 from sqlalchemy import text
-from ai.embedding_service import create_embedding
-from ai.vector_store import search_similar_chunks
-from ai.vector_store import add_chunk_to_vector_store
+from ai.rag.embedding_service import create_embedding
+from ai.rag.vector_store import (search_similar_chunks, add_chunk_to_vector_store)
 
 logger = logging.getLogger("uvicorn.info")
 

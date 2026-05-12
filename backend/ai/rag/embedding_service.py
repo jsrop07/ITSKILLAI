@@ -1,3 +1,5 @@
+# ai/rag/embedding_service.py
+
 import os
 import time
 import logging

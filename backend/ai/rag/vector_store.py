@@ -1,4 +1,4 @@
-# ai/vector_store.py
+# ai/rag/vector_store.py
 
 import os
 import time
