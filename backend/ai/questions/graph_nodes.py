@@ -14,13 +14,13 @@ from ai.questions.templates import (
     build_python_advanced_template,
     build_java_advanced_template,
 )
-from ai.questions.generator import generate_questions_from_plans
+from ai.questions.generator import ( generate_questions_from_plans, generate_questions_from_context)
 from ai.questions.choice_generator import (
     generate_choices_for_template_question,
     generate_choices_for_template_questions_batch,
 )
 from ai.questions.validator import validate_questions
-
+from ai.rag.document_service import build_context_from_search_results
 logger = logging.getLogger("uvicorn.info")
 
 
@@ -72,6 +72,41 @@ def topic_validation_node(state: QuestionGenerationState) -> QuestionGenerationS
 
     return state
 
+def retrieval_node(state: QuestionGenerationState) -> QuestionGenerationState:
+    topic = state.get("topic", "")
+    competency_type = state.get("normalized_competency_type") or state.get("competency_type")
+    search_query = state.get("search_query") or topic
+    top_k = state.get("top_k", 5)
+    search_mode = state.get("search_mode", "hybrid")
+    db = state.get("db")
+
+    if db is None:
+        raise ValueError("RAG 검색을 위한 DB 세션이 없습니다. state['db']가 필요합니다.")
+
+    logger.info(
+        f"LangGraph [Retrieval]: query='{search_query}', top_k={top_k}, "
+        f"category={competency_type}, search_mode={search_mode}"
+    )
+
+    rag_context = build_context_from_search_results(
+        db=db,
+        query=search_query,
+        top_k=top_k,
+        category=competency_type,
+        search_mode=search_mode,
+    )
+
+    if not rag_context or not rag_context.strip():
+        raise ValueError("RAG 검색 결과가 비어 있어 문서 기반 문제를 생성할 수 없습니다.")
+
+    logger.info(
+        f"LangGraph [Retrieval]: context_length={len(rag_context)}"
+    )
+
+    return {
+        **state,
+        "rag_context": rag_context,
+    }
 
 def route_node(state: QuestionGenerationState) -> QuestionGenerationState:
     """
@@ -83,6 +118,17 @@ def route_node(state: QuestionGenerationState) -> QuestionGenerationState:
     """
     difficulty = state.get("difficulty")
     normalized_competency_type = state.get("normalized_competency_type")
+    generation_source = state.get("generation_source", "general")
+
+    if generation_source == "rag":
+        logger.info(
+            f"LangGraph [Route]: source=rag, difficulty={difficulty}, "
+            f"competency={normalized_competency_type}, generation_mode=rag"
+        )
+        return {
+            **state,
+            "generation_mode": "rag",
+        }
 
     if (
         difficulty == "고급"
@@ -105,10 +151,15 @@ def route_node(state: QuestionGenerationState) -> QuestionGenerationState:
 
 
 def route_by_generation_mode(state: QuestionGenerationState) -> str:
-    """
-    LangGraph conditional edge에서 사용할 라우팅 함수.
-    """
-    return state.get("generation_mode", "planner")
+    generation_mode = state.get("generation_mode", "planner")
+
+    if generation_mode == "rag":
+        return "rag"
+
+    if generation_mode == "template":
+        return "template"
+
+    return "planner"
 
 def planner_node(state: QuestionGenerationState) -> QuestionGenerationState:
     """
@@ -272,6 +323,40 @@ def generation_node(state: QuestionGenerationState) -> QuestionGenerationState:
 
     raise ValueError(f"지원하지 않는 generation_mode입니다: {generation_mode}")
 
+def rag_generation_node(state: QuestionGenerationState) -> QuestionGenerationState:
+    topic = state.get("topic", "")
+    difficulty = state.get("difficulty", "중급")
+    count = state.get("count", 1)
+    score = state.get("score", 3)
+    question_type = state.get("question_type", "multiple_choice")
+    competency_type = state.get("normalized_competency_type") or state.get("competency_type")
+    rag_context = state.get("rag_context")
+
+    if not rag_context:
+        raise ValueError("rag_context가 없어 RAG 기반 문제를 생성할 수 없습니다.")
+
+    generated_questions = generate_questions_from_context(
+        context=rag_context,
+        topic=topic,
+        difficulty=difficulty,
+        count=count,
+        score=score,
+        question_type=question_type,
+        competency_type=competency_type,
+    )
+
+    generated_questions = generated_questions[:count]
+
+    logger.info(
+        f"LangGraph [Generation:RAG]: generated={len(generated_questions)}, "
+        f"competency={competency_type}, difficulty={difficulty}"
+    )
+
+    return {
+        **state,
+        "raw_questions": generated_questions,
+    }
+    
 def validation_node(state: QuestionGenerationState) -> QuestionGenerationState:
     """
     생성된 문제 후보를 validator로 검증한다.
@@ -401,7 +486,10 @@ def save_node(state: QuestionGenerationState) -> QuestionGenerationState:
                 normalized_tags.extend([str(v) for v in tag.values()])
             else:
                 normalized_tags.append(str(tag))
-
+        
+        generation_source = state.get("generation_source", "general")
+        ai_generation_type = "rag" if generation_source == "rag" else "general_graph"
+        
         question = Question(
             source_type="ai",
             question_type=db_question_type,
@@ -415,7 +503,7 @@ def save_node(state: QuestionGenerationState) -> QuestionGenerationState:
             competency_tags_json=json.dumps(normalized_tags, ensure_ascii=False),
             score=q.get("score", score),
             review_status="pending",
-            ai_generation_type="general_graph",
+            ai_generation_type=ai_generation_type,
             created_by=None,
         )
 

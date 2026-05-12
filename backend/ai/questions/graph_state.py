@@ -4,7 +4,7 @@ from typing import Any, Literal
 from typing_extensions import TypedDict
 
 
-GenerationMode = Literal["planner", "template"]
+GenerationMode = Literal["planner", "template", "rag"]
 
 
 class QuestionGenerationState(TypedDict, total=False):
@@ -17,6 +17,15 @@ class QuestionGenerationState(TypedDict, total=False):
     competency_type: str | None
     db: Any
     
+    # 생성 소스
+    generation_source: Literal["general", "rag"] 
+
+    # rag 입력값
+    search_query: str | None
+    search_mode: Literal["vector", "keyword", "hybrid"]
+    top_k: int
+    rag_context: str | None
+
     # 정규화/라우팅 결과
     normalized_competency_type: str
     generation_mode: GenerationMode

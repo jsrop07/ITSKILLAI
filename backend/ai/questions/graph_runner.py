@@ -15,10 +15,11 @@ from ai.questions.graph_nodes import (
     generation_node,
     validation_node,
     save_node,
+    retrieval_node,
+    rag_generation_node,
 )
 
 logger = logging.getLogger("uvicorn.info")
-
 
 def build_question_generation_graph():
     """
@@ -43,23 +44,30 @@ def build_question_generation_graph():
     graph.add_node("generation", generation_node)
     graph.add_node("validation", validation_node)
     graph.add_node("save", save_node)
-
+    graph.add_node("retrieval", retrieval_node)
+    graph.add_node("rag_generation", rag_generation_node)
+    
     graph.add_edge(START, "normalize")
     graph.add_edge("normalize", "topic_validation")
     graph.add_edge("topic_validation", "route")
-
+    
     graph.add_conditional_edges(
         "route",
         route_by_generation_mode,
         {
             "planner": "planner",
             "template": "template",
+            "rag": "retrieval",
         },
     )
 
     graph.add_edge("planner", "generation")
     graph.add_edge("template", "generation")
     graph.add_edge("generation", "validation")
+
+    graph.add_edge("retrieval", "rag_generation")
+    graph.add_edge("rag_generation", "validation")
+
     graph.add_edge("validation", "save")
     graph.add_edge("save", END)
 
