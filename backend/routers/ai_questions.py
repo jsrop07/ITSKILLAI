@@ -168,36 +168,30 @@ def generate_ai_questions(
 
         score = get_score_by_difficulty(request.difficulty)
 
-        generated_questions = generate_questions(
-            topic=request.topic,
-            difficulty=request.difficulty,
-            count=request.count,
-            score=score,
-            question_type=request.question_type,
-            competency_type=normalized_competency,
-        )
-        
-        generated_questions = generated_questions[:request.count]
+        initial_state = {
+            "topic": request.topic,
+            "difficulty": request.difficulty,
+            "count": request.count,
+            "score": score,
+            "question_type": request.question_type,
+            "competency_type": normalized_competency,
+            "retry_count": 0,
+            "max_retries": 1,
+            "db": db,
+        }
 
-        saved_questions = save_generated_questions(
-            generated_questions=generated_questions,
-            db=db,
-            topic=request.topic,
-            difficulty=request.difficulty,
-            score=score,
-            question_type=request.question_type,
-            competency_type=normalized_competency,
-            ai_generation_type="general",
-        )
+        result = run_question_generation_graph(initial_state)
+
+        saved_questions = result.get("saved_questions", [])
 
         db.commit()
 
         return {
             "message": "AI 문제가 생성되었습니다.",
+            "source": "general_graph",
             "count": len(saved_questions),
             "questions": saved_questions
         }
-
     except HTTPException:
         db.rollback()
         raise
