@@ -1184,6 +1184,43 @@ def _validate_questions(
                     "해설에서 오답을 번호 기준으로 설명하고 있어 선택지 재배치 후 불일치 가능성이 있습니다."
                 )
 
+            # ─────────────────────────────────────────────
+            # find_incorrect 유형 전용 검증
+            # ─────────────────────────────────────────────
+            answer_style = str(q.get("answer_style", "")).strip()
+            if answer_style == "find_incorrect":
+                body_str = str(body or "").strip()
+                explanation_str = str(q.get("explanation", explanation) or "").strip()
+
+                # body 질문 형태 검증: "옳지 않은", "틀린", "부적절한" 등이 포함되어야 함
+                find_incorrect_body_markers = [
+                    "옳지 않", "틀린", "부적절한", "잘못된", "옳은 것이 아닌",
+                    "incorrect", "false", "아닌 것",
+                ]
+                if not any(m in body_str for m in find_incorrect_body_markers):
+                    logger.warning(
+                        f"find_incorrect 검증 경고: index={idx}, "
+                        f"reason=body_not_find_incorrect_form. body가 '옳지 않은 것'을 묻지 않음."
+                    )
+                    quality_warnings.append(
+                        "find_incorrect 유형인데 body 질문이 '옳지 않은 것'을 묻는 형태가 아닙니다."
+                    )
+
+                # explanation 방향 검증: 정답 선택지가 "틀렸다"는 내용을 설명해야 함
+                explanation_correct_markers = [
+                    "틀", "잘못", "부적절", "옳지 않", "incorrect", "false", "아니다", "아닙니다",
+                    "오해", "혼동", "오류",
+                ]
+                if not any(m in explanation_str for m in explanation_correct_markers):
+                    logger.warning(
+                        f"find_incorrect 검증 경고: index={idx}, "
+                        f"reason=explanation_not_pointing_to_incorrect. "
+                        f"explanation이 틀린 이유를 설명하지 않음."
+                    )
+                    quality_warnings.append(
+                        "find_incorrect 유형인데 explanation이 정답(틀린 것)의 오류 이유를 설명하지 않습니다."
+                    )
+
             if quality_warnings:
                 q["quality_warnings"] = quality_warnings
 

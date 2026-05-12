@@ -1791,6 +1791,522 @@ def build_ai_advanced_template(
 
     return random.choice(builders)(topic=topic, exclude_formats=exclude_formats)
 
+def build_python_advanced_template(
+    topic: str,
+    exclude_formats: list[str] | None = None,
+) -> dict:
+    """
+    Python 고급 문제 템플릿.
+    generator, scope/closure, decorator, exception, shallow/deep copy 중심.
+    """
+
+    templates = [
+        {
+            "title": "Generator와 yield 실행 흐름 판단",
+            "format": "generator_behavior",
+            "body": f"""
+다음은 Python generator의 실행 흐름을 확인하는 코드다.
+주제는 '{topic}'이다.
+
+[코드]
+def make_numbers():
+    print("start")
+    yield 1
+    print("middle")
+    yield 2
+    print("end")
+
+gen = make_numbers()
+print(next(gen))
+print(next(gen))
+
+이 코드의 실행 결과와 generator 동작에 대한 가장 적절한 판단은 무엇인가?
+""".strip(),
+            "choices": [
+                "make_numbers() 호출 시 함수 본문은 즉시 실행되지 않고, next(gen)이 호출될 때 yield 지점까지 실행이 진행된다.",
+                "make_numbers() 호출과 동시에 함수 본문 전체가 실행되며, yield는 반환값을 리스트에 누적하는 역할만 수행한다.",
+                "첫 번째 next(gen) 호출에서 start, middle, end가 모두 출력된 뒤 마지막 yield 값만 반환된다.",
+                "yield가 포함된 함수는 일반 함수와 동일하게 동작하므로 gen 변수에는 정수 1이 바로 저장된다.",
+                "두 번째 next(gen) 호출 이후 generator는 자동으로 처음 상태로 되돌아가 다시 start부터 실행된다.",
+            ],
+            "answer": 1,
+            "explanation": (
+                "정답은 1번입니다. generator 함수는 호출 즉시 본문을 실행하지 않고 generator 객체를 반환합니다. "
+                "next()가 호출될 때마다 이전 yield 지점부터 다음 yield 지점까지 실행됩니다. "
+                "따라서 첫 번째 next(gen)에서는 start가 출력되고 1이 반환되며, 두 번째 next(gen)에서는 middle이 출력되고 2가 반환됩니다."
+            ),
+            "competency_tags": ["Python", "generator", "yield", "next"],
+            "answer_intent": "generator_lazy_execution",
+            "distractor_intents": [
+                "execute_body_on_function_call",
+                "execute_all_until_end",
+                "treat_generator_as_normal_function",
+                "auto_restart_generator",
+            ],
+        },
+        {
+            "title": "얕은 복사와 내부 객체 공유 판단",
+            "format": "shallow_deep_copy",
+            "body": f"""
+다음은 Python 리스트 복사와 내부 객체 공유 여부를 확인하는 코드다.
+주제는 '{topic}'이다.
+
+[코드]
+original = [[1, 2], [3, 4]]
+copied = original.copy()
+
+copied[0][0] = 99
+copied.append([5, 6])
+
+print(original)
+print(copied)
+
+이 코드의 출력 결과와 복사 방식에 대한 가장 적절한 판단은 무엇인가?
+""".strip(),
+            "choices": [
+                "original의 첫 번째 내부 리스트도 변경되지만, copied에 append한 새 내부 리스트는 original에 추가되지 않는다.",
+                "original과 copied는 완전히 독립적이므로 original은 [[1, 2], [3, 4]] 그대로 유지된다.",
+                "original과 copied는 같은 리스트 객체를 가리키므로 copied.append([5, 6]) 결과도 original에 그대로 반영된다.",
+                "list.copy()는 깊은 복사를 수행하므로 내부 리스트까지 모두 새 객체로 복제된다.",
+                "copied[0][0] = 99는 내부 리스트 수정이 아니라 copied 변수 재할당이므로 original에는 영향을 주지 않는다.",
+            ],
+            "answer": 1,
+            "explanation": (
+                "정답은 1번입니다. list.copy()는 바깥 리스트만 새로 만드는 얕은 복사입니다. "
+                "따라서 내부 리스트 객체는 original과 copied가 공유하므로 copied[0][0] 수정은 original에도 반영됩니다. "
+                "하지만 copied.append([5, 6])은 copied의 바깥 리스트에 새 요소를 추가하는 동작이므로 original에는 추가되지 않습니다."
+            ),
+            "competency_tags": ["Python", "shallow copy", "list", "reference"],
+            "answer_intent": "shallow_copy_inner_object_shared",
+            "distractor_intents": [
+                "fully_independent_deep_copy",
+                "same_outer_list_reference",
+                "list_copy_is_deep_copy",
+                "inner_assignment_not_shared",
+            ],
+        },
+        {
+            "title": "Closure와 nonlocal 변수 변경 판단",
+            "format": "scope_closure",
+            "body": f"""
+다음은 Python closure와 nonlocal 키워드의 동작을 확인하는 코드다.
+주제는 '{topic}'이다.
+
+[코드]
+def counter():
+    count = 0
+
+    def increase():
+        nonlocal count
+        count += 1
+        return count
+
+    return increase
+
+fn = counter()
+print(fn())
+print(fn())
+print(fn())
+
+이 코드의 실행 결과와 scope 처리에 대한 가장 적절한 판단은 무엇인가?
+""".strip(),
+            "choices": [
+                "increase 함수가 외부 함수의 count를 closure로 참조하고 nonlocal로 변경하므로 1, 2, 3이 순서대로 출력된다.",
+                "increase 함수가 호출될 때마다 count가 0으로 다시 초기화되므로 1, 1, 1이 출력된다.",
+                "nonlocal은 전역 변수를 수정하는 키워드이므로 count가 전역에 없어서 NameError가 발생한다.",
+                "counter()가 종료되면 지역 변수 count는 즉시 사라지므로 fn() 첫 호출에서 UnboundLocalError가 발생한다.",
+                "return increase는 함수 실행 결과를 반환하므로 fn에는 정수 1이 저장된다.",
+            ],
+            "answer": 1,
+            "explanation": (
+                "정답은 1번입니다. counter 함수가 종료된 뒤에도 내부 함수 increase는 외부 스코프의 count를 closure로 유지합니다. "
+                "nonlocal count는 내부 함수에서 바깥 함수의 count를 변경하겠다는 의미입니다. "
+                "따라서 fn()을 호출할 때마다 같은 count 값이 증가해 1, 2, 3이 출력됩니다."
+            ),
+            "competency_tags": ["Python", "closure", "nonlocal", "scope"],
+            "answer_intent": "closure_nonlocal_state_update",
+            "distractor_intents": [
+                "reinitialize_local_each_call",
+                "treat_nonlocal_as_global",
+                "closure_state_disappears",
+                "return_function_result_not_function",
+            ],
+        },
+        {
+            "title": "Exception 흐름과 finally 실행 판단",
+            "format": "exception_flow",
+            "body": f"""
+다음은 Python 예외 처리 흐름을 확인하는 코드다.
+주제는 '{topic}'이다.
+
+[코드]
+def parse_number(value):
+    try:
+        result = int(value)
+        return result
+    except ValueError:
+        return -1
+    finally:
+        print("done")
+
+print(parse_number("10"))
+print(parse_number("abc"))
+
+이 코드의 실행 결과와 finally 동작에 대한 가장 적절한 판단은 무엇인가?
+""".strip(),
+            "choices": [
+                "정상 변환과 예외 발생 여부와 관계없이 finally 블록은 실행되며, 각 함수 호출마다 done이 출력된다.",
+                "return문이 try 블록에 있으므로 정상 변환 시에는 finally 블록이 실행되지 않는다.",
+                "except에서 return -1을 수행하면 finally 블록은 건너뛰고 바로 호출자에게 반환된다.",
+                "finally 블록에 print가 있으면 try와 except의 return 값이 모두 None으로 바뀐다.",
+                "ValueError가 except에서 처리되어도 finally 블록이 실행되면 예외가 다시 발생한다.",
+            ],
+            "answer": 1,
+            "explanation": (
+                "정답은 1번입니다. finally 블록은 try가 정상 종료되거나 except에서 예외가 처리되는 경우에도 실행됩니다. "
+                "return문이 있어도 함수가 실제로 값을 반환하기 전에 finally가 먼저 실행됩니다. "
+                "따라서 두 번의 함수 호출 모두 done을 출력한 뒤 각각 10과 -1을 반환합니다."
+            ),
+            "competency_tags": ["Python", "exception", "finally", "ValueError"],
+            "answer_intent": "finally_runs_before_return",
+            "distractor_intents": [
+                "skip_finally_on_try_return",
+                "skip_finally_on_except_return",
+                "finally_changes_return_to_none",
+                "finally_reraises_exception",
+            ],
+        },
+    ]
+
+    topic_text = (topic or "").lower()
+
+    preferred_format = None
+
+    if any(keyword in topic_text for keyword in [
+        "generator",
+        "yield",
+        "제너레이터",
+        "이터레이터",
+        "iterator",
+        "next",
+    ]):
+        preferred_format = "generator_behavior"
+
+    elif any(keyword in topic_text for keyword in [
+        "얕은 복사",
+        "깊은 복사",
+        "shallow",
+        "deep copy",
+        "copy",
+        "list.copy",
+        "copy.copy",
+        "copy.deepcopy",
+    ]):
+        preferred_format = "shallow_deep_copy"
+
+    elif any(keyword in topic_text for keyword in [
+        "closure",
+        "클로저",
+        "scope",
+        "스코프",
+        "nonlocal",
+    ]):
+        preferred_format = "scope_closure"
+
+    elif any(keyword in topic_text for keyword in [
+        "exception",
+        "예외",
+        "finally",
+        "try",
+        "except",
+    ]):
+        preferred_format = "exception_flow"
+
+    elif any(keyword in topic_text for keyword in [
+        "decorator",
+        "데코레이터",
+        "wrapper",
+    ]):
+        preferred_format = "decorator_behavior"
+
+    if preferred_format:
+        matched_templates = [
+            template for template in templates
+            if template.get("format") == preferred_format
+        ]
+
+        if matched_templates:
+            selected = matched_templates[0]
+        else:
+            selected = _pick_template_by_exclusion(templates, exclude_formats)
+    else:
+        selected = _pick_template_by_exclusion(templates, exclude_formats)
+
+    selected_title = _pick_title_variant(selected)
+
+    return {
+        "title": selected_title,
+        "body": selected["body"],
+        "choices": selected["choices"],
+        "answer": selected["answer"],
+        "explanation": selected["explanation"],
+        "difficulty": "고급",
+        "competency_type": "python",
+        "competency_tags": selected["competency_tags"],
+        "score": 5,
+        "template_format": selected.get("format"),
+        "answer_intent": selected["answer_intent"],
+        "distractor_intents": selected["distractor_intents"],
+        "lock_choices": True,
+    }
+
+
+def build_java_advanced_template(
+    topic: str,
+    exclude_formats: list[str] | None = None,
+) -> dict:
+    """
+    Java 고급 문제 템플릿.
+    polymorphism, override, equals/hashCode, interface, exception 중심.
+    """
+
+    templates = [
+        {
+            "title": "다형성과 동적 디스패치 판단",
+            "format": "polymorphism_dispatch",
+            "body": f"""
+다음은 Java 상속과 오버라이딩 메서드 호출 흐름을 확인하는 코드다.
+주제는 '{topic}'이다.
+
+[코드]
+class Animal {{
+    void sound() {{
+        System.out.println("Animal");
+    }}
+}}
+
+class Dog extends Animal {{
+    @Override
+    void sound() {{
+        System.out.println("Dog");
+    }}
+
+    void run() {{
+        System.out.println("Run");
+    }}
+}}
+
+public class Main {{
+    public static void main(String[] args) {{
+        Animal a = new Dog();
+        a.sound();
+    }}
+}}
+
+이 코드의 실행 결과와 메서드 호출 방식에 대한 가장 적절한 판단은 무엇인가?
+""".strip(),
+            "choices": [
+                "참조 변수의 타입은 Animal이지만 실제 객체가 Dog이므로 오버라이딩된 Dog의 sound()가 호출된다.",
+                "참조 변수의 타입이 Animal이므로 실제 객체와 관계없이 Animal의 sound()가 호출된다.",
+                "Dog 클래스에 run()이 추가되어 있으므로 a.sound() 호출 시 컴파일 오류가 발생한다.",
+                "Animal 타입 변수에는 Dog 객체를 대입할 수 없으므로 Animal a = new Dog()에서 컴파일 오류가 발생한다.",
+                "오버라이딩된 메서드는 생성자에서만 동적 바인딩되므로 main에서는 Animal의 메서드가 실행된다.",
+            ],
+            "answer": 1,
+            "explanation": (
+                "정답은 1번입니다. Java의 인스턴스 메서드 호출은 런타임 실제 객체 타입을 기준으로 동적 디스패치됩니다. "
+                "따라서 참조 변수 타입이 Animal이어도 실제 객체가 Dog이면 Dog에서 오버라이딩한 sound()가 호출됩니다. "
+                "다만 Animal 타입 참조로는 Dog에만 선언된 run()을 직접 호출할 수 없습니다."
+            ),
+            "competency_tags": ["Java", "polymorphism", "override", "dynamic dispatch"],
+            "answer_intent": "runtime_dispatch_overridden_method",
+            "distractor_intents": [
+                "dispatch_by_reference_type",
+                "compile_error_due_to_extra_method",
+                "cannot_assign_subclass_to_parent",
+                "override_only_in_constructor",
+            ],
+        },
+        {
+            "title": "equals와 hashCode 재정의 판단",
+            "format": "equals_hashcode",
+            "body": f"""
+다음은 Java 객체를 HashSet에 저장하는 코드다.
+주제는 '{topic}'이다.
+
+[코드]
+import java.util.HashSet;
+import java.util.Set;
+
+class User {{
+    private final int id;
+
+    User(int id) {{
+        this.id = id;
+    }}
+
+    @Override
+    public boolean equals(Object obj) {{
+        if (!(obj instanceof User)) return false;
+        User other = (User) obj;
+        return this.id == other.id;
+    }}
+}}
+
+public class Main {{
+    public static void main(String[] args) {{
+        Set<User> users = new HashSet<>();
+        users.add(new User(1));
+        users.add(new User(1));
+
+        System.out.println(users.size());
+    }}
+}}
+
+이 코드에서 발생할 수 있는 핵심 문제와 가장 적절한 판단은 무엇인가?
+""".strip(),
+            "choices": [
+                "equals를 재정의했지만 hashCode를 함께 재정의하지 않아 HashSet에서 동등 객체 처리 규약이 깨질 수 있다.",
+                "equals를 재정의하면 hashCode도 같은 id 기준으로 자동 반영된다고 보고 HashSet 크기가 1이 된다고 판단한다.",
+                "HashSet은 equals를 사용하지 않고 참조 주소만 비교하므로 equals 재정의는 어떤 경우에도 의미가 없다.",
+                "id 필드가 private final이므로 equals 메서드에서 비교할 수 없어 컴파일 오류가 발생한다.",
+                "User 객체를 HashSet에 저장하려면 반드시 Comparable을 구현해야 하므로 실행 전에 컴파일 오류가 발생한다.",
+            ],
+            "answer": 1,
+            "explanation": (
+                "정답은 1번입니다. Java에서 equals를 재정의할 때는 hashCode도 같은 동등성 기준으로 재정의해야 합니다. "
+                "HashSet은 해시 기반 컬렉션이므로 hashCode가 일관되지 않으면 equals 기준으로 같은 객체라도 중복 저장될 수 있습니다. "
+                "Comparable은 정렬 기준이 필요한 경우에 사용되며 HashSet 저장 자체의 필수 조건은 아닙니다."
+            ),
+            "competency_tags": ["Java", "equals", "hashCode", "HashSet"],
+            "answer_intent": "equals_hashcode_contract",
+            "distractor_intents": [
+                "jvm_auto_generates_hash_by_equals",
+                "hashset_ignores_equals",
+                "private_final_compile_error",
+                "comparable_required_for_hashset",
+            ],
+        },
+        {
+            "title": "Interface default method 충돌 판단",
+            "format": "interface_abstract",
+            "body": f"""
+다음은 Java interface default method와 구현 클래스의 관계를 확인하는 코드다.
+주제는 '{topic}'이다.
+
+[코드]
+interface A {{
+    default void print() {{
+        System.out.println("A");
+    }}
+}}
+
+interface B {{
+    default void print() {{
+        System.out.println("B");
+    }}
+}}
+
+class C implements A, B {{
+}}
+
+public class Main {{
+    public static void main(String[] args) {{
+        C c = new C();
+        c.print();
+    }}
+}}
+
+이 코드에서 발생하는 문제와 가장 적절한 수정 방향은 무엇인가?
+""".strip(),
+            "choices": [
+                "A와 B가 같은 시그니처의 default method를 제공하므로 C에서 print()를 직접 오버라이딩해 충돌을 해결해야 한다.",
+                "Java는 구현 순서상 먼저 선언된 interface A의 default method를 자동 선택하므로 A가 출력된다.",
+                "Java는 알파벳 순서로 interface를 비교해 A의 default method를 선택하므로 컴파일 오류가 발생하지 않는다.",
+                "default method는 클래스에서 호출할 수 없으므로 c.print() 호출만 제거하면 implements 충돌도 함께 사라진다.",
+                "interface는 메서드 본문을 가질 수 없으므로 A와 B의 default method 선언 자체가 문법 오류다.",
+            ],
+            "answer": 1,
+            "explanation": (
+                "정답은 1번입니다. 여러 interface가 같은 시그니처의 default method를 제공하면 구현 클래스는 어떤 default method를 사용할지 명확히 해야 합니다. "
+                "따라서 C 클래스에서 print()를 직접 오버라이딩해 충돌을 해결해야 합니다. "
+                "Java가 구현 순서나 알파벳 순서로 자동 선택하지는 않습니다."
+            ),
+            "competency_tags": ["Java", "interface", "default method", "compile error"],
+            "answer_intent": "default_method_conflict_requires_override",
+            "distractor_intents": [
+                "choose_first_interface",
+                "choose_alphabetical_interface",
+                "remove_call_only",
+                "interface_cannot_have_default_body",
+            ],
+        },
+        {
+            "title": "예외 처리 범위와 catch 순서 판단",
+            "format": "exception_flow",
+            "body": f"""
+다음은 Java 예외 처리의 catch 순서를 확인하는 코드다.
+주제는 '{topic}'이다.
+
+[코드]
+public class Main {{
+    public static void main(String[] args) {{
+        try {{
+            int value = Integer.parseInt("abc");
+            System.out.println(value);
+        }} catch (Exception e) {{
+            System.out.println("Exception");
+        }} catch (NumberFormatException e) {{
+            System.out.println("NumberFormatException");
+        }}
+    }}
+}}
+
+이 코드의 컴파일 결과와 가장 적절한 수정 방향은 무엇인가?
+""".strip(),
+            "choices": [
+                "상위 타입인 Exception을 먼저 catch하면 NumberFormatException catch 블록에 도달할 수 없으므로 catch 순서를 구체 타입에서 상위 타입 순서로 바꿔야 한다.",
+                "NumberFormatException은 Exception의 하위 타입이 아니므로 두 catch 블록의 순서는 컴파일 결과에 영향을 주지 않는다.",
+                "parseInt에서 발생한 예외는 RuntimeException이므로 Exception catch 블록에서도 처리할 수 없어 프로그램이 종료된다.",
+                "catch 블록을 여러 개 사용하는 것은 Java에서 허용되지 않으므로 하나의 catch 블록만 남겨야 한다.",
+                "NumberFormatException catch 블록은 실행되지 않지만 컴파일은 가능하므로 런타임 로그만 확인하면 된다.",
+            ],
+            "answer": 1,
+            "explanation": (
+                "정답은 1번입니다. Java에서는 더 넓은 예외 타입을 먼저 catch하면 그 하위 예외 타입의 catch 블록은 도달 불가능 코드가 됩니다. "
+                "NumberFormatException은 Exception의 하위 타입이므로 NumberFormatException을 먼저 catch하고 그 뒤에 Exception을 catch해야 합니다. "
+                "여러 catch 블록 자체는 허용되지만 순서가 중요합니다."
+            ),
+            "competency_tags": ["Java", "exception", "catch order", "compile error"],
+            "answer_intent": "catch_specific_exception_before_parent",
+            "distractor_intents": [
+                "number_format_not_subclass_of_exception",
+                "runtime_exception_not_caught_by_exception",
+                "multiple_catch_not_allowed",
+                "unreachable_catch_allowed",
+            ],
+        },
+    ]
+
+    selected = _pick_template_by_exclusion(templates, exclude_formats)
+    selected_title = _pick_title_variant(selected)
+
+    return {
+        "title": selected_title,
+        "body": selected["body"],
+        "choices": selected["choices"],
+        "answer": selected["answer"],
+        "explanation": selected["explanation"],
+        "difficulty": "고급",
+        "competency_type": "java",
+        "competency_tags": selected["competency_tags"],
+        "score": 5,
+        "template_format": selected.get("format"),
+        "answer_intent": selected["answer_intent"],
+        "distractor_intents": selected["distractor_intents"],
+        "lock_choices": True,
+    }
+
 def build_sql_advanced_template(
     topic: str,
     exclude_formats: list[str] | None = None,

@@ -1,6 +1,7 @@
 # backend/ai/services/question_planner.py
 
 import json
+import re
 from typing import Any
 
 from ai.client import client
@@ -13,6 +14,79 @@ from ai.services.question_format_config import (
 
 VALID_DIFFICULTIES = {"초급", "중급", "고급"}
 VALID_QUESTION_TYPES = {"multiple_choice", "essay", "code"}
+
+
+def infer_question_intent_from_topic(topic: str) -> dict:
+    """
+    관리자가 입력한 topic 문자열에서 출제 의도를 추론한다.
+
+    지원 answer_style:
+    - find_incorrect: 틀린 것 / 옳지 않은 것 / 잘못된 것 찾기
+    - find_correct: 옳은 것 / 맞는 것 찾기
+    - output_prediction: 실행/출력 결과 예측
+    - error_reason: 오류/예외 원인 찾기
+    - behavior_reason: 특정 동작 이유 (default)
+    """
+    topic_lower = (topic or "").lower()
+
+    # find_incorrect: 틀린 것 유형
+    find_incorrect_keywords = [
+        "틀린 것", "옳지 않은", "잘못된 것", "부적절한",
+        "아닌 것", "incorrect", "false", "wrong",
+        "틀린 설명", "잘못된 설명", "옳지 않은 설명",
+        "틀린 것을 정답으로", "옳지 않은 것을 고르는",
+    ]
+    if any(kw in topic_lower for kw in find_incorrect_keywords):
+        return {
+            "answer_style": "find_incorrect",
+            "choice_policy": "four_true_one_false",
+            "question_focus": "concept_misconception",
+        }
+
+    # output_prediction: 실행/출력 결과 유형
+    output_keywords = [
+        "출력 결과", "실행 결과", "print 결과", "결과 예측", "output",
+        "실행되는 결과", "출력되는", "실행하면", "실행되면",
+        "결과를 묻는", "결과를 예측",
+    ]
+    if any(kw in topic_lower for kw in output_keywords):
+        return {
+            "answer_style": "output_prediction",
+            "choice_policy": "output_candidates",
+            "question_focus": "code_execution_result",
+        }
+
+    # error_reason: 오류/예외 원인 유형
+    error_keywords = [
+        "오류 원인", "에러 원인", "컴파일 오류", "런타임 에러",
+        "예외 발생", "compile error", "runtime error",
+    ]
+    if any(kw in topic_lower for kw in error_keywords):
+        return {
+            "answer_style": "error_reason",
+            "choice_policy": "error_reason_candidates",
+            "question_focus": "error_diagnosis",
+        }
+
+    # find_correct: 옳은 것 유형
+    find_correct_keywords = [
+        "옳은 것", "맞는 것", "올바른 것", "적절한 것",
+        "correct", "true",
+    ]
+    if any(kw in topic_lower for kw in find_correct_keywords):
+        return {
+            "answer_style": "find_correct",
+            "choice_policy": "one_true_four_false",
+            "question_focus": "correct_concept",
+        }
+
+    # default: behavior_reason
+    return {
+        "answer_style": "behavior_reason",
+        "choice_policy": "best_answer",
+        "question_focus": "behavior_understanding",
+    }
+
 
 
 def _extract_json_array(text: str) -> list[dict[str, Any]]:
@@ -144,17 +218,50 @@ def _competency_planning_rule(competency_type: str) -> str:
         "java": """
         [Java 역량 설계 규칙]
         - 클래스/객체, 상속, 다형성, 인터페이스, 예외 처리, 컬렉션, 제네릭, JVM 기초 중 하나를 중심 개념으로 삼는다.
-        - 중급 이상은 반드시 짧은 Java 코드 조각, 클래스/인터페이스 구조, 예외 처리 코드, 컬렉션 사용 예시 중 하나를 포함하도록 설계한다.
+        - 중급 이상은 반드시 실제 Java 코드 조각을 evidence_detail에 포함한다.
         - 중급 문제는 코드 실행 결과, 컴파일 오류 원인, 메서드 오버라이딩/오버로딩 차이, 컬렉션 선택 기준을 묻는다.
         - 고급 문제는 유지보수성, 확장성, 타입 안정성, 예외 처리 범위, 동시성 또는 성능 영향을 판단하게 한다.
         - 긴 상황 설명만 읽고 일반적인 설계 판단을 고르는 비문학형 문제로 설계하지 않는다.
+
+        [Java evidence_detail 작성 규칙 - 반드시 실제 코드 조각]
+        - evidence_detail에 "Java 코드를 포함한다", "컬렉션 예시를 사용한다", "코드를 제시한다"처럼 추상적으로 쓰지 않는다.
+        - evidence_detail에는 반드시 class, new, HashSet, HashMap, ArrayList, equals, hashCode, @Override, extends, implements, try, catch 중 하나 이상이 포함된 실제 Java 코드 조각을 직접 넣는다.
+
+        [Java topic별 evidence_detail 예시]
+        - topic이 "equals", "hashCode", "컬렉션" 관련이면:
+          evidence_detail 예: "class Product { String id; String name; @Override public boolean equals(Object o) { ... } @Override public int hashCode() { ... } } HashSet<Product> set = new HashSet<>();"
+        - topic이 "상속", "오버라이딩", "다형성" 관련이면:
+          evidence_detail 예: "class Animal { void sound() { System.out.println(\"...\"); } } class Dog extends Animal { @Override void sound() { System.out.println(\"Woof\"); } } Animal a = new Dog(); a.sound();"
+        - topic이 "예외 처리" 관련이면:
+          evidence_detail 예: "try { int[] arr = new int[3]; arr[5] = 10; } catch (ArrayIndexOutOfBoundsException e) { System.out.println(\"범위 초과\"); } finally { System.out.println(\"종료\"); }"
+        - topic이 "인터페이스" 관련이면:
+          evidence_detail 예: "interface Flyable { void fly(); default void land() { System.out.println(\"landing\"); } } class Bird implements Flyable { @Override public void fly() { System.out.println(\"fly\"); } }"
+        - topic이 "컬렉션", "ArrayList", "HashMap" 관련이면:
+          evidence_detail 예: "List<String> list = new ArrayList<>(); list.add(\"a\"); list.add(\"b\"); System.out.println(list.size());"
+
+        [Java 금지 규칙]
+        - evidence_detail에 "상품 객체를 HashSet에 저장하는 상황이다"처럼 설명문만 쓰지 않는다.
+        - evidence_detail에 "Java 코드를 포함한다", "클래스 코드를 제시한다"처럼 메타 설명만 쓰지 않는다.
+        - 코드 없이 "사용자 정의 객체를 HashSet에 추가하는 상황이다"만 있는 설계서는 invalid이다.
         """,
 
         "python": """
         [Python 역량 설계 규칙]
         - 자료형 특징, 제너레이터/이터레이터, 데코레이터, 컨텍스트 매니저, 예외 처리, 비동기 프로그래밍(asyncio), 패키지 구조 중 하나를 중심 개념으로 삼는다.
         - 고급 문제는 Pythonic한 코드 작성 및 라이브러리 활용 효율성을 평가한다.
-        - 중급 이상은 반드시 짧은 Python 코드 조각 또는 데이터 구조 예시를 포함하도록 설계한다.
+        - 중급 이상은 반드시 실제 Python 코드 조각을 evidence_detail에 직접 포함한다.
+        - evidence_detail에 "Python 코드를 포함한다", "제너레이터 예시를 사용한다"쳌럼 메타 설명만 쓰지 않는다.
+        - evidence_detail에는 def, yield, next, copy, print, try, except, nonlocal, return 중 하나 이상이 포함된 실제 Python 코드를 넣는다.
+        - topic이 "generator", "yield", "이터레이터" 관련이면:
+          evidence_detail 예: "def count_up(n):\n    for i in range(n):\n        yield i\ng = count_up(3)\nprint(next(g))\nprint(next(g))"
+        - topic이 "얼은 복사", "shallow copy", "deep copy" 관련이면:
+          evidence_detail 예: "import copy\noriginal = [[1, 2], [3, 4]]\ncopied = original.copy()\ncopied[0][0] = 99\nprint(original[0][0])"
+        - topic이 "decorator", "데코레이터" 관련이면:
+          evidence_detail 예: "def my_dec(func):\n    def wrapper(*args):\n        print('before')\n        return func(*args)\n    return wrapper\n@my_dec\ndef greet():\n    print('hello')\ngreet()"
+        - topic이 "scope", "closure", "nonlocal" 관련이면:
+          evidence_detail 예: "def outer():\n    count = 0\n    def inner():\n        nonlocal count\n        count += 1\n        return count\n    return inner\nf = outer()\nprint(f())\nprint(f())"
+        - topic이 "예외 처리", "try", "except" 관련이면:
+          evidence_detail 예: "try:\n    x = int('abc')\nexcept ValueError as e:\n    print('ValueError:', e)\nfinally:\n    print('done')"
         - 리스트, 딕셔너리, 함수, 예외 처리, 클래스, 반복문, 컴프리헨션 중 하나를 실제 코드 흐름 안에서 평가한다.
         - 중급 문제는 실행 결과 예측, 오류 원인 파악, 누락된 조건 보완, 적절한 자료형 선택을 묻는다.
         - 고급 문제는 예외 상황, 성능, 메모리 사용, 가독성, 유지보수성, 리팩토링 방향을 판단하게 한다.
@@ -210,6 +317,38 @@ def _build_planner_prompt(
     competency_type: str,
 ) -> str:
     difficulty = _normalize_difficulty(difficulty)
+    intent = infer_question_intent_from_topic(topic)
+    answer_style = intent["answer_style"]
+    choice_policy = intent["choice_policy"]
+
+    # 관리자 출제 의도별 추가 지시문
+    intent_extra = ""
+    if answer_style == "find_incorrect":
+        intent_extra = """
+[관리자 출제 의도: find_incorrect - 틀린 것 찾기]
+- topic에 "틀린 것", "옳지 않은 것", "잘못된 것"이 있으므로 반드시 find_incorrect 유형으로 설계한다.
+- answer_style은 반드시 "find_incorrect"로 설정한다.
+- choice_policy는 반드시 "four_true_one_false"로 설정한다.
+- distractor_strategy에는 "오답 선택지 4개는 모두 맞는 설명이어야 한다"고 명시한다.
+- answer_decision_rule에는 "선택지 중 개념적으로 틀린 설명 하나를 answer로 지정한다"고 명시한다.
+- correct_reason에는 "정답은 틀린 설명 하나"라고 명시한다.
+"""
+    elif answer_style == "output_prediction":
+        intent_extra = """
+[관리자 출제 의도: output_prediction - 출력 결과 예측]
+- topic에 "출력 결과", "실행 결과"가 있으므로 output_prediction 유형으로 설계한다.
+- answer_style은 반드시 "output_prediction"으로 설정한다.
+- choice_policy는 반드시 "output_candidates"로 설정한다.
+- evidence_detail에는 실제 실행 가능한 코드 조각이 직접 들어가야 한다.
+"""
+    elif answer_style == "error_reason":
+        intent_extra = """
+[관리자 출제 의도: error_reason - 오류 원인 찾기]
+- topic에 "오류 원인", "에러 원인"이 있으므로 error_reason 유형으로 설계한다.
+- answer_style은 반드시 "error_reason"으로 설정한다.
+- choice_policy는 반드시 "error_reason_candidates"로 설정한다.
+- evidence_detail에는 오류가 발생하는 코드가 들어가야 한다.
+"""
 
     return f"""
 너는 IT 역량진단 문제은행의 "문제 설계자"다.
@@ -226,6 +365,9 @@ def _build_planner_prompt(
 - 문제 수: {count}
 - 문제 유형: {question_type}
 - 역량 유형: {competency_type}
+- 추론된 출제 의도: answer_style={answer_style}, choice_policy={choice_policy}
+
+{intent_extra}
 
 {_difficulty_planning_rule(difficulty)}
 
@@ -289,6 +431,24 @@ def _build_planner_prompt(
   - 문제의 실제 형식
   - 반드시 [문제 형식 규칙]에서 허용한 값 중 하나를 사용한다.
   - 예: "code_output", "runtime_error", "join_where_bug", "rag_pipeline_diagnosis"
+
+- answer_style:
+  - 추론된 출제 의도: {answer_style}
+  - topic에 "틀린 것", "옳지 않은 것"이 있으면 반드시 "find_incorrect"
+  - topic에 "출력 결과", "실행 결과"가 있으면 반드시 "output_prediction"
+  - topic에 "오류 원인", "에러 원인"이 있으면 반드시 "error_reason"
+  - topic에 "옳은 것", "맞는 것"이 있으면 "find_correct"
+  - 나머지는 "behavior_reason"
+  - 위에서 지정한 "{answer_style}" 값을 그대로 사용한다. 임의로 바꾸지 마라.
+
+- choice_policy:
+  - answer_style에 연동된 값: {choice_policy}
+  - find_incorrect이면 반드시 "four_true_one_false"
+  - find_correct이면 "one_true_four_false"
+  - output_prediction이면 "output_candidates"
+  - error_reason이면 "error_reason_candidates"
+  - 나머지는 "best_answer"
+  - 위에서 지정한 "{choice_policy}" 값을 그대로 사용한다. 임의로 바꾸지 마라.
 
 [설계 품질 강화 규칙]
 - correct_reason에는 "분석한다", "판단한다", "고려한다" 같은 추상 표현만 쓰지 마라.
@@ -410,6 +570,34 @@ def validate_question_plan(
         if not evidence_detail:
             reasons.append("중급/고급 문제 설계에는 evidence_detail이 필요합니다.")
 
+        # Python/Java 중급·고급 evidence_detail 코드 키워드 검증
+        if competency_type == "python" and evidence_detail:
+            py_keywords = [
+                "def ", "print(", "list", "dict", "copy", "yield", "next(",
+                "try:", "except", "nonlocal", "decorator", "return ",
+                "for ", "while ", "=[", "= [", "=(",
+                ".copy()", "[:]", "deepcopy", "copy.copy",
+            ]
+            if not any(kw in evidence_detail for kw in py_keywords):
+                reasons.append(
+                    "Python 중급/고급 evidence_detail에 실제 Python 코드 조각이 없습니다. "
+                    "def, print, yield, next, try, except, copy, .copy(), [:] 등 실제 코드 키워드가 필요합니다."
+                )
+
+        if competency_type == "java" and evidence_detail:
+            java_keywords = [
+                "class ", "interface ", "extends", "implements",
+                "new ", "@Override", "Override", "try {", "catch",
+                "HashSet", "ArrayList", "HashMap", "public ", "void ",
+                "System.out", "equals", "hashCode", "new HashSet", "new ArrayList",
+            ]
+            if not any(kw in evidence_detail for kw in java_keywords):
+                reasons.append(
+                    "Java 중급/고급 evidence_detail에 실제 Java 코드 조각이 없습니다. "
+                    "class, new, HashSet, ArrayList, equals, hashCode, @Override, try/catch 등 실제 코드 키워드가 필요합니다. "
+                    """\"상품 객체를 HashSet에 저장하는 상황이다\"처럼 설명문만 있는 evidence_detail은 거절됩니다."""
+                )
+
     if not isinstance(constraints, list) or len(constraints) == 0:
         reasons.append("constraints는 1개 이상의 문자열 배열이어야 합니다.")
 
@@ -488,14 +676,20 @@ def generate_question_plans(
         messages=[
             {
                 "role": "system",
-                "content": "너는 IT 역량진단 문제은행의 문제 설계 전문가다. 반드시 JSON 배열만 출력한다.",
+                "content": (
+                    "너는 IT 역량진단 문제은행의 문제 설계 전문가다. 반드시 JSON 배열만 출력한다. "
+                    "Java/Python 중급/고급 문제의 evidence_detail에는 반드시 실제 코드 조각을 넣는다. "
+                    "코드를 포함한다의미로 메타 설명만 쓰지 않는다. "
+                    "Java equals/hashCode 문제라면 class 코드 + equals/hashCode 메서드 + HashSet/HashMap 코드를 evidence_detail에 직접 넣는다. "
+                    "Python generator 문제라면 yield + next() + generator 객체 생성 코드를 evidence_detail에 넣는다."
+                ),
             },
             {
                 "role": "user",
                 "content": prompt,
             },
         ],
-        temperature=0.35,
+        temperature=0.15,
     )
 
     content = response.choices[0].message.content or ""
