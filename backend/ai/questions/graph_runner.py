@@ -1,11 +1,11 @@
-# backend/ai/graph/question_generation_graph.py
+# backend/ai/questions/graph_runner.py
 
 import logging
 
 from langgraph.graph import StateGraph, START, END
 
-from ai.graph.question_generation_state import QuestionGenerationState
-from ai.graph.question_generation_nodes import (
+from ai.questions.graph_state import QuestionGenerationState
+from ai.questions.graph_nodes import (
     normalize_node,
     topic_validation_node,
     route_node,

@@ -1,10 +1,10 @@
-# backend/ai/graph/question_generation_nodes.py
+# backend/ai/questions/graph_nodes.py
 import json
 import re
 import logging
 from models import Question
 
-from ai.graph.question_generation_state import QuestionGenerationState
+from ai.questions.graph_state import QuestionGenerationState
 from ai.questions.competency_config import normalize_competency_type
 from ai.questions.topic_validator import validate_topic_for_competency
 from ai.questions.planner import generate_question_plans

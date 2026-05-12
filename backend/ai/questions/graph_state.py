@@ -1,4 +1,4 @@
-# backend/ai/graph/question_generation_state.py
+# backend/ai/questions/graph_state.py
 
 from typing import Any, Literal
 from typing_extensions import TypedDict

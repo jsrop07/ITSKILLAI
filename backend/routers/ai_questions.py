@@ -14,7 +14,7 @@ from ai.questions.generator import (
 from ai.rag.document_service import build_context_from_search_results
 from ai.questions.competency_config import normalize_competency_type, COMPETENCY_KEYWORDS
 from typing import Literal
-from ai.graph.question_generation_graph import run_question_generation_graph
+from ai.questions.graph_runner import run_question_generation_graph
 
 router = APIRouter(prefix="/api/ai", tags=["AI Questions"])
 
