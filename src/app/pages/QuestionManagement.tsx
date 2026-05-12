@@ -38,7 +38,7 @@ const getGenerationBadgeClass = (type?: string | null) => {
   switch (type) {
     case "rag":
       return "bg-indigo-100 text-indigo-700 border-indigo-200";
-    case "general":
+    case "general_graph":
       return "bg-cyan-100 text-cyan-700 border-cyan-200";
     case "manual":
       return "bg-slate-100 text-slate-700 border-slate-200";
@@ -332,7 +332,7 @@ export default function QuestionManagement() {
               <SelectTrigger className="w-40"><SelectValue placeholder="생성 방식" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">생성 방식</SelectItem>
-                <SelectItem value="general">설계서 기반</SelectItem>
+                <SelectItem value="general_graph">설계서 기반</SelectItem>
                 <SelectItem value="rag">문서 기반 RAG</SelectItem>
               </SelectContent>
             </Select>

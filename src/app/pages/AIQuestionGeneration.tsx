@@ -40,7 +40,7 @@ const getGenerationBadgeClass = (type?: string | null) => {
   switch (type) {
     case "rag":
       return "bg-indigo-100 text-indigo-700 border-indigo-200";
-    case "general":
+    case "general_graph":
       return "bg-cyan-100 text-cyan-700 border-cyan-200";
     case "manual":
       return "bg-slate-100 text-slate-700 border-slate-200";
@@ -412,7 +412,7 @@ export default function AIQuestionGeneration() {
                           <Badge variant="secondary" className="bg-slate-100 text-slate-700">
                             {q.review_status || "pending"}
                           </Badge>
-                          <Badge variant="outline" className={`${getGenerationBadgeClass(q.ai_generation_type || (documentScope === "rag_all" ? "rag" : "general"))} font-medium border`}>
+                          <Badge variant="outline" className={`${getGenerationBadgeClass(q.ai_generation_type || (documentScope === "rag_all" ? "rag" : "general_graph"))} font-medium border`}>
                             {q.ai_generation_type ? AI_GENERATION_TYPE_LABELS[q.ai_generation_type] : (documentScope === "rag_all" ? "문서 기반 RAG" : "설계서 기반")}
                           </Badge>
                           <span className="text-sm text-slate-600 font-medium ml-auto">

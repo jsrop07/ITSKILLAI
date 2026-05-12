@@ -204,57 +204,6 @@ def generate_ai_questions(
         db.rollback()
         raise HTTPException(status_code=500, detail=str(e))
 
-@router.post("/generate-questions-graph")
-def generate_ai_questions_graph(
-    request: AIQuestionGenerateRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    LangGraph 기반 일반 AI 문제 생성 테스트 endpoint.
-
-    기존 /generate-questions는 유지하고,
-    이 endpoint에서만 LangGraph 흐름을 검증한다.
-    """
-    try:
-        score = get_score_by_difficulty(request.difficulty)
-
-        initial_state = {
-            "topic": request.topic,
-            "difficulty": request.difficulty,
-            "count": request.count,
-            "score": score,
-            "question_type": request.question_type,
-            "competency_type": request.competency_type,
-            "retry_count": 0,
-            "max_retries": 1,
-            "db": db,
-        }
-
-        result = run_question_generation_graph(initial_state)
-
-        saved_questions = result.get("saved_questions", [])
-
-        db.commit()
-
-        return {
-            "message": "LangGraph 기반 AI 문제가 생성되었습니다.",
-            "source": "general_graph",
-            "count": len(saved_questions),
-            "questions": saved_questions,
-        }
-
-    except HTTPException:
-        db.rollback()
-        raise
-
-    except ValueError as e:
-        db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
 @router.post("/generate-questions-from-document")
 def generate_ai_questions_from_document(
     request: AIQuestionGenerateFromDocumentRequest,

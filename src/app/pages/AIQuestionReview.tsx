@@ -30,7 +30,7 @@ const getGenerationBadgeClass = (type?: string | null) => {
   switch (type) {
     case "rag":
       return "bg-indigo-100 text-indigo-700 border-indigo-200";
-    case "general":
+    case "general_graph":
       return "bg-cyan-100 text-cyan-700 border-cyan-200";
     case "manual":
       return "bg-slate-100 text-slate-700 border-slate-200";

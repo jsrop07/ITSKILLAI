@@ -43,7 +43,7 @@ export const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
 };
 
 export const AI_GENERATION_TYPE_LABELS: Record<string, string> = {
-  general: "설계서 기반",
+  general_graph: "설계서 기반",
   rag: "문서 기반 RAG",
   manual: "수동/기존",
 };
