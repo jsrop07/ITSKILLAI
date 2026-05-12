@@ -7,7 +7,7 @@ from ai.core.openai_client import client
 from collections import Counter
 from ai.questions.validator import validate_questions
 from ai.questions.planner import generate_question_plans
-from ai.questions.competency_config import normalize_competency_type
+from ai.core.config import normalize_competency_type
 from ai.questions.templates import (
     build_ai_advanced_template,
     build_sql_advanced_template,

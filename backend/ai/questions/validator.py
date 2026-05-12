@@ -3,7 +3,7 @@
 import re
 import logging
 from typing import Any
-from ai.questions.competency_config import normalize_competency_type
+from ai.core.config import normalize_competency_type
 
 logger = logging.getLogger("uvicorn.info")
 

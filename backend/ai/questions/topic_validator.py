@@ -1,7 +1,7 @@
 # backend/ai/questions/topic_validator.py
 
 from fastapi import HTTPException
-from ai.questions.competency_config import (
+from ai.core.config import (
     SUPPORTED_COMPETENCIES,
     COMPETENCY_KEYWORDS,
     normalize_competency_type,

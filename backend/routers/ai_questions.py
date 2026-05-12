@@ -4,7 +4,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from ai.questions.topic_validator import validate_topic_for_competency
-from ai.questions.competency_config import normalize_competency_type, COMPETENCY_KEYWORDS
+from ai.core.config import normalize_competency_type, COMPETENCY_KEYWORDS
 from typing import Literal
 from ai.questions.graph_runner import run_question_generation_graph
 

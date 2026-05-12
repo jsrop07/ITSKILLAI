@@ -1,4 +1,4 @@
-# backend/ai/questions/competency_config.py
+# backend/ai/core/config.py
 # 신규 역량 유형 8개 기준 공통 설정 모듈
 # 이 파일을 수정하면 topic_validator, question_planner, question_generator, ai_documents, ai_questions 전체에 반영됨
 

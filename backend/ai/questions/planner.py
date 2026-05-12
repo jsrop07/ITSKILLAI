@@ -5,7 +5,7 @@ import re
 from typing import Any
 
 from ai.core.openai_client import client
-from ai.questions.competency_config import normalize_competency_type
+from ai.core.config import normalize_competency_type
 from ai.questions.question_format_config import (
     build_question_format_instruction,
     get_allowed_question_formats,
