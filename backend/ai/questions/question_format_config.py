@@ -61,13 +61,15 @@ QUESTION_FORMAT_RULES = {
     # ─────────────────────────────────────────────
     "sql": {
         "초급": [
-            "query_result",
+            "basic_concept",
+            "concept_difference",
         ],
         "중급": [
             "query_result",
             "join_where_bug",
             "group_by_result",
             "having_condition",
+            "concept_compare_find_incorrect",
         ],
         "고급": [
             "index_plan_choice",
@@ -77,14 +79,15 @@ QUESTION_FORMAT_RULES = {
             "group_by_result",
         ],
     },
-
+    
     # ─────────────────────────────────────────────
     # AI
     # ─────────────────────────────────────────────
+
     "ai": {
         "초급": [
-            "metric_interpretation",
-            "embedding_similarity_case",
+            "basic_concept",
+            "concept_difference",
         ],
         "중급": [
             "retrieval_result_analysis",
@@ -93,8 +96,10 @@ QUESTION_FORMAT_RULES = {
             "metric_interpretation",
             "chunking_issue",
             "prompt_output_validation",
+            "structured_output_validation",
         ],
         "고급": [
+            "structured_output_validation",
             "rag_pipeline_diagnosis",
             "reranker_tradeoff",
             "hybrid_search_choice",
@@ -106,23 +111,6 @@ QUESTION_FORMAT_RULES = {
         ],
     },
 
-    # 나머지 역량은 지금 우선순위는 아니지만 기존 구조 유지용
-    "c_language": {
-        "초급": [
-            "c_pointer_array_result",
-        ],
-        "중급": [
-            "c_pointer_array_result",
-            "c_string_literal_error",
-            "c_memory_allocation_result",
-        ],
-        "고급": [
-            "c_malloc_free_bug",
-            "c_dangling_pointer",
-            "c_buffer_overflow",
-            "c_struct_pointer",
-        ],
-    },
     "data_structure_algorithm": {
         "초급": [
             "operation_trace",
@@ -138,21 +126,7 @@ QUESTION_FORMAT_RULES = {
             "tradeoff_analysis",
         ],
     },
-    "security": {
-        "초급": [
-            "http_request_analysis",
-        ],
-        "중급": [
-            "vulnerable_code",
-            "http_request_analysis",
-            "authz_bug",
-        ],
-        "고급": [
-            "log_analysis",
-            "token_risk",
-            "access_policy_tradeoff",
-        ],
-    },
+    
     "software_engineering": {
         "초급": [
             "requirement_review",
@@ -172,6 +146,9 @@ QUESTION_FORMAT_RULES = {
 
 
 FORMAT_EVIDENCE_TYPE_MAP = {
+    "basic_concept": "concept",
+    "concept_difference": "concept",
+    "structured_output_validation": "llm_output",
     # ─────────────────────────────────────────────
     # Java
     # ─────────────────────────────────────────────
@@ -202,6 +179,7 @@ FORMAT_EVIDENCE_TYPE_MAP = {
     "group_by_result": "sql_query",
     "having_condition": "sql_query",
     "index_plan_choice": "execution_plan",
+    "concept_compare_find_incorrect": "sql_query",
     "transaction_lock_case": "execution_plan",
     "transaction_isolation": "execution_plan",
     "normalization_case": "table_schema",
@@ -225,17 +203,6 @@ FORMAT_EVIDENCE_TYPE_MAP = {
     "modelops_vllm_serving_tradeoff": "serving_metric",
 
     # ─────────────────────────────────────────────
-    # C
-    # ─────────────────────────────────────────────
-    "c_pointer_array_result": "code_snippet",
-    "c_string_literal_error": "code_snippet",
-    "c_memory_allocation_result": "code_snippet",
-    "c_malloc_free_bug": "code_snippet",
-    "c_dangling_pointer": "code_snippet",
-    "c_buffer_overflow": "code_snippet",
-    "c_struct_pointer": "code_snippet",
-
-    # ─────────────────────────────────────────────
     # Data Structure / Algorithm
     # ─────────────────────────────────────────────
     "complexity_analysis": "input_constraints",
@@ -245,15 +212,6 @@ FORMAT_EVIDENCE_TYPE_MAP = {
     "pseudocode_bug": "pseudocode",
     "tradeoff_analysis": "operation_pattern",
 
-    # ─────────────────────────────────────────────
-    # Security
-    # ─────────────────────────────────────────────
-    "vulnerable_code": "vulnerable_code",
-    "http_request_analysis": "request_response",
-    "authz_bug": "access_policy",
-    "log_analysis": "log",
-    "token_risk": "request_response",
-    "access_policy_tradeoff": "access_policy",
 
     # ─────────────────────────────────────────────
     # Software Engineering
@@ -290,19 +248,16 @@ def get_expected_evidence_type(question_format: str | None) -> str | None:
     return FORMAT_EVIDENCE_TYPE_MAP.get(question_format)
 
 
-def build_question_format_instruction(
-    competency_type: str | None,
-    difficulty: str,
-) -> str:
+def build_question_format_instruction( competency_type: str | None, difficulty: str,) -> str:
     normalized_type = normalize_competency_type(competency_type)
     allowed_formats = get_allowed_question_formats(normalized_type, difficulty)
 
     if not allowed_formats:
         return """
-[문제 형식 규칙]
-- 주어진 역량과 난이도에 맞는 문제 형식을 선택한다.
-- question_format, evidence_type, evidence_detail을 가능한 한 구체적으로 작성한다.
-"""
+            [문제 형식 규칙]
+            - 주어진 역량과 난이도에 맞는 문제 형식을 선택한다.
+            - question_format, evidence_type, evidence_detail을 가능한 한 구체적으로 작성한다.
+        """
 
     expected_pairs = [
         f"{fmt} → {get_expected_evidence_type(fmt) or 'evidence_detail'}"
@@ -310,26 +265,11 @@ def build_question_format_instruction(
     ]
 
     return f"""
-[문제 형식 규칙]
-- question_format은 반드시 다음 중 하나여야 한다: {", ".join(allowed_formats)}
-- 각 question_format에 맞는 evidence_type은 다음 기준을 따른다:
-  {chr(10).join("- " + pair for pair in expected_pairs)}
-- 중급/고급 문제에서는 question_format, evidence_type, evidence_detail을 반드시 작성한다.
-- evidence_detail은 한 줄 설명이 아니라 실제 문제 본문에 들어갈 구체 단서여야 한다.
-- evidence_detail에 "코드를 제시한다", "컬렉션 예시를 사용한다", "Python 코드를 포함한다" 같은 추상 설명을 쓰지 않는다.
-evidence_detail에는 실제 코드 조각이 직접 들어가야 한다. 이 코드는 Generator가 body에 그대로 삽입할 수 있어야 한다.
-[역량별 evidence 강제 규칙]
-- Java/Python 중급·고급 문제는 코드 없는 설명형 문제로 설계하지 않는다.
-- Java 중급/고급 evidence_detail에는 class, interface, extends, implements, new, Override, try/catch, HashSet, ArrayList, HashMap 중 하나 이상이 포함된 실제 Java 코드 조각이 들어가야 한다.
-- Python 중급/고급 evidence_detail에는 def, print, list, dict, copy, yield, next, try, except, nonlocal, decorator, return 중 하나 이상이 포함된 실제 Python 코드 조각이 들어가야 한다.
-- SQL 문제는 쿼리/테이블/실행 계획 없는 설명형 문제로 설계하지 않는다.
-- SQL 중급/고급 evidence_detail에는 SELECT, FROM, WHERE, JOIN, GROUP BY, HAVING, INDEX, EXPLAIN, TRANSACTION 중 하나 이상이 들어가야 한다.
-- AI/RAG 문제는 검색 로그, 평가 지표, chunk, top_k, similarity, metadata, reranker 같은 구체 자료 없이 일반론으로 설계하지 않는다.
-- AI 중급/고급 evidence_detail에는 query, top_k, chunk, similarity, embedding, vector, keyword, metadata, reranker, latency, context 중 하나 이상이 들어가야 한다.
-
-[금지 규칙]
-- question_format을 허용 목록 밖의 값으로 만들지 않는다.
-- evidence_type을 question_format과 맞지 않게 만들지 않는다.
-- evidence_detail에 "코드를 제시한다", "SQL을 제시한다", "검색 결과를 제시한다", "Java 코드를 포함한다", "Python 예제를 사용한다"처럼 추상적으로 쓰지 않는다.
-- evidence_detail에는 실제 코드 조각, 쿼리 조각, 로그 수치, 테이블 구조, 검색 결과 예시 중 하나를 직접 포함한다.
-"""
+        [문제 형식 규칙]
+        - question_format은 반드시 다음 중 하나여야 한다: {", ".join(allowed_formats)}
+        - 각 question_format에 맞는 evidence_type은 다음 기준을 따른다:
+        {chr(10).join("- " + pair for pair in expected_pairs)}
+        - question_format은 허용 목록 밖의 값을 사용하지 않는다.
+        - evidence_type은 question_format과 맞는 값을 사용한다.
+        - evidence_detail은 실제 문제 본문에 반영할 수 있는 구체 단서로 작성한다.
+        """

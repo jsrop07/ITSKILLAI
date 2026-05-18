@@ -1,4 +1,4 @@
-# backend/ai/questions/question_choice_generator.py
+# backend/ai/questions/choice_generator.py
 
 import re
 import json
@@ -347,28 +347,27 @@ def _matches_required_keyword_groups(choice_text: str, required_keyword_groups: 
 
     return True
 
-
-def _sync_answer_number_in_explanation(explanation: str, answer_int: int) -> str:
-    """
-    LLM이 answer 번호를 잘못 주거나 시스템이 answer를 보정했을 때
-    explanation의 '정답은 N번입니다.' 문구를 최종 answer와 맞춘다.
-    """
-    text = str(explanation or "").strip()
-
-    if not text:
-        return f"정답은 {answer_int}번입니다."
+def _extract_answer_number_from_explanation(explanation: str) -> int | None:
+    if not explanation:
+        return None
 
     patterns = [
-        r"정답은\s*\d+\s*번입니다\.?",
-        r"정답은\s*\d+\s*번",
-        r"정답\s*:\s*\d+\s*번",
+        r"정답은\s*(\d+)\s*번",
+        r"정답\s*:\s*(\d+)\s*번",
+        r"답은\s*(\d+)\s*번",
+        r"(\d+)\s*번이\s*정답",
     ]
 
     for pattern in patterns:
-        if re.search(pattern, text):
-            return re.sub(pattern, f"정답은 {answer_int}번입니다.", text, count=1)
+        match = re.search(pattern, explanation)
+        if match:
+            try:
+                return int(match.group(1))
+            except Exception:
+                return None
 
-    return f"정답은 {answer_int}번입니다. {text}"
+    return None
+
 def _normalize_explanation_style(explanation: str, answer_int: int) -> str:
     """
     객관식 해설의 종결 어미를 존댓말 스타일로 통일한다.
@@ -379,8 +378,6 @@ def _normalize_explanation_style(explanation: str, answer_int: int) -> str:
 
     if not text:
         return f"정답은 {answer_int}번입니다."
-
-    text = _sync_answer_number_in_explanation(text, answer_int)
 
     replacements = {
         "가능성이 높아진다.": "가능성이 높아집니다.",
@@ -408,6 +405,44 @@ def _normalize_explanation_style(explanation: str, answer_int: int) -> str:
         "평가한다.": "평가합니다.",
         "분석한다.": "분석합니다.",
         "측정한다.": "측정합니다.",
+        "역할을 한다.": "역할을 합니다.",
+        "설명하고 있다.": "설명하고 있습니다.",
+        "잘못 설명하고 있다.": "잘못 설명하고 있습니다.",
+        "잘못 이해한 것이다.": "잘못 이해한 것입니다.",
+        "잘못 이해한 설명이다.": "잘못 이해한 설명입니다.",
+        "잘못된 설명이다.": "잘못된 설명입니다.",
+        "구분된다.": "구분됩니다.",
+        "사용된다.": "사용됩니다.",
+        "포함한다.": "포함합니다.",
+        "의미한다.": "의미합니다.",
+        "생성한다.": "생성합니다.",
+        "반환한다.": "반환합니다.",
+        "유지한다.": "유지합니다.",
+        "결정한다.": "결정합니다.",
+        "정의한다.": "정의합니다.",
+        "재정의한다.": "재정의합니다.",
+        "동작한다.": "동작합니다.",
+        "실패한다.": "실패합니다.",
+        "통과한다.": "통과합니다.",
+        "누락된다.": "누락됩니다.",
+        "발생할 수 있다.": "발생할 수 있습니다.",
+        "볼 수 있다.": "볼 수 있습니다.",
+        "해야 한다.": "해야 합니다.",
+        "아니다.": "아닙니다.",
+        "않는다.": "않습니다.",
+        "설명한다.": "설명합니다.",
+        "다르다.": "다릅니다.",
+        "같다.": "같습니다.",
+        "이다.": "입니다.",
+        "한다.": "합니다.",
+        "안 된다.": "안 됩니다.",
+        "안 된 다.": "안 됩니다.",
+        "혼동해서는 안 된다.": "혼동해서는 안 됩니다.",
+        "가진다.": "가집니다.",
+        "포함된다.": "포함됩니다.",
+        "어렵다.": "어렵습니다.",
+        "쉽다.": "쉽습니다.",
+        "나타낸다.": "나타냅니다.",
     }
 
     for source, target in replacements.items():
@@ -454,7 +489,16 @@ def _validate_generated_choices(
         raise ValueError("explanation이 비어 있습니다.")
 
     explanation_text = str(explanation).strip()
+    explanation_answer = _extract_answer_number_from_explanation(explanation_text)
 
+    if explanation_answer is None:
+        raise ValueError("explanation에 '정답은 N번입니다.' 형식의 정답 번호가 없습니다.")
+
+    if explanation_answer != answer_int:
+        raise ValueError(
+            f"explanation의 정답 번호가 answer와 다릅니다. "
+            f"answer={answer_int}, explanation_answer={explanation_answer}"
+        )
     if len(explanation_text) < 100:
         raise ValueError(
             "explanation이 너무 짧습니다. 정답 이유와 주요 오답이 부족한 이유를 함께 설명해야 합니다."
@@ -490,35 +534,17 @@ def _validate_generated_choices(
         return count
 
     if required_keyword_groups:
-        # 1차: LLM이 지정한 answer 선택지가 intent를 만족하는지 확인
         if not _matches_required_keyword_groups(correct_choice_text, required_keyword_groups):
-            matched_indices = []
+            missing_groups = []
 
-            # 2차: choices 전체에서 intent를 만족하는 선택지가 정확히 하나 있는지 확인
-            for idx, choice in enumerate(choices):
-                if _matches_required_keyword_groups(str(choice), required_keyword_groups):
-                    matched_indices.append(idx)
+            for group in required_keyword_groups:
+                if not any(str(keyword).lower() in correct_choice_text for keyword in group):
+                    missing_groups.append(group)
 
-            if len(matched_indices) == 1:
-                corrected_answer = matched_indices[0] + 1
-                logger.info(
-                    "LLM answer 번호 자동 보정: "
-                    f"answer_intent={answer_intent}, old_answer={answer_int}, new_answer={corrected_answer}"
-                )
-                answer_int = corrected_answer
-                correct_choice_text = str(choices[answer_int - 1]).lower()
-                explanation = _sync_answer_number_in_explanation(explanation, answer_int)
-            else:
-                missing_groups = []
-
-                for group in required_keyword_groups:
-                    if not any(str(keyword).lower() in correct_choice_text for keyword in group):
-                        missing_groups.append(group)
-
-                raise ValueError(
-                    f"정답 선택지가 answer_intent={answer_intent}의 핵심 조건을 충분히 포함하지 않습니다. "
-                    f"missing={missing_groups}, correct_choice={choices[int(result.get('answer', 1)) - 1]}"
-                )
+            raise ValueError(
+                f"정답 선택지가 answer_intent={answer_intent}의 핵심 조건을 충분히 포함하지 않습니다. "
+                f"missing={missing_groups}, correct_choice={choices[answer_int - 1]}"
+            )
         # 정답과 오답의 조건 충족 차이가 너무 작으면 복수정답처럼 보일 수 있다.
         correct_match_count = _count_matched_required_groups(
             choices[answer_int - 1],
@@ -557,6 +583,11 @@ def _validate_generated_choices(
         "데이터를 삭제",
         "모든 요청",
         "모든 데이터를",
+        "전혀",
+        "절대",
+        "유일한",
+        "무관하게",
+        "관계없이",
     ]
 
     cleaned_choices = [
@@ -677,15 +708,15 @@ title과 body는 절대 수정하지 마라.
 - 오답도 틀린 행동처럼 쓰지 말고, 실제 실무자가 고려할 수 있는 대안처럼 작성한다.
 - 오답의 부족한 점을 "하지만", "그러나", "다만", "못한다", "않는다", "제한적"으로 직접 드러내지 마라.
 - 선택지 5개 중 "하지만", "그러나", "다만", "못한다", "않는다", "제한적" 표현은 최대 2개 선택지에서만 사용한다.
-- "무시한다", "삭제한다", "무조건", "항상", "오직", "단순히", "완전히 제거한다", "성능을 개선한다", "결과를 개선한다" 같은 쉽게 제거되는 표현을 쓰지 마라.
+- "무시한다", "삭제한다", "무조건", "항상", "오직", "단순히", "완전히 제거한다", "전혀", "절대", "유일한", "무관하게", "관계없이" 같은 쉽게 제거되는 표현을 절대 쓰지 마라.
 - 각 선택지는 최소 35자 이상으로 작성한다.
 - 선택지 5개는 비슷한 길이와 비슷한 구체성을 가져야 한다.
-- 정답 선택지만 길고 오답이 짧으면 안 된다.
+- 정답 선택지만 길고 오답이 짧으면 안 된다. 오답 선택지도 정답과 비슷한 길이로 작성하거나, 때로는 오답을 더 길게 작성하여 길이로 정답을 유추할 수 없도록 만든다.
 - explanation은 반드시 "정답은 N번입니다."로 시작한다.
 - N은 answer 값과 반드시 같아야 한다.
-- explanation은 반드시 존댓말 문체로 작성한다.
-- "~이다", "~한다", "~높아진다", "~적절하다", "~필요하다" 같은 반말형 종결을 쓰지 않는다.
-- 모든 문장은 "~입니다", "~합니다", "~수 있습니다", "~해야 합니다"처럼 끝낸다.
+- explanation은 반드시 처음부터 끝까지 존댓말(경어체) 문체로 작성한다.
+- "~이다", "~한다", "~높아진다", "~적절하다", "~필요하다", "~않는다" 같은 반말형 종결을 쓰지 않는다.
+- 모든 문장은 "~입니다", "~합니다", "~수 있습니다", "~해야 합니다", "~않습니다"처럼 존댓말(경어체)로 끝낸다. 반말과 존댓말이 섞이면 절대 안 된다.
 - explanation은 최소 4문장 이상으로 작성한다.
 - explanation은 body에 제시된 evidence와 연결해서 설명한다.
 - 첫 문장에서는 정답 선택지가 문제의 어떤 조건을 만족하는지 설명한다.
