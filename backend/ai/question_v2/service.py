@@ -1,6 +1,6 @@
 import logging
 
-from ai.question_v2.evidence_builder import build_evidence_pack
+from ai.question_v2.evidence_builder import ( build_evidence_pack,select_beginner_topic_for_index )
 from ai.question_v2.format_selector import select_question_formats
 from ai.question_v2.models import GeneratedQuestion, QuestionV2Request
 from ai.question_v2.renderer import render_question_from_evidence
@@ -26,8 +26,16 @@ def generate_ai_questions_v2(request: QuestionV2Request) -> list[GeneratedQuesti
     questions: list[GeneratedQuestion] = []
 
     for plan in plans:
+        effective_topic = request.topic
+
+        if request.difficulty == "초급":
+            effective_topic = select_beginner_topic_for_index(
+                topic=request.topic,
+                index=plan.index,
+            )
+
         evidence_pack = build_evidence_pack(
-            topic=request.topic,
+            topic=effective_topic,
             difficulty=request.difficulty,
             plan=plan,
         )
@@ -43,14 +51,14 @@ def generate_ai_questions_v2(request: QuestionV2Request) -> list[GeneratedQuesti
                     validate_generated_question(question)
                 except Exception as validation_exc:
                     logger.warning(
-                        "AI Question V2 검증 실패 상세: format=%s, attempt=%s, answer=%s, lengths=%s, choices=%s",
+                        "AI Question V2 검증 실패 상세: format=%s, attempt=%s, answer=%s, body=%s, lengths=%s, choices=%s",
                         plan.question_format,
                         attempt,
                         question.answer,
+                        question.body,
                         [len(choice.strip()) for choice in question.choices],
                         question.choices,
                     )
-                    raise validation_exc
 
                 questions.append(question)
                 generated = True

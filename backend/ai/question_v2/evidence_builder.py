@@ -192,6 +192,1379 @@ AI_TOPIC_PRESETS = {
     },
 }
 
+AI_BEGINNER_TOPIC_PRESETS: Dict[str, Dict[str, Any]] = {
+    "llm": {
+        "aliases": ["llm", "LLM", "대규모 언어 모델", "large language model"],
+        "normalized_topic": "LLM 기본 개념",
+        "concepts": ["LLM", "prompt", "context", "natural language generation"],
+        "definition": "LLM은 대량의 텍스트 데이터를 기반으로 자연어를 이해하고 생성하는 모델입니다.",
+        "purpose": "질문 답변, 요약, 분류, 문장 생성 같은 자연어 작업에 사용됩니다.",
+        "role": "입력 문맥과 프롬프트를 바탕으로 자연어 응답을 생성합니다.",
+        "wrong_points": [
+            "LLM은 항상 최신 정보를 자동으로 알고 있습니다.",
+            "LLM은 입력 문맥과 무관하게 항상 같은 답변만 생성합니다.",
+            "LLM은 매 요청마다 모델 파라미터를 직접 수정합니다.",
+            "LLM은 데이터베이스처럼 모든 사실을 항상 정확히 조회합니다.",
+        ],
+        "compare": {
+            "target": "검색 엔진",
+            "point": "LLM은 자연어 응답 생성에 초점이 있고, 검색 엔진은 관련 문서나 웹페이지 탐색에 초점이 있습니다.",
+        },
+        "term_role": "LLM은 자연어 입력을 바탕으로 응답을 생성하는 역할을 합니다.",
+    },
+    "gpt": {
+        "aliases": ["gpt", "GPT"],
+        "normalized_topic": "GPT 기본 개념",
+        "concepts": ["GPT", "generative model", "autoregressive model"],
+        "definition": "GPT는 이전 문맥을 바탕으로 다음 토큰을 예측하며 문장을 생성하는 언어 모델 계열입니다.",
+        "purpose": "대화, 문장 생성, 요약, 코드 작성 같은 생성형 작업에 사용됩니다.",
+        "role": "주어진 문맥 다음에 올 가능성이 높은 텍스트를 생성합니다.",
+        "wrong_points": [
+            "GPT는 문장을 생성하지 않고 이미 저장된 문서만 검색합니다.",
+            "GPT는 양방향 문맥 이해만을 위해 설계된 인코더 모델입니다.",
+            "GPT는 입력 없이 항상 동일한 고정 답변만 출력합니다.",
+            "GPT는 자연어 생성과 관련이 없는 이미지 전용 모델입니다.",
+        ],
+        "compare": {
+            "target": "BERT",
+            "point": "GPT는 주로 텍스트 생성에 강점이 있고, BERT는 문맥 이해와 분류 작업에 자주 사용됩니다.",
+        },
+        "term_role": "GPT는 문맥을 이어 자연어를 생성하는 역할을 합니다.",
+    },
+    "bert": {
+        "aliases": ["bert", "BERT"],
+        "normalized_topic": "BERT 기본 개념",
+        "concepts": ["BERT", "bidirectional context", "encoder"],
+        "definition": "BERT는 문장의 앞뒤 문맥을 함께 활용해 텍스트 의미를 이해하는 언어 모델 계열입니다.",
+        "purpose": "문장 분류, 의미 유사도, 개체명 인식 같은 이해 중심 작업에 사용됩니다.",
+        "role": "문장 전체의 양방향 문맥을 반영해 텍스트 표현을 만듭니다.",
+        "wrong_points": [
+            "BERT는 주로 다음 단어를 이어 쓰는 생성형 모델입니다.",
+            "BERT는 문맥을 보지 않고 단어를 독립적으로 처리합니다.",
+            "BERT는 텍스트 이해 작업에 사용할 수 없습니다.",
+            "BERT는 데이터 전처리 없이 항상 최신 지식을 제공합니다.",
+        ],
+        "compare": {
+            "target": "GPT",
+            "point": "BERT는 문맥 이해에 강점이 있고, GPT는 문맥을 이어 텍스트를 생성하는 데 강점이 있습니다.",
+        },
+        "term_role": "BERT는 문장의 양방향 문맥을 이해하는 역할을 합니다.",
+    },
+    "prompt": {
+        "aliases": ["prompt", "프롬프트", "프롬프트 작성"],
+        "normalized_topic": "프롬프트 기본 개념",
+        "concepts": ["prompt", "instruction", "context"],
+        "definition": "프롬프트는 LLM에게 수행할 작업, 조건, 맥락을 전달하는 입력 문장입니다.",
+        "purpose": "모델이 원하는 형식과 기준에 맞춰 응답하도록 유도하기 위해 사용됩니다.",
+        "role": "모델의 응답 방향과 출력 조건을 지정합니다.",
+        "wrong_points": [
+            "프롬프트는 모델의 학습 데이터를 직접 삭제합니다.",
+            "프롬프트는 서버의 CPU 사용량만 조절합니다.",
+            "프롬프트는 모델 파라미터를 영구적으로 변경합니다.",
+            "프롬프트는 데이터베이스 인덱스를 생성하는 명령입니다.",
+        ],
+        "compare": {
+            "target": "system prompt",
+            "point": "일반 프롬프트는 사용자 요청에 가깝고, system prompt는 모델의 역할과 기본 규칙을 지정합니다.",
+        },
+        "term_role": "프롬프트는 모델에게 작업 지시와 맥락을 전달하는 역할을 합니다.",
+    },
+    "system_prompt": {
+        "aliases": ["system prompt", "시스템 프롬프트", "system_prompt"],
+        "normalized_topic": "시스템 프롬프트 기본 개념",
+        "concepts": ["system prompt", "role", "output rule"],
+        "definition": "시스템 프롬프트는 모델의 역할, 응답 방식, 제한 조건을 지정하는 상위 지시입니다.",
+        "purpose": "모델 응답의 톤, 범위, 출력 형식을 일관되게 제어하기 위해 사용됩니다.",
+        "role": "사용자 요청보다 앞선 기본 행동 규칙을 제공합니다.",
+        "wrong_points": [
+            "시스템 프롬프트는 모델 가중치를 다시 학습시키는 데이터셋입니다.",
+            "시스템 프롬프트는 벡터 DB의 검색 속도만 조절합니다.",
+            "시스템 프롬프트는 사용자의 질문을 저장하는 테이블입니다.",
+            "시스템 프롬프트는 모델 응답과 전혀 관련이 없습니다.",
+        ],
+        "compare": {
+            "target": "user prompt",
+            "point": "시스템 프롬프트는 기본 역할과 규칙을 정하고, 사용자 프롬프트는 개별 요청 내용을 전달합니다.",
+        },
+        "term_role": "시스템 프롬프트는 모델의 기본 역할과 응답 규칙을 정하는 역할을 합니다.",
+    },
+    "temperature": {
+        "aliases": ["temperature", "온도", "무작위성"],
+        "normalized_topic": "temperature 기본 개념",
+        "concepts": ["temperature", "randomness", "generation setting"],
+        "definition": "temperature는 LLM 응답 생성에서 출력의 무작위성 정도를 조절하는 설정값입니다.",
+        "purpose": "응답을 더 일관되게 하거나 더 다양하게 만들기 위해 조정합니다.",
+        "role": "낮을수록 일관성이 높아지고, 높을수록 다양한 표현이 나올 가능성이 커집니다.",
+        "wrong_points": [
+            "temperature는 모델 학습 데이터의 개수를 의미합니다.",
+            "temperature는 서버의 실제 물리적 온도만 의미합니다.",
+            "temperature는 벡터 DB의 저장 용량을 조절합니다.",
+            "temperature는 모델의 최신 지식 여부를 보장합니다.",
+        ],
+        "compare": {
+            "target": "top_k 검색 수",
+            "point": "temperature는 생성 무작위성 설정이고, top_k는 검색이나 후보 수와 관련된 설정입니다.",
+        },
+        "term_role": "temperature는 생성 응답의 무작위성을 조절하는 역할을 합니다.",
+    },
+    "hallucination": {
+        "aliases": ["hallucination", "환각", "LLM 환각"],
+        "normalized_topic": "LLM 환각 기본 개념",
+        "concepts": ["hallucination", "factuality", "grounding"],
+        "definition": "hallucination은 LLM이 근거가 부족하거나 사실과 다른 내용을 그럴듯하게 생성하는 현상입니다.",
+        "purpose": "환각 개념은 LLM 답변의 신뢰성과 근거 확인 필요성을 설명할 때 사용됩니다.",
+        "role": "LLM 응답 품질에서 사실성 문제를 나타내는 개념입니다.",
+        "wrong_points": [
+            "hallucination은 서버 응답 시간이 느려지는 현상만 의미합니다.",
+            "hallucination은 모델이 항상 정답만 말하는 현상입니다.",
+            "hallucination은 벡터 DB 저장 공간이 부족한 상태입니다.",
+            "hallucination은 GPU 메모리를 자동으로 줄이는 기능입니다.",
+        ],
+        "compare": {
+            "target": "latency",
+            "point": "hallucination은 답변 사실성 문제이고, latency는 응답 지연 시간 문제입니다.",
+        },
+        "term_role": "hallucination은 근거 없는 답변 생성 위험을 설명하는 역할을 합니다.",
+    },
+    "rag": {
+        "aliases": ["rag", "RAG", "검색 증강 생성", "retrieval augmented generation"],
+        "normalized_topic": "RAG 기본 개념",
+        "concepts": ["RAG", "retrieval", "context", "LLM"],
+        "definition": "RAG는 외부 문서를 검색한 뒤 그 결과를 LLM 답변 생성에 활용하는 방식입니다.",
+        "purpose": "모델 내부 지식만으로 부족한 정보를 외부 근거와 함께 활용하기 위해 사용됩니다.",
+        "role": "검색 결과를 답변 생성 context로 제공해 근거성을 높입니다.",
+        "wrong_points": [
+            "RAG는 모델 파라미터를 직접 수정해 지식을 저장하는 방식입니다.",
+            "RAG는 외부 문서 검색 없이 LLM 내부 지식만 사용하는 방식입니다.",
+            "RAG는 이미지 압축률을 조절하는 딥러닝 기법입니다.",
+            "RAG는 데이터베이스 트랜잭션을 관리하는 SQL 명령입니다.",
+        ],
+        "compare": {
+            "target": "fine-tuning",
+            "point": "RAG는 외부 문서를 검색해 활용하고, fine-tuning은 모델을 추가 학습해 동작을 조정합니다.",
+        },
+        "term_role": "RAG는 검색 결과를 LLM 답변 근거로 제공하는 역할을 합니다.",
+    },
+    "embedding": {
+        "aliases": ["embedding", "임베딩", "벡터 임베딩"],
+        "normalized_topic": "Embedding 기본 개념",
+        "concepts": ["embedding", "vector", "semantic similarity"],
+        "definition": "embedding은 텍스트나 데이터를 의미를 담은 숫자 벡터로 변환한 표현입니다.",
+        "purpose": "문장이나 문서 간 의미 유사도를 계산하기 위해 사용됩니다.",
+        "role": "텍스트 의미를 벡터 공간에서 비교할 수 있게 만듭니다.",
+        "wrong_points": [
+            "embedding은 원문 텍스트를 사람이 읽기 쉽게 번역하는 작업입니다.",
+            "embedding은 모델 응답의 존댓말 여부만 조절합니다.",
+            "embedding은 데이터베이스 테이블을 삭제하는 명령입니다.",
+            "embedding은 서버 응답 시간을 표시하는 운영 지표입니다.",
+        ],
+        "compare": {
+            "target": "keyword",
+            "point": "embedding은 의미 유사도 비교에 강점이 있고, keyword는 정확한 단어 일치에 초점이 있습니다.",
+        },
+        "term_role": "embedding은 텍스트 의미를 숫자 벡터로 표현하는 역할을 합니다.",
+    },
+    "vector_db": {
+        "aliases": ["vector db", "vector database", "벡터 DB", "벡터 데이터베이스"],
+        "normalized_topic": "Vector DB 기본 개념",
+        "concepts": ["vector database", "embedding", "similarity search"],
+        "definition": "Vector DB는 embedding 벡터를 저장하고 유사도 검색을 수행하는 데이터베이스입니다.",
+        "purpose": "의미가 비슷한 문서나 데이터를 빠르게 찾기 위해 사용됩니다.",
+        "role": "벡터화된 문서를 저장하고 질문과 가까운 문서를 검색합니다.",
+        "wrong_points": [
+            "Vector DB는 SQL 문법 오류를 자동 수정하는 컴파일러입니다.",
+            "Vector DB는 모델 파라미터를 학습시키는 신경망 계층입니다.",
+            "Vector DB는 자연어 답변을 직접 생성하는 언어 모델입니다.",
+            "Vector DB는 운영 서버의 CPU 온도만 저장합니다.",
+        ],
+        "compare": {
+            "target": "일반 관계형 DB",
+            "point": "Vector DB는 벡터 유사도 검색에 초점이 있고, 관계형 DB는 정형 데이터의 관계와 조건 검색에 강점이 있습니다.",
+        },
+        "term_role": "Vector DB는 embedding 벡터를 저장하고 유사 문서를 찾는 역할을 합니다.",
+    },
+    "chunk": {
+        "aliases": ["chunk", "청크", "문서 청크"],
+        "normalized_topic": "Chunk 기본 개념",
+        "concepts": ["chunk", "document split", "RAG"],
+        "definition": "chunk는 긴 문서를 검색에 활용하기 쉽도록 나눈 작은 문서 조각입니다.",
+        "purpose": "필요한 근거를 적절한 단위로 검색하고 context에 넣기 위해 사용됩니다.",
+        "role": "긴 문서 내용을 검색 가능한 작은 단위로 나눕니다.",
+        "wrong_points": [
+            "chunk는 모델의 정답 번호를 무작위로 바꾸는 기능입니다.",
+            "chunk는 서버 배포 버전을 관리하는 도구입니다.",
+            "chunk는 학습률을 자동으로 계산하는 수식입니다.",
+            "chunk는 사용자의 비밀번호를 암호화하는 인증 방식입니다.",
+        ],
+        "compare": {
+            "target": "전체 문서",
+            "point": "chunk는 검색에 적합한 작은 단위이고, 전체 문서는 여러 주제가 함께 들어 있어 검색 단위로 무거울 수 있습니다.",
+        },
+        "term_role": "chunk는 문서를 검색 가능한 작은 단위로 나누는 역할을 합니다.",
+    },
+    "metadata_filter": {
+        "aliases": ["metadata filter", "메타데이터 필터", "metadata"],
+        "normalized_topic": "Metadata Filter 기본 개념",
+        "concepts": ["metadata filter", "category", "retrieval"],
+        "definition": "metadata filter는 문서의 category, 날짜, 출처 같은 속성을 기준으로 검색 범위를 제한하는 방법입니다.",
+        "purpose": "관련 없는 범주의 문서가 검색 결과에 섞이는 것을 줄이기 위해 사용됩니다.",
+        "role": "검색 대상 문서를 지정한 속성 조건에 맞게 좁힙니다.",
+        "wrong_points": [
+            "metadata filter는 LLM의 답변 말투만 바꾸는 설정입니다.",
+            "metadata filter는 모델을 추가 학습시키는 데이터셋입니다.",
+            "metadata filter는 모든 문서를 무조건 검색 결과에 포함합니다.",
+            "metadata filter는 서버의 네트워크 지연 시간을 의미합니다.",
+        ],
+        "compare": {
+            "target": "reranker",
+            "point": "metadata filter는 검색 범위를 먼저 제한하고, reranker는 검색된 후보의 순서를 다시 평가합니다.",
+        },
+        "term_role": "metadata filter는 문서 속성 기준으로 검색 범위를 제한하는 역할을 합니다.",
+    },
+    "reranker": {
+        "aliases": ["reranker", "리랭커", "재정렬"],
+        "normalized_topic": "Reranker 기본 개념",
+        "concepts": ["reranker", "ranking", "retrieval"],
+        "definition": "reranker는 1차로 검색된 후보 문서의 관련도를 다시 평가해 순서를 조정하는 방법입니다.",
+        "purpose": "더 관련성 높은 문서가 상위에 오도록 검색 품질을 개선하기 위해 사용됩니다.",
+        "role": "검색 후보의 순위를 질문 관련도 기준으로 다시 정렬합니다.",
+        "wrong_points": [
+            "reranker는 검색 전 문서 저장소를 삭제하는 기능입니다.",
+            "reranker는 모델의 학습 데이터를 자동 생성하는 계층입니다.",
+            "reranker는 사용자 질문을 음성으로 변환하는 도구입니다.",
+            "reranker는 API 응답 시간을 측정하는 지표 이름입니다.",
+        ],
+        "compare": {
+            "target": "metadata filter",
+            "point": "reranker는 후보 순서를 조정하고, metadata filter는 검색할 문서 범위를 제한합니다.",
+        },
+        "term_role": "reranker는 검색 후보를 관련도 기준으로 재정렬하는 역할을 합니다.",
+    },
+    "fine_tuning": {
+        "aliases": ["fine-tuning", "파인튜닝", "fine tuning"],
+        "normalized_topic": "Fine-tuning 기본 개념",
+        "concepts": ["fine-tuning", "model training", "adaptation"],
+        "definition": "fine-tuning은 기존 모델을 특정 데이터나 작업에 맞게 추가 학습하는 방법입니다.",
+        "purpose": "특정 도메인이나 작업에 모델 동작을 더 잘 맞추기 위해 사용됩니다.",
+        "role": "기존 모델의 가중치를 추가 학습으로 조정합니다.",
+        "wrong_points": [
+            "fine-tuning은 외부 문서를 검색해 답변에 붙이는 방식만 의미합니다.",
+            "fine-tuning은 데이터베이스에서 유사 문서를 찾는 검색 설정입니다.",
+            "fine-tuning은 모델 응답의 무작위성만 조절하는 값입니다.",
+            "fine-tuning은 서버의 timeout 비율을 표시하는 지표입니다.",
+        ],
+        "compare": {
+            "target": "RAG",
+            "point": "fine-tuning은 모델을 추가 학습하고, RAG는 외부 문서를 검색해 답변 생성에 활용합니다.",
+        },
+        "term_role": "fine-tuning은 모델을 특정 작업에 맞게 추가 학습하는 역할을 합니다.",
+    },
+    "mcp": {
+        "aliases": ["mcp", "MCP", "model context protocol", "모델 컨텍스트 프로토콜"],
+        "normalized_topic": "MCP 기본 개념",
+        "concepts": ["MCP", "tool connection", "context protocol"],
+        "definition": "MCP는 AI 애플리케이션이 외부 도구, 데이터 소스, 시스템과 연결될 수 있도록 돕는 표준 프로토콜입니다.",
+        "purpose": "모델이 필요한 외부 context와 도구를 일관된 방식으로 사용할 수 있게 하기 위해 사용됩니다.",
+        "role": "AI 애플리케이션과 외부 도구 또는 데이터 소스 사이의 연결 방식을 표준화합니다.",
+        "wrong_points": [
+            "MCP는 딥러닝 모델의 dropout 비율을 정하는 학습 기법입니다.",
+            "MCP는 SQL 테이블의 기본키를 자동 생성하는 명령입니다.",
+            "MCP는 LLM의 모든 환각을 자동으로 제거하는 모델입니다.",
+            "MCP는 이미지 분류 전용 CNN 구조를 의미합니다.",
+        ],
+        "compare": {
+            "target": "A2A Protocol",
+            "point": "MCP는 모델과 도구·데이터 연결에 초점이 있고, A2A Protocol은 에이전트 간 상호작용에 초점이 있습니다.",
+        },
+        "term_role": "MCP는 AI 애플리케이션이 외부 도구와 데이터를 연결하는 역할을 합니다.",
+    },
+    "a2a_protocol": {
+        "aliases": ["a2a", "A2A", "A2A Protocol", "agent to agent", "agent2agent"],
+        "normalized_topic": "A2A Protocol 기본 개념",
+        "concepts": ["A2A Protocol", "agent communication", "agent interoperability"],
+        "definition": "A2A Protocol은 서로 다른 AI agent가 작업과 정보를 주고받도록 돕는 agent 간 통신 프로토콜입니다.",
+        "purpose": "여러 agent가 각자의 기능을 유지하면서 협업할 수 있게 하기 위해 사용됩니다.",
+        "role": "agent 사이의 요청, 응답, 작업 위임 흐름을 연결합니다.",
+        "wrong_points": [
+            "A2A Protocol은 신경망의 은닉층 개수를 정하는 학습 파라미터입니다.",
+            "A2A Protocol은 문서를 embedding으로 변환하는 수식입니다.",
+            "A2A Protocol은 데이터베이스 인덱스를 생성하는 SQL 문법입니다.",
+            "A2A Protocol은 모델의 validation loss를 직접 낮추는 정규화 기법입니다.",
+        ],
+        "compare": {
+            "target": "MCP",
+            "point": "A2A Protocol은 agent 간 통신에 초점이 있고, MCP는 모델과 외부 도구·데이터 연결에 초점이 있습니다.",
+        },
+        "term_role": "A2A Protocol은 여러 AI agent가 서로 작업을 주고받게 하는 역할을 합니다.",
+    },
+    "agent": {
+        "aliases": ["agent", "AI agent", "에이전트", "AI 에이전트"],
+        "normalized_topic": "AI Agent 기본 개념",
+        "concepts": ["AI agent", "tool use", "planning"],
+        "definition": "AI Agent는 목표를 수행하기 위해 판단, 도구 사용, 단계적 실행을 조합하는 AI 시스템입니다.",
+        "purpose": "단순 답변을 넘어 여러 단계의 작업을 수행하기 위해 사용됩니다.",
+        "role": "목표를 해석하고 필요한 작업이나 도구 호출을 선택합니다.",
+        "wrong_points": [
+            "AI Agent는 항상 단일 문장 답변만 생성하는 정적 문서입니다.",
+            "AI Agent는 데이터베이스의 외래키 관계만 의미합니다.",
+            "AI Agent는 GPU 메모리를 자동으로 늘리는 하드웨어입니다.",
+            "AI Agent는 모델 평가 지표 중 accuracy와 같은 의미입니다.",
+        ],
+        "compare": {
+            "target": "LLM",
+            "point": "LLM은 자연어 생성 모델이고, AI Agent는 LLM과 도구 사용을 조합해 작업을 수행하는 구조입니다.",
+        },
+        "term_role": "AI Agent는 목표 달성을 위해 판단과 도구 사용을 조합하는 역할을 합니다.",
+    },
+    "langchain": {
+        "aliases": [
+            "langchain",
+            "LangChain",
+            "랭체인",
+            "lang chain",
+        ],
+        "normalized_topic": "LangChain 기본 개념",
+        "concepts": ["LangChain", "LLM application", "chain", "tool", "memory"],
+        "definition": "LangChain은 LLM 애플리케이션에서 프롬프트, 모델 호출, 도구 사용, 외부 데이터 연결을 구성하는 데 사용하는 프레임워크입니다.",
+        "purpose": "LLM 기반 기능을 여러 단계의 처리 흐름으로 연결하고 재사용하기 위해 사용됩니다.",
+        "role": "프롬프트, LLM, 도구, 검색, 메모리 같은 구성 요소를 애플리케이션 흐름으로 연결합니다.",
+        "wrong_points": [
+            "LangChain은 CNN 이미지 분류를 위한 신경망 구조입니다.",
+            "LangChain은 SQL 테이블의 기본키를 자동 생성하는 명령입니다.",
+            "LangChain은 LLM의 temperature 값을 의미합니다.",
+            "LangChain은 모델 학습 데이터의 라벨을 삭제하는 전처리입니다.",
+        ],
+        "compare": {
+            "target": "단일 LLM 호출",
+            "point": "LangChain은 여러 구성 요소를 연결한 LLM 애플리케이션 흐름이고, 단일 LLM 호출은 한 번의 요청과 응답에 가깝습니다.",
+        },
+        "term_role": "LangChain은 LLM 애플리케이션의 여러 구성 요소를 연결하는 역할을 합니다.",
+    },
+    "langgraph": {
+        "aliases": [
+            "langgraph",
+            "LangGraph",
+            "랭그래프",
+            "lang graph",
+            "lnaggraph",
+            "LNAGGRAPH",
+        ],
+        "normalized_topic": "LangGraph 기본 개념",
+        "concepts": ["LangGraph", "state", "node", "edge", "workflow"],
+        "definition": "LangGraph는 LLM 애플리케이션에서 상태 기반 workflow를 그래프 형태로 구성하는 데 사용하는 도구입니다.",
+        "purpose": "여러 단계의 LLM 호출, 도구 호출, 조건 분기, 재시도 흐름을 구조화하기 위해 사용됩니다.",
+        "role": "노드와 엣지를 통해 AI workflow의 실행 순서와 상태 변화를 관리합니다.",
+        "wrong_points": [
+            "LangGraph는 CNN 이미지 분류를 위한 신경망 구조입니다.",
+            "LangGraph는 SQL 테이블의 기본키를 자동 생성하는 명령입니다.",
+            "LangGraph는 LLM의 temperature 값을 의미합니다.",
+            "LangGraph는 문서를 embedding으로 변환하는 벡터 모델 자체입니다.",
+        ],
+        "compare": {
+            "target": "LangChain",
+            "point": "LangGraph는 상태와 분기가 있는 그래프형 workflow에 강점이 있고, LangChain은 LLM 구성 요소 연결에 넓게 사용됩니다.",
+        },
+        "term_role": "LangGraph는 AI workflow의 단계와 상태 전이를 구성하는 역할을 합니다.",
+    },
+    "pretrained_model": {
+        "aliases": [
+            "pretrained",
+            "pre-trained",
+            "pretrained model",
+            "pretrain",
+            "pre-training",
+            "사전학습",
+            "사전 학습",
+            "사전학습 모델",
+            "프리트레인",
+        ],
+        "normalized_topic": "Pretrained Model 기본 개념",
+        "concepts": ["pretrained model", "pre-training", "fine-tuning", "transfer learning"],
+        "definition": "Pretrained model은 대규모 데이터로 미리 학습된 모델입니다.",
+        "purpose": "새 작업에서 학습 효율을 높이고 적은 데이터로도 성능을 확보하기 위해 사용됩니다.",
+        "role": "기존에 학습한 표현을 새로운 작업의 출발점으로 제공합니다.",
+        "wrong_points": [
+            "Pretrained model은 학습되지 않은 빈 모델을 의미합니다.",
+            "Pretrained model은 외부 문서를 검색해 답변에 붙이는 RAG 방식만 의미합니다.",
+            "Pretrained model은 LLM의 temperature 값을 조정하는 설정입니다.",
+            "Pretrained model은 SQL 쿼리의 실행 순서를 정하는 명령입니다.",
+        ],
+        "compare": {
+            "target": "fine-tuning",
+            "point": "Pretrained model은 미리 학습된 모델 자체이고, fine-tuning은 그 모델을 특정 작업에 맞게 추가 학습하는 과정입니다.",
+        },
+        "term_role": "Pretrained model은 새로운 작업에 활용할 수 있는 사전학습된 출발점 역할을 합니다.",
+    },
+    "pretrained_model": {
+        "aliases": [
+            "pretrained",
+            "pre-trained",
+            "pretrained model",
+            "pretrain",
+            "pre-training",
+            "사전학습",
+            "사전 학습",
+            "사전학습 모델",
+            "프리트레인",
+        ],
+        "normalized_topic": "Pretrained Model 기본 개념",
+        "concepts": ["pretrained model", "pre-training", "fine-tuning", "transfer learning"],
+        "definition": "Pretrained model은 대규모 데이터로 미리 학습된 모델입니다.",
+        "purpose": "새 작업에서 학습 효율을 높이고 적은 데이터로도 성능을 확보하기 위해 사용됩니다.",
+        "role": "기존에 학습한 표현을 새로운 작업의 출발점으로 제공합니다.",
+        "wrong_points": [
+            "Pretrained model은 학습되지 않은 빈 모델을 의미합니다.",
+            "Pretrained model은 외부 문서를 검색해 답변에 붙이는 RAG 방식만 의미합니다.",
+            "Pretrained model은 LLM의 temperature 값을 조정하는 설정입니다.",
+            "Pretrained model은 SQL 쿼리의 실행 순서를 정하는 명령입니다.",
+        ],
+        "compare": {
+            "target": "fine-tuning",
+            "point": "Pretrained model은 미리 학습된 모델 자체이고, fine-tuning은 그 모델을 특정 작업에 맞게 추가 학습하는 과정입니다.",
+        },
+        "term_role": "Pretrained model은 새로운 작업에 활용할 수 있는 사전학습된 출발점 역할을 합니다.",
+    },
+    "tokenizer": {
+        "aliases": [
+            "tokenizer",
+            "tokenization",
+            "토크나이저",
+            "토큰화",
+            "token",
+            "토큰",
+        ],
+        "normalized_topic": "Tokenizer 기본 개념",
+        "concepts": ["tokenizer", "token", "text preprocessing"],
+        "definition": "Tokenizer는 텍스트를 모델이 처리할 수 있는 token 단위로 나누는 도구입니다.",
+        "purpose": "자연어 문장을 모델 입력 형식으로 변환하기 위해 사용됩니다.",
+        "role": "문장을 단어, 부분 단어, 기호 같은 token 단위로 분리합니다.",
+        "wrong_points": [
+            "Tokenizer는 모델의 정답률을 계산하는 평가 지표입니다.",
+            "Tokenizer는 벡터 DB에서 문서를 검색하는 랭킹 알고리즘입니다.",
+            "Tokenizer는 모델 API의 timeout 비율을 의미합니다.",
+            "Tokenizer는 SQL 인덱스를 생성하는 데이터베이스 명령입니다.",
+        ],
+        "compare": {
+            "target": "embedding",
+            "point": "Tokenizer는 텍스트를 token으로 나누고, embedding은 token이나 문장을 숫자 벡터로 표현합니다.",
+        },
+        "term_role": "Tokenizer는 텍스트를 모델 입력 단위로 나누는 역할을 합니다.",
+    },
+    "inference": {
+        "aliases": [
+            "inference",
+            "추론",
+            "모델 추론",
+            "llm inference",
+        ],
+        "normalized_topic": "Inference 기본 개념",
+        "concepts": ["inference", "model prediction", "serving"],
+        "definition": "Inference는 학습된 모델이 입력을 받아 예측이나 응답을 생성하는 과정입니다.",
+        "purpose": "학습된 모델을 실제 요청에 적용해 결과를 얻기 위해 사용됩니다.",
+        "role": "사용자 입력이나 데이터에 대해 모델의 출력 결과를 생성합니다.",
+        "wrong_points": [
+            "Inference는 모델을 처음부터 학습시키는 과정만 의미합니다.",
+            "Inference는 SQL 테이블의 외래키를 설정하는 명령입니다.",
+            "Inference는 문서를 token 단위로 나누는 전처리만 의미합니다.",
+            "Inference는 LLM의 system prompt를 저장하는 데이터베이스입니다.",
+        ],
+        "compare": {
+            "target": "training",
+            "point": "Training은 모델이 데이터를 학습하는 과정이고, inference는 학습된 모델로 결과를 생성하는 과정입니다.",
+        },
+        "term_role": "Inference는 학습된 모델을 사용해 예측이나 응답을 생성하는 역할을 합니다.",
+    },
+    "tool_calling": {
+        "aliases": ["tool calling", "tool_calling", "도구 호출", "function calling", "함수 호출"],
+        "normalized_topic": "Tool Calling 기본 개념",
+        "concepts": ["tool calling", "function calling", "external tool"],
+        "definition": "tool calling은 LLM이 필요한 작업을 수행하기 위해 외부 함수나 도구 호출을 선택하는 방식입니다.",
+        "purpose": "계산, 검색, API 호출처럼 모델 내부 생성만으로 부족한 작업을 처리하기 위해 사용됩니다.",
+        "role": "모델 응답 과정에서 외부 기능을 호출하도록 연결합니다.",
+        "wrong_points": [
+            "tool calling은 모델이 외부 기능 없이 항상 답변만 생성하는 방식입니다.",
+            "tool calling은 학습 데이터의 label을 자동으로 삭제합니다.",
+            "tool calling은 validation loss를 계산하는 손실 함수입니다.",
+            "tool calling은 관계형 데이터베이스의 조인 조건입니다.",
+        ],
+        "compare": {
+            "target": "일반 프롬프트 응답",
+            "point": "일반 응답은 텍스트 생성에 그치지만, tool calling은 외부 함수나 API 실행과 연결될 수 있습니다.",
+        },
+        "term_role": "tool calling은 LLM이 외부 도구를 호출하게 하는 역할을 합니다.",
+    },
+    "supervised_learning": {
+        "aliases": ["supervised learning", "지도학습", "지도 학습"],
+        "normalized_topic": "지도학습 기본 개념",
+        "concepts": ["supervised learning", "label", "training data"],
+        "definition": "지도학습은 정답 라벨이 있는 데이터를 사용해 입력과 출력의 관계를 학습하는 방법입니다.",
+        "purpose": "분류나 회귀처럼 정답이 있는 예측 문제를 해결하기 위해 사용됩니다.",
+        "role": "라벨이 있는 학습 데이터로 예측 모델을 만듭니다.",
+        "wrong_points": [
+            "지도학습은 정답 라벨이 전혀 없는 데이터만 사용합니다.",
+            "지도학습은 검색 결과 순위를 재정렬하는 RAG 기법입니다.",
+            "지도학습은 LLM의 응답 말투만 바꾸는 프롬프트입니다.",
+            "지도학습은 운영 서버의 latency를 측정하는 지표입니다.",
+        ],
+        "compare": {
+            "target": "비지도학습",
+            "point": "지도학습은 정답 라벨을 사용하고, 비지도학습은 라벨 없이 데이터 구조나 패턴을 찾습니다.",
+        },
+        "term_role": "지도학습은 라벨 데이터로 예측 모델을 학습하는 역할을 합니다.",
+    },
+    "unsupervised_learning": {
+        "aliases": ["unsupervised learning", "비지도학습", "비지도 학습"],
+        "normalized_topic": "비지도학습 기본 개념",
+        "concepts": ["unsupervised learning", "clustering", "pattern"],
+        "definition": "비지도학습은 정답 라벨 없이 데이터의 구조나 패턴을 찾는 학습 방법입니다.",
+        "purpose": "군집화, 차원 축소, 패턴 탐색 등에 사용됩니다.",
+        "role": "라벨 없이 데이터 안의 유사한 구조를 찾아냅니다.",
+        "wrong_points": [
+            "비지도학습은 반드시 정답 라벨이 있어야만 동작합니다.",
+            "비지도학습은 LLM 응답의 출력 형식만 지정합니다.",
+            "비지도학습은 벡터 DB의 category 필터와 같은 의미입니다.",
+            "비지도학습은 API timeout을 줄이는 배포 전략입니다.",
+        ],
+        "compare": {
+            "target": "지도학습",
+            "point": "비지도학습은 라벨 없이 패턴을 찾고, 지도학습은 라벨을 사용해 예측 관계를 학습합니다.",
+        },
+        "term_role": "비지도학습은 라벨 없이 데이터 패턴을 찾는 역할을 합니다.",
+    },
+    "classification": {
+        "aliases": ["classification", "분류", "분류 모델"],
+        "normalized_topic": "분류 기본 개념",
+        "concepts": ["classification", "class", "label"],
+        "definition": "분류는 입력 데이터를 미리 정해진 클래스 중 하나로 예측하는 머신러닝 작업입니다.",
+        "purpose": "스팸 여부, 이탈 여부, 불량 여부처럼 범주를 판단하기 위해 사용됩니다.",
+        "role": "입력 데이터가 어떤 클래스에 속하는지 예측합니다.",
+        "wrong_points": [
+            "분류는 연속적인 숫자 값을 예측하는 작업만 의미합니다.",
+            "분류는 문서를 chunk로 나누는 RAG 전처리입니다.",
+            "분류는 LLM temperature를 낮추는 설정입니다.",
+            "분류는 모델 배포 버전을 관리하는 절차입니다.",
+        ],
+        "compare": {
+            "target": "회귀",
+            "point": "분류는 범주를 예측하고, 회귀는 연속적인 숫자 값을 예측합니다.",
+        },
+        "term_role": "분류는 입력을 정해진 범주 중 하나로 예측하는 역할을 합니다.",
+    },
+    "regression": {
+        "aliases": ["regression", "회귀", "회귀 모델"],
+        "normalized_topic": "회귀 기본 개념",
+        "concepts": ["regression", "continuous value", "prediction"],
+        "definition": "회귀는 연속적인 숫자 값을 예측하는 머신러닝 작업입니다.",
+        "purpose": "가격, 매출, 온도처럼 숫자로 표현되는 값을 예측하기 위해 사용됩니다.",
+        "role": "입력 데이터를 바탕으로 연속적인 수치를 예측합니다.",
+        "wrong_points": [
+            "회귀는 데이터를 반드시 두 개의 클래스 중 하나로만 분류합니다.",
+            "회귀는 검색 후보의 순서를 다시 평가하는 기법입니다.",
+            "회귀는 모델 응답의 무작위성을 조절하는 설정입니다.",
+            "회귀는 외부 도구를 호출하는 agent 프로토콜입니다.",
+        ],
+        "compare": {
+            "target": "분류",
+            "point": "회귀는 숫자 값을 예측하고, 분류는 정해진 범주를 예측합니다.",
+        },
+        "term_role": "회귀는 연속적인 값을 예측하는 역할을 합니다.",
+    },
+    "overfitting": {
+        "aliases": ["overfitting", "과적합"],
+        "normalized_topic": "과적합 기본 개념",
+        "concepts": ["overfitting", "generalization", "validation"],
+        "definition": "과적합은 모델이 학습 데이터에 지나치게 맞춰져 새로운 데이터에서 성능이 낮아지는 현상입니다.",
+        "purpose": "모델의 일반화 성능 문제를 설명할 때 사용됩니다.",
+        "role": "학습 성능과 검증 성능의 차이를 해석하는 기준이 됩니다.",
+        "wrong_points": [
+            "과적합은 모델이 학습 데이터를 전혀 학습하지 못한 상태입니다.",
+            "과적합은 API 서버의 응답 시간이 증가하는 현상만 의미합니다.",
+            "과적합은 문서를 embedding으로 바꾸는 과정입니다.",
+            "과적합은 검색 범위를 metadata로 제한하는 방법입니다.",
+        ],
+        "compare": {
+            "target": "과소적합",
+            "point": "과적합은 학습 데이터에 지나치게 맞춘 상태이고, 과소적합은 데이터의 패턴을 충분히 학습하지 못한 상태입니다.",
+        },
+        "term_role": "과적합은 일반화 성능 저하를 설명하는 역할을 합니다.",
+    },
+    "train_test_split": {
+        "aliases": ["train/test split", "train test split", "학습 테스트 분리", "데이터 분리"],
+        "normalized_topic": "Train/Test Split 기본 개념",
+        "concepts": ["train data", "test data", "generalization"],
+        "definition": "train/test split은 데이터를 학습용과 평가용으로 나누는 절차입니다.",
+        "purpose": "모델이 보지 않은 데이터에서 얼마나 잘 동작하는지 평가하기 위해 사용됩니다.",
+        "role": "학습과 평가 데이터를 분리해 일반화 성능을 확인합니다.",
+        "wrong_points": [
+            "train/test split은 모든 데이터를 한 번에 학습에만 사용하는 절차입니다.",
+            "train/test split은 LLM의 system prompt를 저장하는 방식입니다.",
+            "train/test split은 검색 결과의 category를 제한하는 필터입니다.",
+            "train/test split은 모델 API의 timeout 비율입니다.",
+        ],
+        "compare": {
+            "target": "교차 검증",
+            "point": "train/test split은 한 번 나누는 방식이고, 교차 검증은 여러 분할로 반복 평가합니다.",
+        },
+        "term_role": "train/test split은 학습 데이터와 평가 데이터를 분리하는 역할을 합니다.",
+    },
+    "data_leakage": {
+        "aliases": ["data leakage", "데이터 누수", "target leakage", "타깃 누수"],
+        "normalized_topic": "데이터 누수 기본 개념",
+        "concepts": ["data leakage", "evaluation", "prediction time"],
+        "definition": "데이터 누수는 예측 시점에 사용할 수 없는 정보가 학습이나 평가에 포함되는 문제입니다.",
+        "purpose": "모델 평가가 실제보다 과도하게 좋게 나오는 원인을 설명할 때 사용됩니다.",
+        "role": "평가 신뢰성을 떨어뜨리는 데이터 구성 문제를 나타냅니다.",
+        "wrong_points": [
+            "데이터 누수는 모델 성능 평가에 아무 영향을 주지 않습니다.",
+            "데이터 누수는 벡터 DB의 저장 공간이 부족한 현상입니다.",
+            "데이터 누수는 LLM의 응답 말투를 조절하는 설정입니다.",
+            "데이터 누수는 GPU 메모리 사용량을 줄이는 학습 기법입니다.",
+        ],
+        "compare": {
+            "target": "과적합",
+            "point": "데이터 누수는 평가 데이터 구성 문제이고, 과적합은 학습 데이터에 지나치게 맞춰지는 모델 문제입니다.",
+        },
+        "term_role": "데이터 누수는 평가를 왜곡하는 잘못된 정보 포함 문제를 설명합니다.",
+    },
+    "accuracy": {
+        "aliases": ["accuracy", "정확도"],
+        "normalized_topic": "Accuracy 기본 개념",
+        "concepts": ["accuracy", "metric", "classification"],
+        "definition": "accuracy는 전체 예측 중 맞게 예측한 비율을 나타내는 평가 지표입니다.",
+        "purpose": "분류 모델의 전체적인 정답 비율을 확인하기 위해 사용됩니다.",
+        "role": "전체 샘플 기준으로 예측이 맞은 비율을 계산합니다.",
+        "wrong_points": [
+            "accuracy는 양성으로 예측한 것 중 실제 양성의 비율만 의미합니다.",
+            "accuracy는 실제 양성 중 찾아낸 비율만 의미합니다.",
+            "accuracy는 LLM 응답의 무작위성 설정입니다.",
+            "accuracy는 검색 후보 문서 수를 의미합니다.",
+        ],
+        "compare": {
+            "target": "recall",
+            "point": "accuracy는 전체 정답 비율이고, recall은 실제 양성 중 모델이 찾아낸 비율입니다.",
+        },
+        "term_role": "accuracy는 전체 예측 중 맞은 비율을 나타내는 역할을 합니다.",
+    },
+    "precision": {
+        "aliases": ["precision", "정밀도"],
+        "normalized_topic": "Precision 기본 개념",
+        "concepts": ["precision", "positive prediction", "metric"],
+        "definition": "precision은 양성으로 예측한 것 중 실제 양성인 비율을 나타내는 지표입니다.",
+        "purpose": "양성 예측의 정확성을 확인하기 위해 사용됩니다.",
+        "role": "모델이 양성이라고 판단한 결과가 얼마나 정확한지 평가합니다.",
+        "wrong_points": [
+            "precision은 실제 양성 중 모델이 찾아낸 비율만 의미합니다.",
+            "precision은 전체 데이터 중 정답을 맞힌 비율만 의미합니다.",
+            "precision은 문서를 벡터로 변환하는 과정입니다.",
+            "precision은 LLM의 context 길이를 의미합니다.",
+        ],
+        "compare": {
+            "target": "recall",
+            "point": "precision은 양성 예측의 정확성이고, recall은 실제 양성을 얼마나 찾아냈는지입니다.",
+        },
+        "term_role": "precision은 양성 예측이 얼마나 정확한지 평가하는 역할을 합니다.",
+    },
+    "recall": {
+        "aliases": ["recall", "재현율"],
+        "normalized_topic": "Recall 기본 개념",
+        "concepts": ["recall", "positive class", "metric"],
+        "definition": "recall은 실제 양성 중 모델이 양성으로 찾아낸 비율을 나타내는 지표입니다.",
+        "purpose": "놓치면 안 되는 대상을 얼마나 잘 찾았는지 확인하기 위해 사용됩니다.",
+        "role": "실제 양성 데이터를 모델이 얼마나 많이 탐지했는지 평가합니다.",
+        "wrong_points": [
+            "recall은 양성으로 예측한 것 중 실제 양성인 비율만 의미합니다.",
+            "recall은 전체 예측 중 맞은 비율만 의미합니다.",
+            "recall은 모델 응답의 말투를 정하는 system prompt입니다.",
+            "recall은 RAG의 chunk 크기 설정입니다.",
+        ],
+        "compare": {
+            "target": "precision",
+            "point": "recall은 실제 양성을 찾는 비율이고, precision은 양성 예측의 정확성입니다.",
+        },
+        "term_role": "recall은 실제 양성을 얼마나 잘 찾아냈는지 평가하는 역할을 합니다.",
+    },
+    "neural_network": {
+        "aliases": ["neural network", "신경망", "인공신경망"],
+        "normalized_topic": "신경망 기본 개념",
+        "concepts": ["neural network", "layer", "weight"],
+        "definition": "신경망은 여러 노드와 층을 통해 입력 데이터를 변환하며 패턴을 학습하는 모델 구조입니다.",
+        "purpose": "복잡한 데이터 패턴을 학습해 분류나 예측을 수행하기 위해 사용됩니다.",
+        "role": "입력 특징을 여러 층에서 변환해 출력 결과를 만듭니다.",
+        "wrong_points": [
+            "신경망은 SQL 테이블을 조인하는 데이터베이스 명령입니다.",
+            "신경망은 검색 결과의 category만 제한하는 필터입니다.",
+            "신경망은 LLM 응답의 무작위성만 조절하는 값입니다.",
+            "신경망은 모델 배포 후 timeout 비율만 나타내는 지표입니다.",
+        ],
+        "compare": {
+            "target": "규칙 기반 모델",
+            "point": "신경망은 데이터에서 패턴을 학습하고, 규칙 기반 모델은 사람이 정한 조건에 따라 동작합니다.",
+        },
+        "term_role": "신경망은 입력 데이터를 여러 층에서 변환해 패턴을 학습하는 역할을 합니다.",
+    },
+    "cnn": {
+        "aliases": ["cnn", "CNN", "convolutional neural network", "합성곱 신경망"],
+        "normalized_topic": "CNN 기본 개념",
+        "concepts": ["CNN", "convolution", "image"],
+        "definition": "CNN은 이미지처럼 격자 구조를 가진 데이터에서 지역적 특징을 학습하는 신경망 구조입니다.",
+        "purpose": "이미지 분류, 객체 인식 같은 시각 데이터 처리에 자주 사용됩니다.",
+        "role": "합성곱 연산으로 이미지의 지역 특징을 추출합니다.",
+        "wrong_points": [
+            "CNN은 문서 검색 결과를 재정렬하는 RAG 전용 모듈입니다.",
+            "CNN은 LLM의 system prompt를 저장하는 방식입니다.",
+            "CNN은 데이터베이스에서 SQL 인덱스를 생성하는 명령입니다.",
+            "CNN은 모델 API의 latency를 측정하는 운영 지표입니다.",
+        ],
+        "compare": {
+            "target": "일반 완전연결 신경망",
+            "point": "CNN은 이미지의 지역 특징을 추출하는 데 강점이 있고, 완전연결 신경망은 모든 입력을 직접 연결해 처리합니다.",
+        },
+        "term_role": "CNN은 이미지의 지역적 특징을 추출하는 역할을 합니다.",
+    },
+    "epoch": {
+        "aliases": ["epoch", "에폭"],
+        "normalized_topic": "Epoch 기본 개념",
+        "concepts": ["epoch", "training loop", "dataset"],
+        "definition": "epoch는 전체 학습 데이터를 한 번 모두 학습에 사용한 단위를 의미합니다.",
+        "purpose": "모델이 학습 데이터를 몇 번 반복해서 학습했는지 나타내기 위해 사용됩니다.",
+        "role": "학습 반복 횟수를 표현하는 기준이 됩니다.",
+        "wrong_points": [
+            "epoch는 모델이 출력할 클래스의 개수를 의미합니다.",
+            "epoch는 검색 결과의 similarity 점수를 의미합니다.",
+            "epoch는 LLM 응답의 무작위성 설정입니다.",
+            "epoch는 API timeout 비율을 나타내는 운영 지표입니다.",
+        ],
+        "compare": {
+            "target": "batch size",
+            "point": "epoch는 전체 데이터 반복 단위이고, batch size는 한 번에 학습하는 샘플 수입니다.",
+        },
+        "term_role": "epoch는 전체 학습 데이터 반복 횟수를 나타내는 역할을 합니다.",
+    },
+    "loss_function": {
+        "aliases": ["loss function", "손실 함수", "loss"],
+        "normalized_topic": "손실 함수 기본 개념",
+        "concepts": ["loss function", "error", "training"],
+        "definition": "손실 함수는 모델 예측과 실제 정답의 차이를 수치로 나타내는 함수입니다.",
+        "purpose": "모델이 얼마나 틀렸는지 계산하고 학습 방향을 정하기 위해 사용됩니다.",
+        "role": "예측 오차를 계산해 모델 가중치 업데이트의 기준을 제공합니다.",
+        "wrong_points": [
+            "손실 함수는 문서를 category별로 필터링하는 검색 조건입니다.",
+            "손실 함수는 LLM이 외부 도구를 호출하는 프로토콜입니다.",
+            "손실 함수는 서버 응답 시간이 증가한 비율입니다.",
+            "손실 함수는 데이터베이스의 기본키를 설정하는 명령입니다.",
+        ],
+        "compare": {
+            "target": "평가 지표",
+            "point": "손실 함수는 학습 최적화에 사용되고, 평가 지표는 모델 성능을 해석하는 데 사용됩니다.",
+        },
+        "term_role": "손실 함수는 예측과 정답의 차이를 계산하는 역할을 합니다.",
+    },
+    "dropout": {
+        "aliases": ["dropout", "드롭아웃"],
+        "normalized_topic": "Dropout 기본 개념",
+        "concepts": ["dropout", "regularization", "overfitting"],
+        "definition": "dropout은 학습 중 일부 뉴런을 임의로 비활성화해 과적합을 줄이는 정규화 기법입니다.",
+        "purpose": "모델이 특정 뉴런에 과도하게 의존하는 것을 줄이기 위해 사용됩니다.",
+        "role": "과적합을 완화하고 일반화 성능을 높이는 데 도움을 줍니다.",
+        "wrong_points": [
+            "dropout은 테스트 데이터를 삭제하는 전처리 기법입니다.",
+            "dropout은 RAG 검색 결과를 재정렬하는 방식입니다.",
+            "dropout은 LLM의 최신 지식 여부를 보장하는 설정입니다.",
+            "dropout은 모델 API의 timeout 로그를 의미합니다.",
+        ],
+        "compare": {
+            "target": "data augmentation",
+            "point": "dropout은 모델 내부 의존도를 줄이고, data augmentation은 학습 데이터 다양성을 늘립니다.",
+        },
+        "term_role": "dropout은 학습 중 일부 뉴런을 비활성화해 과적합을 줄이는 역할을 합니다.",
+    },
+    "transfer_learning": {
+        "aliases": ["transfer learning", "전이학습", "fine-tuning"],
+        "normalized_topic": "전이학습 기본 개념",
+        "concepts": ["transfer learning", "pretrained model", "fine-tuning"],
+        "definition": "전이학습은 이미 학습된 모델의 지식을 새로운 작업에 활용하는 방법입니다.",
+        "purpose": "데이터가 적은 상황에서도 학습 효율과 성능을 높이기 위해 사용됩니다.",
+        "role": "사전학습 모델의 특징 표현을 새로운 문제에 재사용합니다.",
+        "wrong_points": [
+            "전이학습은 외부 문서를 검색해 LLM 답변에 붙이는 방식만 의미합니다.",
+            "전이학습은 데이터베이스에서 유사 문서를 찾는 검색 인덱스입니다.",
+            "전이학습은 모델 응답의 무작위성만 조절하는 설정입니다.",
+            "전이학습은 API 응답 시간을 측정하는 운영 지표입니다.",
+        ],
+        "compare": {
+            "target": "처음부터 학습",
+            "point": "전이학습은 사전학습 모델을 활용하고, 처음부터 학습은 모든 표현을 새 데이터로 새로 학습합니다.",
+        },
+        "term_role": "전이학습은 기존 모델의 학습된 표현을 새 작업에 활용하는 역할을 합니다.",
+    },
+    "model_serving": {
+        "aliases": ["model serving", "모델 서빙", "serving"],
+        "normalized_topic": "모델 서빙 기본 개념",
+        "concepts": ["model serving", "inference", "API"],
+        "definition": "모델 서빙은 학습된 모델을 API나 서비스 형태로 배포해 예측 요청을 처리하는 과정입니다.",
+        "purpose": "사용자나 시스템이 모델 예측 결과를 실제 서비스에서 사용할 수 있게 하기 위해 필요합니다.",
+        "role": "학습된 모델을 운영 환경에서 호출 가능한 형태로 제공합니다.",
+        "wrong_points": [
+            "모델 서빙은 모델 학습 데이터의 라벨을 수동으로 삭제하는 과정입니다.",
+            "모델 서빙은 LLM 프롬프트의 말투만 수정하는 작업입니다.",
+            "모델 서빙은 문서를 embedding으로 변환하는 수식입니다.",
+            "모델 서빙은 SQL 쿼리의 GROUP BY 조건입니다.",
+        ],
+        "compare": {
+            "target": "모델 학습",
+            "point": "모델 학습은 모델을 만드는 과정이고, 모델 서빙은 학습된 모델을 운영 환경에서 제공하는 과정입니다.",
+        },
+        "term_role": "모델 서빙은 학습된 모델을 서비스에서 사용할 수 있게 제공하는 역할을 합니다.",
+    },
+    "latency": {
+        "aliases": ["latency", "지연 시간", "응답 시간"],
+        "normalized_topic": "Latency 기본 개념",
+        "concepts": ["latency", "response time", "serving"],
+        "definition": "latency는 요청을 보낸 뒤 응답을 받기까지 걸리는 시간을 의미합니다.",
+        "purpose": "서비스 응답 속도와 사용자 경험을 평가하기 위해 사용됩니다.",
+        "role": "모델 API나 서비스의 응답 지연 정도를 나타냅니다.",
+        "wrong_points": [
+            "latency는 모델의 정답률과 완전히 같은 의미입니다.",
+            "latency는 실제 양성 중 찾아낸 비율을 의미합니다.",
+            "latency는 문서를 벡터로 변환하는 과정입니다.",
+            "latency는 LLM이 외부 지식을 항상 최신으로 아는 기능입니다.",
+        ],
+        "compare": {
+            "target": "accuracy",
+            "point": "latency는 응답 시간 지표이고, accuracy는 예측이 맞은 비율을 나타내는 성능 지표입니다.",
+        },
+        "term_role": "latency는 서비스 응답 지연 시간을 나타내는 역할을 합니다.",
+    },
+    "drift": {
+        "aliases": ["drift", "data drift", "데이터 드리프트"],
+        "normalized_topic": "Data Drift 기본 개념",
+        "concepts": ["data drift", "monitoring", "distribution"],
+        "definition": "data drift는 학습 시점의 데이터 분포와 운영 시점의 데이터 분포가 달라지는 현상입니다.",
+        "purpose": "운영 중 모델 성능 저하 원인을 모니터링하기 위해 사용됩니다.",
+        "role": "운영 데이터가 학습 데이터와 달라졌는지 확인하는 기준이 됩니다.",
+        "wrong_points": [
+            "data drift는 서버를 재부팅하면 항상 해결되는 네트워크 오류입니다.",
+            "data drift는 LLM 응답의 문장 길이를 제한하는 설정입니다.",
+            "data drift는 문서를 chunk로 나누는 전처리 방법입니다.",
+            "data drift는 SQL 테이블의 기본키를 의미합니다.",
+        ],
+        "compare": {
+            "target": "latency",
+            "point": "data drift는 데이터 분포 변화이고, latency는 응답 지연 시간입니다.",
+        },
+        "term_role": "data drift는 운영 데이터 분포 변화를 감지하는 역할을 합니다.",
+    },
+    "monitoring": {
+        "aliases": ["monitoring", "모니터링", "모델 모니터링"],
+        "normalized_topic": "모델 모니터링 기본 개념",
+        "concepts": ["monitoring", "metric", "operation"],
+        "definition": "모델 모니터링은 배포된 모델의 성능, 오류율, 지연 시간, 데이터 변화를 지속적으로 확인하는 과정입니다.",
+        "purpose": "운영 중 품질 저하나 장애를 빠르게 발견하기 위해 사용됩니다.",
+        "role": "모델 운영 상태와 품질 변화를 추적합니다.",
+        "wrong_points": [
+            "모델 모니터링은 모델을 한 번 학습한 뒤 절대 확인하지 않는 절차입니다.",
+            "모델 모니터링은 프롬프트 문장만 예쁘게 바꾸는 작업입니다.",
+            "모델 모니터링은 문서 유사도를 계산하는 embedding 자체입니다.",
+            "모델 모니터링은 학습 데이터를 무조건 삭제하는 보안 기능입니다.",
+        ],
+        "compare": {
+            "target": "모델 학습",
+            "point": "모델 학습은 모델을 만드는 과정이고, 모니터링은 배포 후 상태를 지속적으로 확인하는 과정입니다.",
+        },
+        "term_role": "모델 모니터링은 배포된 모델의 품질과 운영 상태를 추적하는 역할을 합니다.",
+    },
+}
+
+AI_BEGINNER_TOPIC_KEYS = list(AI_BEGINNER_TOPIC_PRESETS.keys())
+
+AI_BEGINNER_COMPARE_PRESETS: Dict[str, Dict[str, Any]] = {
+    "gpt_vs_bert": {
+        "aliases": [
+            "gpt와 bert",
+            "gpt랑 bert",
+            "gpt bert",
+            "gpt와 bert 차이",
+            "gpt랑bert차이",
+            "gpt bert 차이",
+            "gpt와 bert의 차이",
+            "bert와 gpt",
+            "bert gpt",
+        ],
+        "normalized_topic": "GPT와 BERT 기본 차이",
+        "concepts": [
+            "GPT",
+            "BERT",
+            "text generation",
+            "bidirectional context",
+            "language model",
+        ],
+        "concept_a": "GPT",
+        "concept_b": "BERT",
+        "correct_points": [
+            "GPT는 주로 문맥을 이어 텍스트를 생성하는 데 강점이 있습니다.",
+            "BERT는 문장의 앞뒤 문맥을 함께 반영해 텍스트 의미를 이해하는 데 강점이 있습니다.",
+            "GPT는 생성형 작업에 자주 사용되고, BERT는 분류나 의미 이해 작업에 자주 사용됩니다.",
+        ],
+        "wrong_points": [
+            "GPT와 BERT는 완전히 동일한 구조와 목적을 가진 모델입니다.",
+            "GPT는 텍스트 생성과 관련이 없고 저장된 문서만 검색합니다.",
+            "BERT는 앞뒤 문맥을 함께 반영하지 않고 다음 토큰 생성만 수행합니다.",
+            "BERT는 텍스트 이해나 분류 작업에 사용할 수 없습니다.",
+            "GPT와 BERT는 모두 외부 문서를 검색해야만 동작하는 RAG 방식입니다.",
+        ],
+    },
+    "mcp_vs_a2a": {
+        "aliases": [
+            "mcp와 a2a",
+            "mcp랑 a2a",
+            "mcp a2a",
+            "mcp와 a2a protocol",
+            "mcp랑 a2a protocol",
+            "mcp와 a2a protocol의 차이",
+            "mcp a2a protocol 차이",
+            "a2a와 mcp",
+            "a2a mcp",
+        ],
+        "normalized_topic": "MCP와 A2A Protocol 기본 차이",
+        "concepts": [
+            "MCP",
+            "A2A Protocol",
+            "tool connection",
+            "agent communication",
+            "agent interoperability",
+        ],
+        "concept_a": "MCP",
+        "concept_b": "A2A Protocol",
+        "correct_points": [
+            "MCP는 AI 애플리케이션이 외부 도구와 데이터 소스에 연결되는 방식에 초점이 있습니다.",
+            "A2A Protocol은 서로 다른 AI agent가 작업과 정보를 주고받는 방식에 초점이 있습니다.",
+            "MCP는 도구·데이터 연결을, A2A Protocol은 agent 간 상호작용을 다루는 개념입니다.",
+        ],
+        "wrong_points": [
+            "MCP와 A2A Protocol은 완전히 같은 개념입니다.",
+            "MCP는 agent 간 작업 위임만을 위한 프로토콜이고 외부 도구 연결과는 관련이 없습니다.",
+            "A2A Protocol은 모델과 데이터베이스 연결만을 위한 프로토콜입니다.",
+            "MCP와 A2A Protocol은 모두 딥러닝 학습률을 조정하는 기법입니다.",
+            "A2A Protocol은 agent 간 통신과 관련이 없습니다.",
+        ],
+    },
+    "rag_vs_fine_tuning": {
+        "aliases": [
+            "rag와 fine-tuning",
+            "rag와 fine tuning",
+            "rag랑 fine-tuning",
+            "rag fine-tuning",
+            "rag와 파인튜닝",
+            "rag 파인튜닝",
+            "rag 파인튜닝 차이",
+            "rag와 fine-tuning 차이",
+            "rag와 fine tuning 차이",
+            "fine-tuning과 rag",
+            "파인튜닝과 rag",
+        ],
+        "normalized_topic": "RAG와 Fine-tuning 기본 차이",
+        "concepts": [
+            "RAG",
+            "fine-tuning",
+            "retrieval",
+            "model training",
+            "external knowledge",
+        ],
+        "concept_a": "RAG",
+        "concept_b": "Fine-tuning",
+        "correct_points": [
+            "RAG는 외부 문서를 검색해 답변 생성에 활용하는 방식입니다.",
+            "Fine-tuning은 기존 모델을 특정 데이터나 작업에 맞게 추가 학습하는 방식입니다.",
+            "RAG는 검색 근거 활용에 가깝고, fine-tuning은 모델 동작 자체를 조정하는 방식에 가깝습니다.",
+        ],
+        "wrong_points": [
+            "RAG와 fine-tuning은 모두 모델 파라미터를 매번 직접 수정하는 같은 방식입니다.",
+            "RAG는 외부 문서 검색과 관련이 없고 모델 추가 학습만 의미합니다.",
+            "Fine-tuning은 모델을 학습하지 않고 검색 결과만 붙이는 방식입니다.",
+            "RAG와 fine-tuning은 모두 SQL 인덱스를 생성하는 데이터베이스 기법입니다.",
+            "Fine-tuning은 LLM 응답의 temperature만 조절하는 설정입니다.",
+        ],
+    },
+    "embedding_vs_vector_db": {
+        "aliases": [
+            "embedding과 vector db",
+            "embedding vector db",
+            "임베딩과 벡터 db",
+            "임베딩 벡터 db",
+            "embedding과 vector database",
+            "임베딩과 벡터 데이터베이스",
+            "embedding과 vector db 차이",
+            "임베딩과 벡터 db 차이",
+        ],
+        "normalized_topic": "Embedding과 Vector DB 기본 차이",
+        "concepts": [
+            "embedding",
+            "Vector DB",
+            "vector representation",
+            "similarity search",
+        ],
+        "concept_a": "Embedding",
+        "concept_b": "Vector DB",
+        "correct_points": [
+            "Embedding은 텍스트나 데이터를 의미를 담은 숫자 벡터로 표현하는 방식입니다.",
+            "Vector DB는 embedding 벡터를 저장하고 유사도 검색을 수행하는 저장소입니다.",
+            "Embedding은 표현 방식에 가깝고, Vector DB는 그 표현을 저장하고 검색하는 시스템에 가깝습니다.",
+        ],
+        "wrong_points": [
+            "Embedding과 Vector DB는 완전히 같은 개념입니다.",
+            "Embedding은 벡터를 저장하고 검색하는 데이터베이스 자체를 의미합니다.",
+            "Vector DB는 텍스트를 벡터로 변환하는 모델 자체만 의미합니다.",
+            "Embedding과 Vector DB는 모두 모델의 dropout 비율을 조정하는 기법입니다.",
+            "Vector DB는 자연어 답변을 직접 생성하는 언어 모델입니다.",
+        ],
+    },
+    "metadata_filter_vs_reranker": {
+        "aliases": [
+            "metadata filter와 reranker",
+            "metadata filter reranker",
+            "메타데이터 필터와 리랭커",
+            "메타데이터 필터 리랭커",
+            "metadata와 reranker 차이",
+            "메타데이터 필터와 reranker 차이",
+        ],
+        "normalized_topic": "Metadata Filter와 Reranker 기본 차이",
+        "concepts": [
+            "metadata filter",
+            "reranker",
+            "retrieval",
+            "ranking",
+        ],
+        "concept_a": "Metadata Filter",
+        "concept_b": "Reranker",
+        "correct_points": [
+            "Metadata filter는 문서 속성 조건으로 검색 범위를 제한하는 방식입니다.",
+            "Reranker는 1차 검색된 후보의 관련도를 다시 평가해 순서를 조정하는 방식입니다.",
+            "Metadata filter는 검색 전 범위 제한에 가깝고, reranker는 검색 후 순위 조정에 가깝습니다.",
+        ],
+        "wrong_points": [
+            "Metadata filter와 reranker는 완전히 같은 기능입니다.",
+            "Metadata filter는 검색 후보의 순서만 다시 평가하는 기능입니다.",
+            "Reranker는 문서 category 조건으로 검색 범위를 제한하는 기능입니다.",
+            "Metadata filter와 reranker는 모두 LLM의 temperature를 조절하는 설정입니다.",
+            "Reranker는 문서를 embedding으로 변환하는 모델 자체를 의미합니다.",
+        ],
+    },
+    "vector_search_vs_keyword_search": {
+        "aliases": [
+            "vector search와 keyword search",
+            "vector search keyword search",
+            "벡터 검색과 키워드 검색",
+            "벡터 검색 키워드 검색",
+            "vector와 keyword 검색 차이",
+            "벡터 검색과 keyword search 차이",
+        ],
+        "normalized_topic": "Vector Search와 Keyword Search 기본 차이",
+        "concepts": [
+            "vector search",
+            "keyword search",
+            "semantic similarity",
+            "exact match",
+        ],
+        "concept_a": "Vector Search",
+        "concept_b": "Keyword Search",
+        "correct_points": [
+            "Vector search는 embedding 기반 의미 유사도를 활용해 관련 문서를 찾습니다.",
+            "Keyword search는 사용자가 입력한 단어와 문서의 단어 일치를 활용해 검색합니다.",
+            "Vector search는 의미가 비슷한 표현에 강하고, keyword search는 정확한 용어 일치에 강합니다.",
+        ],
+        "wrong_points": [
+            "Vector search와 keyword search는 완전히 같은 검색 방식입니다.",
+            "Vector search는 단어가 정확히 일치하는 문서만 찾는 방식입니다.",
+            "Keyword search는 embedding 의미 유사도만 사용하고 단어 일치는 보지 않습니다.",
+            "Vector search와 keyword search는 모두 모델 가중치를 추가 학습하는 방식입니다.",
+            "Keyword search는 LLM 응답의 무작위성을 조절하는 설정입니다.",
+        ],
+    },
+    "pretrained_vs_fine_tuning": {
+        "aliases": [
+            "pretrained와 fine-tuning",
+            "pretrained fine-tuning",
+            "pretrained와 fine tuning",
+            "pretrained와 파인튜닝",
+            "pretrain과 fine-tuning",
+            "pretrain fine-tuning",
+            "pretrain과 파인튜닝",
+            "사전학습과 파인튜닝",
+            "사전 학습과 파인튜닝",
+            "사전학습 모델과 fine-tuning",
+            "pretrained와 fine-tuning 차이",
+        ],
+        "normalized_topic": "Pretrained Model과 Fine-tuning 기본 차이",
+        "concepts": [
+            "Pretrained Model",
+            "Fine-tuning",
+            "transfer learning",
+        ],
+        "concept_a": "Pretrained Model",
+        "concept_b": "Fine-tuning",
+        "correct_points": [
+            "Pretrained model은 미리 학습된 모델이고, fine-tuning은 그 모델을 특정 작업에 맞게 추가 학습하는 과정입니다.",
+            "Pretrained model은 시작점에 가깝고, fine-tuning은 작업에 맞게 조정하는 학습 과정에 가깝습니다.",
+            "두 개념은 전이학습 흐름에서 함께 쓰일 수 있지만 같은 의미는 아닙니다.",
+        ],
+        "wrong_points": [
+            "Pretrained model과 fine-tuning은 완전히 같은 개념입니다.",
+            "Pretrained model은 추가 학습 과정이고, fine-tuning은 미리 학습된 모델 자체입니다.",
+            "Pretrained model과 fine-tuning은 모두 외부 문서를 검색하는 RAG 방식입니다.",
+            "Fine-tuning은 모델을 학습하지 않고 temperature만 조절하는 설정입니다.",
+            "Pretrained model은 SQL 인덱스를 생성하는 데이터베이스 기능입니다.",
+        ],
+    },
+    "langchain_vs_langgraph": {
+        "aliases": [
+            "langchain과 langgraph",
+            "langchain langgraph",
+            "langchain과 langgraph 차이",
+            "langchain랑 langgraph",
+            "랭체인과 랭그래프",
+            "랭체인 랭그래프 차이",
+        ],
+        "normalized_topic": "LangChain과 LangGraph 기본 차이",
+        "concepts": [
+            "LangChain",
+            "LangGraph",
+            "LLM application",
+            "workflow",
+            "state graph",
+        ],
+        "concept_a": "LangChain",
+        "concept_b": "LangGraph",
+        "correct_points": [
+            "LangChain은 LLM 애플리케이션 구성 요소 연결에 넓게 사용되고, LangGraph는 상태 기반 그래프 workflow 구성에 강점이 있습니다.",
+            "LangGraph는 node, edge, state를 활용한 실행 흐름에 초점이 있고, LangChain은 prompt, model, tool, retriever 연결에 넓게 사용됩니다.",
+            "두 도구는 함께 사용할 수 있지만 역할과 초점이 완전히 같지는 않습니다.",
+        ],
+        "wrong_points": [
+            "LangChain과 LangGraph는 완전히 같은 개념입니다.",
+            "LangChain은 CNN 이미지 분류 모델이고, LangGraph는 SQL 인덱스 생성 명령입니다.",
+            "LangGraph는 단일 프롬프트 문자열만 저장하고 workflow와는 관련이 없습니다.",
+            "LangChain과 LangGraph는 모두 LLM의 temperature만 조절하는 설정입니다.",
+            "LangChain은 agent workflow와 관련이 없고 LangGraph만 자연어 생성을 수행합니다.",
+        ],
+    },
+    "precision_vs_recall": {
+        "aliases": [
+            "precision과 recall",
+            "precision recall",
+            "정밀도와 재현율",
+            "정밀도 재현율",
+            "precision과 recall 차이",
+            "정밀도와 재현율 차이",
+        ],
+        "normalized_topic": "Precision과 Recall 기본 차이",
+        "concepts": [
+            "precision",
+            "recall",
+            "positive prediction",
+            "actual positive",
+        ],
+        "concept_a": "Precision",
+        "concept_b": "Recall",
+        "correct_points": [
+            "Precision은 양성으로 예측한 것 중 실제 양성인 비율입니다.",
+            "Recall은 실제 양성 중 모델이 양성으로 찾아낸 비율입니다.",
+            "Precision은 양성 예측의 정확성에 가깝고, recall은 실제 양성을 놓치지 않는 정도에 가깝습니다.",
+        ],
+        "wrong_points": [
+            "Precision과 recall은 완전히 같은 평가 지표입니다.",
+            "Precision은 실제 양성 중 찾아낸 비율만 의미합니다.",
+            "Recall은 양성으로 예측한 것 중 실제 양성인 비율만 의미합니다.",
+            "Precision과 recall은 모두 LLM 응답의 무작위성을 조절하는 설정입니다.",
+            "Recall은 검색된 문서 chunk 개수를 의미합니다.",
+        ],
+    },
+    "accuracy_vs_f1_score": {
+        "aliases": [
+            "accuracy와 f1",
+            "accuracy f1",
+            "accuracy와 f1-score",
+            "정확도와 f1",
+            "정확도 f1 score",
+            "accuracy와 f1 차이",
+            "정확도와 f1 차이",
+        ],
+        "normalized_topic": "Accuracy와 F1-score 기본 차이",
+        "concepts": [
+            "accuracy",
+            "F1-score",
+            "precision",
+            "recall",
+            "classification metric",
+        ],
+        "concept_a": "Accuracy",
+        "concept_b": "F1-score",
+        "correct_points": [
+            "Accuracy는 전체 예측 중 맞게 예측한 비율입니다.",
+            "F1-score는 precision과 recall을 함께 고려한 조화 평균 지표입니다.",
+            "Accuracy는 전체 정답 비율에 가깝고, F1-score는 precision과 recall의 균형에 가깝습니다.",
+        ],
+        "wrong_points": [
+            "Accuracy와 F1-score는 완전히 같은 지표입니다.",
+            "Accuracy는 precision과 recall의 조화 평균만 의미합니다.",
+            "F1-score는 전체 예측 중 맞은 비율만 의미합니다.",
+            "Accuracy와 F1-score는 모두 모델 API 응답 시간을 의미합니다.",
+            "F1-score는 LLM의 context 길이를 조절하는 설정입니다.",
+        ],
+    },
+    "classification_vs_regression": {
+        "aliases": [
+            "classification과 regression",
+            "classification regression",
+            "분류와 회귀",
+            "분류 회귀",
+            "분류와 회귀 차이",
+            "classification과 regression 차이",
+        ],
+        "normalized_topic": "Classification과 Regression 기본 차이",
+        "concepts": [
+            "classification",
+            "regression",
+            "class prediction",
+            "continuous value prediction",
+        ],
+        "concept_a": "Classification",
+        "concept_b": "Regression",
+        "correct_points": [
+            "Classification은 입력 데이터를 정해진 범주 중 하나로 예측하는 작업입니다.",
+            "Regression은 연속적인 숫자 값을 예측하는 작업입니다.",
+            "Classification은 클래스 예측에 가깝고, regression은 수치 예측에 가깝습니다.",
+        ],
+        "wrong_points": [
+            "Classification과 regression은 완전히 같은 예측 작업입니다.",
+            "Classification은 연속적인 숫자 값만 예측하는 작업입니다.",
+            "Regression은 미리 정해진 클래스 중 하나만 예측하는 작업입니다.",
+            "Classification과 regression은 모두 RAG 검색 결과 재정렬 기법입니다.",
+            "Regression은 LLM의 system prompt를 저장하는 방식입니다.",
+        ],
+    },
+    "supervised_vs_unsupervised": {
+        "aliases": [
+            "supervised와 unsupervised",
+            "supervised unsupervised",
+            "지도학습과 비지도학습",
+            "지도 학습과 비지도 학습",
+            "지도학습 비지도학습 차이",
+            "supervised learning과 unsupervised learning 차이",
+        ],
+        "normalized_topic": "지도학습과 비지도학습 기본 차이",
+        "concepts": [
+            "supervised learning",
+            "unsupervised learning",
+            "label",
+            "pattern discovery",
+        ],
+        "concept_a": "지도학습",
+        "concept_b": "비지도학습",
+        "correct_points": [
+            "지도학습은 정답 라벨이 있는 데이터를 사용해 모델을 학습합니다.",
+            "비지도학습은 정답 라벨 없이 데이터의 구조나 패턴을 찾습니다.",
+            "지도학습은 라벨 기반 예측에, 비지도학습은 패턴 탐색에 가깝습니다.",
+        ],
+        "wrong_points": [
+            "지도학습과 비지도학습은 모두 정답 라벨이 반드시 필요합니다.",
+            "지도학습은 라벨 없이 데이터 구조만 찾는 방식입니다.",
+            "비지도학습은 정답 라벨이 있는 데이터로만 학습합니다.",
+            "지도학습과 비지도학습은 모두 LLM 응답 형식을 정하는 프롬프트입니다.",
+            "비지도학습은 검색 결과의 category만 제한하는 기능입니다.",
+        ],
+    },
+    "overfitting_vs_underfitting": {
+        "aliases": [
+            "overfitting과 underfitting",
+            "overfitting underfitting",
+            "과적합과 과소적합",
+            "과적합 과소적합",
+            "과적합과 과소적합 차이",
+        ],
+        "normalized_topic": "과적합과 과소적합 기본 차이",
+        "concepts": [
+            "overfitting",
+            "underfitting",
+            "generalization",
+            "model complexity",
+        ],
+        "concept_a": "과적합",
+        "concept_b": "과소적합",
+        "correct_points": [
+            "과적합은 학습 데이터에 지나치게 맞춰져 새로운 데이터 성능이 낮아지는 상태입니다.",
+            "과소적합은 데이터의 기본 패턴을 충분히 학습하지 못한 상태입니다.",
+            "과적합은 학습 데이터에 과하게 맞춘 문제이고, 과소적합은 학습 자체가 부족한 문제에 가깝습니다.",
+        ],
+        "wrong_points": [
+            "과적합과 과소적합은 완전히 같은 상태입니다.",
+            "과적합은 데이터의 패턴을 거의 학습하지 못한 상태만 의미합니다.",
+            "과소적합은 학습 데이터만 지나치게 외운 상태만 의미합니다.",
+            "과적합과 과소적합은 모두 API latency를 나타내는 운영 지표입니다.",
+            "과소적합은 검색 결과를 재정렬하는 RAG 기능입니다.",
+        ],
+    },
+    "train_loss_vs_validation_loss": {
+        "aliases": [
+            "train loss와 validation loss",
+            "train loss validation loss",
+            "학습 손실과 검증 손실",
+            "train loss와 validation loss 차이",
+            "training loss와 validation loss",
+        ],
+        "normalized_topic": "Train Loss와 Validation Loss 기본 차이",
+        "concepts": [
+            "train loss",
+            "validation loss",
+            "training data",
+            "validation data",
+        ],
+        "concept_a": "Train Loss",
+        "concept_b": "Validation Loss",
+        "correct_points": [
+            "Train loss는 학습 데이터 기준으로 계산한 손실입니다.",
+            "Validation loss는 검증 데이터 기준으로 계산한 손실입니다.",
+            "Train loss와 validation loss를 함께 보면 모델의 일반화 상태를 점검할 수 있습니다.",
+        ],
+        "wrong_points": [
+            "Train loss와 validation loss는 항상 완전히 같은 값이어야 합니다.",
+            "Train loss는 검증 데이터 기준 손실만 의미합니다.",
+            "Validation loss는 학습 데이터 기준 손실만 의미합니다.",
+            "Train loss와 validation loss는 모두 LLM의 temperature 설정입니다.",
+            "Validation loss는 벡터 DB의 검색 결과 개수를 의미합니다.",
+        ],
+    },
+    "dropout_vs_regularization": {
+        "aliases": [
+            "dropout과 regularization",
+            "dropout regularization",
+            "드롭아웃과 정규화",
+            "dropout과 regularization 차이",
+            "드롭아웃 정규화 차이",
+        ],
+        "normalized_topic": "Dropout과 Regularization 기본 차이",
+        "concepts": [
+            "dropout",
+            "regularization",
+            "overfitting",
+            "generalization",
+        ],
+        "concept_a": "Dropout",
+        "concept_b": "Regularization",
+        "correct_points": [
+            "Dropout은 학습 중 일부 뉴런을 비활성화해 과적합을 줄이는 방법입니다.",
+            "Regularization은 모델이 지나치게 복잡해지는 것을 줄여 일반화를 돕는 방법입니다.",
+            "Dropout은 정규화 방법 중 하나로 볼 수 있으며, 둘 다 과적합 완화와 관련이 있습니다.",
+        ],
+        "wrong_points": [
+            "Dropout과 regularization은 모두 테스트 데이터를 삭제하는 전처리입니다.",
+            "Dropout은 validation loss를 저장하는 데이터베이스입니다.",
+            "Regularization은 RAG 검색 결과의 category를 제한하는 기능입니다.",
+            "Dropout과 regularization은 모두 LLM의 최신 지식 여부를 보장합니다.",
+            "Regularization은 agent 간 통신 프로토콜을 의미합니다.",
+        ],
+    },
+}
+
 RAG_INTERMEDIATE_VARIANTS: Dict[str, List[Dict[str, Any]]] = {
     "ai_scenario_best_action": [
         {
@@ -1649,6 +3022,272 @@ def normalize_ai_topic(topic: str) -> str:
 
     return "llm"
 
+def normalize_ai_beginner_compare(topic: str) -> str | None:
+    text = topic.strip().lower().replace(" ", "")
+
+    for key, preset in AI_BEGINNER_COMPARE_PRESETS.items():
+        for alias in preset.get("aliases", []):
+            normalized_alias = alias.lower().replace(" ", "")
+            if normalized_alias in text:
+                return key
+
+    return None
+
+def _build_ai_beginner_compare_evidence(
+    *,
+    topic: str,
+) -> tuple[str, list[str], list[str], list[str], str | None, dict | None, str | None]:
+    compare_key = normalize_ai_beginner_compare(topic)
+
+    if not compare_key:
+        raise ValueError(f"초급 비교 문제에 맞는 비교 preset을 찾을 수 없습니다: {topic}")
+
+    preset = AI_BEGINNER_COMPARE_PRESETS[compare_key]
+
+    concept_a = preset.get("concept_a", "개념 A")
+    concept_b = preset.get("concept_b", "개념 B")
+
+    correct_points = [
+        *preset["correct_points"],
+        f"{concept_a}와 {concept_b}는 목적과 사용 방식이 서로 다릅니다.",
+    ]
+
+    wrong_points = [
+        *preset["wrong_points"],
+        f"{concept_a}와 {concept_b}는 목적과 사용 방식이 완전히 같습니다.",
+        f"{concept_a}와 {concept_b}의 역할을 서로 반대로 설명합니다.",
+    ]
+
+    return (
+        preset["normalized_topic"],
+        preset["concepts"],
+        correct_points,
+        wrong_points,
+        None,
+        None,
+        None,
+    )
+
+def normalize_ai_beginner_topic(topic: str) -> str:
+    text = topic.strip().lower()
+
+    for key, preset in AI_BEGINNER_TOPIC_PRESETS.items():
+        aliases = preset.get("aliases", [])
+        for alias in aliases:
+            if alias.lower() in text:
+                return key
+
+    if any(keyword in text for keyword in ["gpt", "생성형"]):
+        return "gpt"
+
+    if any(keyword in text for keyword in ["bert", "양방향"]):
+        return "bert"
+
+    if any(keyword in text for keyword in ["mcp", "model context protocol", "모델 컨텍스트"]):
+        return "mcp"
+
+    if any(keyword in text for keyword in ["a2a", "agent to agent", "agent2agent"]):
+        return "a2a_protocol"
+
+    if any(keyword in text for keyword in ["rag", "검색 증강", "retrieval"]):
+        return "rag"
+
+    if any(keyword in text for keyword in ["embedding", "임베딩"]):
+        return "embedding"
+
+    if any(keyword in text for keyword in ["vector db", "벡터 db", "벡터 데이터베이스"]):
+        return "vector_db"
+
+    if any(keyword in text for keyword in ["chunk", "청크"]):
+        return "chunk"
+
+    if any(keyword in text for keyword in ["metadata", "메타데이터"]):
+        return "metadata_filter"
+
+    if any(keyword in text for keyword in ["reranker", "리랭커", "재정렬"]):
+        return "reranker"
+
+    if any(keyword in text for keyword in ["fine-tuning", "파인튜닝", "fine tuning"]):
+        return "fine_tuning"
+
+    if any(keyword in text for keyword in ["agent", "에이전트"]):
+        return "agent"
+
+    if any(keyword in text for keyword in ["tool calling", "function calling", "도구 호출", "함수 호출"]):
+        return "tool_calling"
+
+    if any(keyword in text for keyword in ["precision", "정밀도"]):
+        return "precision"
+
+    if any(keyword in text for keyword in ["recall", "재현율"]):
+        return "recall"
+
+    if any(keyword in text for keyword in ["accuracy", "정확도"]):
+        return "accuracy"
+
+    if any(keyword in text for keyword in ["overfitting", "과적합"]):
+        return "overfitting"
+
+    if any(keyword in text for keyword in ["data leakage", "데이터 누수", "target leakage"]):
+        return "data_leakage"
+
+    if any(keyword in text for keyword in ["train/test", "train test", "학습 테스트"]):
+        return "train_test_split"
+
+    if any(keyword in text for keyword in ["cnn", "합성곱"]):
+        return "cnn"
+
+    if any(keyword in text for keyword in ["epoch", "에폭"]):
+        return "epoch"
+
+    if any(keyword in text for keyword in ["loss", "손실 함수"]):
+        return "loss_function"
+
+    if any(keyword in text for keyword in ["dropout", "드롭아웃"]):
+        return "dropout"
+
+    if any(keyword in text for keyword in ["transfer learning", "전이학습"]):
+        return "transfer_learning"
+
+    if any(keyword in text for keyword in ["serving", "서빙"]):
+        return "model_serving"
+
+    if any(keyword in text for keyword in ["latency", "지연 시간", "응답 시간"]):
+        return "latency"
+
+    if any(keyword in text for keyword in ["drift", "드리프트"]):
+        return "drift"
+
+    if any(keyword in text for keyword in ["monitoring", "모니터링"]):
+        return "monitoring"
+
+    return "__unknown__"
+
+def is_broad_ai_beginner_topic(topic: str) -> bool:
+    text = topic.strip().lower().replace(" ", "")
+
+    broad_keywords = [
+        "ai관련",
+        "ai문제",
+        "ai면접",
+        "ai기초",
+        "ai기본",
+        "ai기본문제",
+        "인공지능문제",
+        "인공지능기초",
+        "인공지능기본문제",
+        "면접기초",
+    ]
+
+    return any(keyword in text for keyword in broad_keywords)
+    
+def select_beginner_topic_for_index(
+    *,
+    topic: str,
+    index: int,
+) -> str:
+    text = topic.strip().lower().replace(" ", "")
+
+    broad_keywords = [
+        "ai관련",
+        "ai문제",
+        "ai면접",
+        "ai기초",
+        "ai기본",
+        "ai기본문제",
+        "인공지능문제",
+        "인공지능기초",
+        "인공지능기본",
+        "인공지능기본문제",
+        "면접기초",
+    ]
+
+    if any(keyword in text for keyword in broad_keywords):
+        topic_index = (index - 1) % len(AI_BEGINNER_TOPIC_KEYS)
+        return AI_BEGINNER_TOPIC_KEYS[topic_index]
+
+    return topic
+
+def _build_ai_beginner_evidence(
+    *,
+    topic_key: str,
+    question_format: str,
+) -> tuple[list[str], list[str], list[str], str | None, dict | None, str | None, str]:
+    preset = AI_BEGINNER_TOPIC_PRESETS[topic_key]
+
+    definition = preset["definition"]
+    purpose = preset["purpose"]
+    role = preset["role"]
+    wrong_points = preset["wrong_points"]
+    concepts = preset["concepts"]
+    normalized_topic = preset["normalized_topic"]
+
+    scenario = None
+    log_or_metric = None
+    body_context = None
+
+    if question_format == "ai_basic_concept_find_correct":
+        correct_points = [
+            definition,
+            role,
+        ]
+        incorrect_points = wrong_points
+
+    elif question_format == "ai_basic_concept_find_incorrect":
+        # renderer의 find_incorrect_mapping 구조상
+        # correct_points는 '부적절한 정답 선택지'의 근거가 된다.
+        correct_points = wrong_points
+        incorrect_points = [
+            definition,
+            purpose,
+            role,
+        ]
+
+    elif question_format == "ai_purpose_find_correct":
+        correct_points = [
+            purpose,
+            role,
+        ]
+        incorrect_points = wrong_points
+
+    elif question_format == "ai_concept_compare_basic":
+        compare = preset.get("compare") or {}
+        target = compare.get("target", "관련 개념")
+        point = compare.get("point", definition)
+
+        correct_points = [
+            point,
+        ]
+        incorrect_points = [
+            f"{normalized_topic}과 {target}은 목적과 사용 방식이 완전히 같습니다.",
+            f"{target}은 {normalized_topic}과 동일한 역할만 수행합니다.",
+            *wrong_points[:2],
+        ]
+
+    elif question_format == "ai_term_role_match":
+        term_role = preset.get("term_role", role)
+
+        correct_points = [
+            term_role,
+        ]
+        incorrect_points = wrong_points
+
+    else:
+        correct_points = [
+            definition,
+            purpose,
+        ]
+        incorrect_points = wrong_points
+
+    return (
+        correct_points,
+        incorrect_points,
+        concepts,
+        scenario,
+        log_or_metric,
+        body_context,
+        normalized_topic,
+    )
 
 def build_evidence_pack(
     *,
@@ -1656,6 +3295,72 @@ def build_evidence_pack(
     difficulty: str,
     plan: QuestionFormatPlan,
 ) -> EvidencePack:
+    if difficulty == "초급":
+        if plan.question_format == "ai_concept_compare_basic":
+            compare_key = normalize_ai_beginner_compare(topic)
+
+            if compare_key:
+                (
+                    normalized_topic,
+                    concepts,
+                    correct_points,
+                    wrong_points,
+                    scenario,
+                    log_or_metric,
+                    body_context,
+                ) = _build_ai_beginner_compare_evidence(topic=topic)
+            else:
+                topic_key = normalize_ai_beginner_topic(topic)
+
+                if topic_key == "__unknown__":
+                    raise ValueError(f"지원하지 않는 AI 초급 topic입니다: {topic}")
+
+                (
+                    correct_points,
+                    wrong_points,
+                    concepts,
+                    scenario,
+                    log_or_metric,
+                    body_context,
+                    normalized_topic,
+                ) = _build_ai_beginner_evidence(
+                    topic_key=topic_key,
+                    question_format=plan.question_format,
+                )
+        else:
+            topic_key = normalize_ai_beginner_topic(topic)
+
+            if topic_key == "__unknown__":
+                raise ValueError(f"지원하지 않는 AI 초급 topic입니다: {topic}")
+
+            (
+                correct_points,
+                wrong_points,
+                concepts,
+                scenario,
+                log_or_metric,
+                body_context,
+                normalized_topic,
+            ) = _build_ai_beginner_evidence(
+                topic_key=topic_key,
+                question_format=plan.question_format,
+            )
+
+        return EvidencePack(
+            topic=topic,
+            normalized_topic=normalized_topic,
+            difficulty=difficulty,
+            question_format=plan.question_format,
+            answer_style=plan.answer_style,
+            focus=plan.focus,
+            concepts=concepts,
+            correct_points=correct_points,
+            wrong_points=wrong_points,
+            scenario=scenario,
+            log_or_metric=log_or_metric,
+            body_context=body_context,
+        )
+
     topic_key = normalize_ai_topic(topic)
     preset = AI_TOPIC_PRESETS[topic_key]
 
