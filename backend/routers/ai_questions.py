@@ -7,6 +7,11 @@ from ai.questions.graph_runner import run_question_generation_graph
 from ai.questions.topic_validator import validate_topic_for_competency
 from ai.core.config import normalize_competency_type, COMPETENCY_KEYWORDS
 
+# 새로운 파일
+from ai.question_v2.models import QuestionV2Request
+from ai.question_v2.service import generate_ai_questions_v2
+
+
 router = APIRouter(prefix="/api/ai", tags=["AI Questions"])
 
 
@@ -153,3 +158,15 @@ def build_enhanced_rag_query(topic: str, competency_type: str | None = None) -> 
     extra_keywords = COMPETENCY_KEYWORDS.get(normalized_type or "", [])[:5]
 
     return " ".join([base_query] + extra_keywords)
+
+
+@router.post("/v2/generate-questions")
+async def generate_ai_questions_v2_api(request: QuestionV2Request):
+    questions = generate_ai_questions_v2(request)
+
+    return {
+        "message": "AI V2 문제가 생성되었습니다.",
+        "source": "ai_question_v2",
+        "count": len(questions),
+        "questions": [question.model_dump() for question in questions],
+    }
