@@ -1,4 +1,3 @@
-from ai.questions import explanation_repair
 import logging
 
 from ai.question_v2.evidence_builder import build_evidence_pack
@@ -21,6 +20,7 @@ def generate_ai_questions_v2(request: QuestionV2Request) -> list[GeneratedQuesti
     plans = select_question_formats(
         difficulty=request.difficulty,
         count=request.count,
+        topic=request.topic,
     )
 
     questions: list[GeneratedQuestion] = []
@@ -33,12 +33,27 @@ def generate_ai_questions_v2(request: QuestionV2Request) -> list[GeneratedQuesti
         )
 
         last_error: Exception | None = None
+        generated = False
 
         for attempt in range(1, 3):
             try:
                 question = render_question_from_evidence(evidence_pack=evidence_pack)
-                validate_generated_question(question)
+
+                try:
+                    validate_generated_question(question)
+                except Exception as validation_exc:
+                    logger.warning(
+                        "AI Question V2 검증 실패 상세: format=%s, attempt=%s, answer=%s, lengths=%s, choices=%s",
+                        plan.question_format,
+                        attempt,
+                        question.answer,
+                        [len(choice.strip()) for choice in question.choices],
+                        question.choices,
+                    )
+                    raise validation_exc
+
                 questions.append(question)
+                generated = True
                 break
 
             except Exception as exc:
@@ -50,24 +65,11 @@ def generate_ai_questions_v2(request: QuestionV2Request) -> list[GeneratedQuesti
                     exc,
                 )
 
-        generated = False
-
-        for attempt in range(1, 3):
-            try:
-                question = render_question_from_evidence(evidence_pack=evidence_pack)
-                validate_generated_question(question)
-                questions.append(question)
-                generated = True
-                break
-            except Exception as exc:
-                last_error = exc
-                logger.warning(...)
-
         if not generated:
             raise ValueError(
                 f"AI Question V2 생성 실패: format={plan.question_format}, error={last_error}"
             )
-    
+
     questions = rebalance_answer_positions(questions)
     validate_generated_questions(questions)
 

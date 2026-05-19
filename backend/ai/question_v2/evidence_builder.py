@@ -83,7 +83,7 @@ AI_TOPIC_PRESETS = {
         },
     },
     "ml": {
-        "aliases": ["ml", "ML", "머신러닝", "모델 학습", "모델 평가"],
+        "aliases": ["ml", "ML", "머신러닝", "모델 평가"],
         "normalized_topic": "머신러닝 모델 학습과 평가",
         "concepts": [
             "training data",
@@ -509,15 +509,1144 @@ RAG_INTERMEDIATE_VARIANTS: Dict[str, List[Dict[str, Any]]] = {
     ],
 }
 
+LLM_INTERMEDIATE_VARIANTS: Dict[str, List[Dict[str, Any]]] = {
+    "ai_scenario_best_action": [
+        {
+            "variant_id": "llm_context_missing_latest_policy",
+            "scenario": (
+                "사내 챗봇이 사용자의 최신 보안 정책 질문에 답변하고 있습니다. "
+                "하지만 현재 요청에는 참고 문서나 검색 결과가 제공되지 않았고, "
+                "모델은 그럴듯하지만 출처가 불명확한 답변을 생성하고 있습니다."
+            ),
+            "correct_points": [
+                "최신 정책처럼 근거가 필요한 질문에는 관련 문서나 검색 결과를 context로 제공해 답변을 생성합니다."
+            ],
+            "wrong_points": [
+                "temperature를 낮춰 답변 표현의 변동성을 줄입니다.",
+                "system prompt에 출처 기반 답변 원칙을 추가합니다.",
+                "질문을 정책명과 적용 시점이 드러나도록 재작성합니다.",
+                "생성 답변에 대한 사용자 피드백 수집 절차를 추가합니다.",
+            ],
+            "log_or_metric": {
+                "prompt": "최신 보안 정책을 알려줘",
+                "context_provided": False,
+                "source_count": 0,
+                "temperature": 0.7,
+                "issue": "최신 정책 질문에 대한 근거 문서가 제공되지 않음",
+            },
+        },
+        {
+            "variant_id": "llm_output_format_unstable",
+            "scenario": (
+                "LLM을 이용해 고객 문의를 JSON 형식으로 분류하고 있습니다. "
+                "하지만 프롬프트에 출력 스키마가 명확히 정의되어 있지 않아, "
+                "응답마다 필드명이 달라지거나 설명 문장이 섞여 후처리 파싱이 실패합니다."
+            ),
+            "correct_points": [
+                "system prompt에 출력 JSON 스키마와 필수 필드를 명확히 지정합니다."
+            ],
+            "wrong_points": [
+                "few-shot 예시를 추가해 원하는 응답 형태를 보여줍니다.",
+                "후처리 파서에서 누락 필드 보정 규칙을 추가합니다.",
+                "temperature를 낮춰 응답 형식의 변동성을 줄입니다.",
+                "파싱 실패 로그를 수집해 반복 오류 패턴을 분석합니다.",
+            ],
+            "log_or_metric": {
+                "prompt": "고객 문의를 분류해줘",
+                "expected_format": {
+                    "category": "string",
+                    "priority": "string",
+                    "reason": "string",
+                },
+                "observed_outputs": [
+                    "JSON 뒤에 설명 문장 포함",
+                    "priority 필드 누락",
+                    "category_name 필드 사용",
+                ],
+                "temperature": 0.5,
+                "issue": "출력 형식이 일정하지 않아 후처리 파싱이 실패함",
+            },
+        },
+    ],
+
+    "ai_scenario_find_incorrect_action": [
+        {
+            "variant_id": "llm_incorrect_temperature_for_factuality",
+            "scenario": (
+                "LLM이 사내 규정 질문에 답변할 때 표현은 자연스럽지만, "
+                "근거 문서가 없는 상태에서 일부 내용을 추정해 답변하고 있습니다. "
+                "일부 실행에서는 답변 표현도 조금씩 달라지지만, 팀은 우선 사실성과 근거 확인을 개선하려고 합니다."
+            ),
+            "correct_points": [
+                "temperature를 낮추고 동일 질문에 대한 답변 변동성을 줄입니다."
+            ],
+            "wrong_points": [
+                "관련 규정 문서를 검색해 답변 context로 제공합니다.",
+                "답변에 사용된 근거 문서의 출처를 함께 기록합니다.",
+                "근거가 없는 경우 답변 범위를 제한하는 규칙을 추가합니다.",
+                "생성된 답변을 저장 전 검증하는 절차를 둡니다.",
+            ],
+            "log_or_metric": {
+                "prompt": "복리후생 규정을 알려줘",
+                "context_provided": False,
+                "source_count": 0,
+                "temperature": 0.9,
+                "issue": "근거 없는 추정 답변이 생성됨",
+            },
+        },
+    ],
+
+    "ai_quality_issue_diagnosis": [
+        {
+            "variant_id": "llm_diagnosis_hallucination_no_context",
+            "scenario": (
+                "LLM이 최신 정책에 대한 답변을 생성했지만, 요청 로그에는 참고 문서가 제공되지 않은 것으로 나타납니다. "
+                "답변은 자연스럽지만 실제 정책 문서와 일치하는지 확인하기 어렵습니다."
+            ),
+            "correct_points": [
+                "최신 사실을 확인할 근거 문서가 제공되지 않았습니다."
+            ],
+            "wrong_points": [
+                "응답 형식 제약이 부족해 출력 구조가 흔들렸습니다.",
+                "temperature 설정으로 답변 표현의 변동성이 커졌습니다.",
+                "system prompt의 역할 지시가 답변 범위를 넓혔습니다.",
+                "생성 후 검증 절차가 없어 오류 탐지가 늦어졌습니다.",
+            ],
+            "log_or_metric": {
+                "prompt": "최신 개인정보 처리 기준을 알려줘",
+                "context_provided": False,
+                "source_count": 0,
+                "temperature": 0.6,
+                "issue": "최신 사실 답변에 사용할 근거 문서가 없음",
+            },
+        },
+        {
+            "variant_id": "llm_diagnosis_high_temperature_variance",
+            "scenario": (
+                "같은 고객 문의를 여러 번 분류했을 때, 실행할 때마다 분류 결과와 설명이 조금씩 달라집니다. "
+                "참고 문서는 필요하지 않은 분류 작업이지만, 운영 환경에서는 일관된 결과가 중요합니다."
+            ),
+            "correct_points": [
+                "temperature가 높아 응답 변동성이 커졌습니다."
+            ],
+            "wrong_points": [
+                "최신 사실 확인용 근거 문서가 없습니다.",
+                "검색 결과의 category filter가 빠졌습니다.",
+                "chunk 분리 단위가 커서 문맥이 섞였습니다.",
+                "모델 API latency가 증가했습니다.",
+            ],
+            "log_or_metric": {
+                "prompt": "문의 내용을 billing, technical, account 중 하나로 분류해줘",
+                "context_provided": False,
+                "temperature": 1.0,
+                "same_input_runs": 5,
+                "observed_variance": "분류 결과가 실행마다 달라짐",
+                "issue": "동일 입력에 대한 분류 일관성이 낮음",
+            },
+        },
+    ],
+
+    "ai_method_compare_decision": [
+        {
+            "variant_id": "llm_compare_rag_vs_prompt_only",
+            "scenario": (
+                "사용자가 최신 사내 정책을 질문하고 있습니다. "
+                "단순히 프롬프트를 자세히 쓰는 방법과, 정책 문서를 검색해 context로 제공하는 방법을 비교하고 있습니다. "
+                "목표는 답변의 근거성과 최신성을 높이는 것입니다."
+            ),
+            "correct_points": [
+                "최신 정책 문서를 검색해 답변 context에 포함합니다."
+            ],
+            "wrong_points": [
+                "system prompt에 근거 중심 답변 원칙을 추가합니다.",
+                "temperature를 낮춰 답변 표현의 변동성을 줄입니다.",
+                "질문에 정책명과 적용 시점을 포함하도록 재작성합니다.",
+                "생성 답변에 대한 사후 검증 로그를 수집합니다.",
+            ],
+            "log_or_metric": {
+                "prompt": "최신 사내 보안 정책을 알려줘",
+                "context_provided": False,
+                "source_count": 0,
+                "issue": "최신 정책 근거가 필요한 질문임",
+            },
+        },
+        {
+            "variant_id": "llm_compare_schema_vs_free_text",
+            "scenario": (
+                "LLM 응답을 백엔드에서 자동 파싱해 저장해야 합니다. "
+                "현재는 자유 문장 응답이 섞여 저장 필드 추출이 불안정합니다. "
+                "팀은 후처리 안정성을 높이는 방법을 선택하려고 합니다."
+            ),
+            "correct_points": [
+                "출력 스키마와 필수 필드를 명확히 지정해 구조화된 응답을 생성하게 합니다."
+            ],
+            "wrong_points": [
+                "후처리 파서에서 누락 필드를 보정하는 규칙을 추가합니다.",
+                "few-shot 예시를 제공해 응답 형식을 유도합니다.",
+                "temperature를 낮춰 응답 변동성을 줄입니다.",
+                "응답 저장 전 JSON 파싱 실패 로그를 수집합니다.",
+            ],
+            "log_or_metric": {
+                "prompt": "문의 내용을 분류하고 저장 가능한 형태로 반환해줘",
+                "required_fields": ["category", "priority", "reason"],
+                "parse_error_rate": "18%",
+                "issue": "자유 문장 응답이 섞여 필드 파싱이 실패함",
+            },
+        },
+    ],
+
+    "ai_log_or_metric_interpretation": [
+        {
+            "variant_id": "llm_log_no_context_high_temperature",
+            "scenario": (
+                "응답 설정 로그를 확인한 결과, 최신 정책 질문에 대한 요청에서 참고 문서가 제공되지 않았고 "
+                "temperature도 비교적 높게 설정되어 있습니다. 팀은 이 로그를 바탕으로 답변 품질 문제를 판단하려 합니다."
+            ),
+            "correct_points": [
+                "context_provided가 False이고 source_count가 0이면 근거 문서를 제공하는 개선이 우선입니다."
+            ],
+            "wrong_points": [
+                "temperature를 낮춰 답변 표현의 변동성을 줄입니다.",
+                "system prompt에 근거 기반 답변 원칙을 추가합니다.",
+                "질문에 정책명과 적용 시점을 포함하도록 재작성합니다.",
+                "생성 답변에 대한 사후 검증 로그를 수집합니다.",
+            ],
+            "log_or_metric": {
+                "prompt": "최신 보안 정책을 알려줘",
+                "context_provided": False,
+                "source_count": 0,
+                "temperature": 0.9,
+                "issue": "최신 정책 질문에 대한 근거 문서가 없음",
+            },
+        },
+        {
+            "variant_id": "llm_log_parse_error_schema_missing",
+            "scenario": (
+                "LLM 응답을 JSON으로 파싱하는 과정에서 오류가 반복되고 있습니다. "
+                "로그에는 출력 스키마가 요청에 포함되지 않았고, 응답에 설명 문장과 JSON이 섞여 있는 것으로 나타납니다."
+            ),
+            "correct_points": [
+                "출력 스키마와 JSON only 규칙을 명확히 지정해 파싱 가능한 응답을 유도합니다."
+            ],
+            "wrong_points": [
+                "후처리 파서에서 일부 누락 필드를 보정합니다.",
+                "few-shot 예시로 원하는 응답 형태를 보여줍니다.",
+                "temperature를 낮춰 응답 형식의 변동성을 줄입니다.",
+                "파싱 실패 로그를 수집해 오류 패턴을 분석합니다.",
+            ],
+            "log_or_metric": {
+                "prompt": "문의 내용을 분류해서 반환해줘",
+                "schema_provided": False,
+                "json_only_required": False,
+                "parse_error_rate": "22%",
+                "observed_output": "JSON 앞뒤에 설명 문장이 포함됨",
+                "issue": "출력 형식 제약이 부족해 파싱 실패가 반복됨",
+            },
+        },
+    ],
+}
+
+MODELOPS_INTERMEDIATE_VARIANTS: Dict[str, List[Dict[str, Any]]] = {
+    "ai_scenario_best_action": [
+        {
+            "variant_id": "modelops_latency_after_deploy",
+            "scenario": (
+                "모델 API의 평균 응답 시간이 최근 배포 이후 증가했습니다. "
+                "운영 로그에서는 timeout 비율도 함께 높아졌고, 입력 데이터 분포 변화는 아직 뚜렷하지 않습니다. "
+                "팀은 먼저 서비스 장애 가능성을 줄이는 조치를 검토하고 있습니다."
+            ),
+            "correct_points": [
+                "최근 배포 버전의 추론 시간과 서빙 리소스 사용량을 확인하고 롤백 가능성을 검토합니다."
+            ],
+            "wrong_points": [
+                "운영 데이터의 입력 분포 변화를 drift 기준으로 비교합니다.",
+                "학습 데이터셋을 확장해 다음 모델 재학습 계획을 세웁니다.",
+                "배치 추론 작업의 실행 주기를 조정해 처리량을 비교합니다.",
+                "모델 설명 가능성 리포트를 생성해 예측 근거를 분석합니다.",
+            ],
+            "log_or_metric": {
+                "avg_latency_ms": 1850,
+                "p95_latency_ms": 3200,
+                "timeout_rate": "8%",
+                "recent_deploy": True,
+                "drift_score": 0.03,
+                "issue": "최근 배포 이후 latency와 timeout이 증가함",
+            },
+        },
+        {
+            "variant_id": "modelops_drift_detected_prediction_drop",
+            "scenario": (
+                "운영 중인 분류 모델의 예측 성능이 최근 주간 리포트에서 하락했습니다. "
+                "서빙 latency와 timeout은 안정적이지만, 운영 입력 데이터의 주요 피처 분포가 학습 시점과 달라졌습니다. "
+                "팀은 성능 저하 원인을 먼저 확인하려고 합니다."
+            ),
+            "correct_points": [
+                "운영 입력 데이터와 학습 데이터의 피처 분포 차이를 drift 기준으로 분석합니다."
+            ],
+            "wrong_points": [
+                "최근 배포 버전의 추론 latency와 timeout 로그를 우선 점검합니다.",
+                "API 서버 인스턴스 수를 늘려 요청 처리량 변화를 확인합니다.",
+                "응답 캐시 전략을 적용해 반복 요청의 지연 시간을 줄입니다.",
+                "모델 버전별 롤백 절차 문서를 먼저 정비합니다.",
+            ],
+            "log_or_metric": {
+                "weekly_accuracy": 0.71,
+                "baseline_accuracy": 0.82,
+                "avg_latency_ms": 240,
+                "timeout_rate": "0.3%",
+                "drift_score": 0.41,
+                "recent_deploy": False,
+                "issue": "성능 하락과 함께 입력 데이터 drift가 관찰됨",
+            },
+        },
+    ],
+
+    "ai_scenario_find_incorrect_action": [
+        {
+            "variant_id": "modelops_incorrect_retrain_first_for_latency",
+            "scenario": (
+                "모델 API 배포 직후 p95 latency와 timeout 비율이 증가했습니다. "
+                "최근 입력 데이터 분포 변화는 크지 않고, 성능 지표 하락도 아직 확인되지 않았습니다. "
+                "팀은 우선 서빙 안정성을 회복하기 위한 대응을 검토하고 있습니다."
+            ),
+            "correct_points": [
+                "학습 데이터를 추가 수집해 모델 재학습을 우선 진행합니다."
+            ],
+            "wrong_points": [
+                "최근 배포 버전의 추론 시간 변화를 이전 버전과 비교합니다.",
+                "서빙 서버의 CPU와 메모리 사용량을 함께 확인합니다.",
+                "timeout이 증가한 요청 구간의 p95 latency를 분석합니다.",
+                "문제가 배포 이후 시작됐다면 롤백 가능성을 검토합니다.",
+            ],
+            "log_or_metric": {
+                "p95_latency_ms": 4100,
+                "timeout_rate": "9%",
+                "recent_deploy": True,
+                "drift_score": 0.02,
+                "accuracy_drop": False,
+                "issue": "배포 직후 서빙 지연과 timeout이 증가함",
+            },
+        },
+        {
+            "variant_id": "modelops_incorrect_scale_out_first_for_drift",
+            "scenario": (
+                "모델의 응답 속도와 서버 오류율은 안정적이지만, 최근 예측 결과의 정확도가 떨어지고 있습니다. "
+                "운영 데이터의 일부 핵심 피처 분포가 학습 데이터와 다르게 나타났습니다. "
+                "팀은 품질 저하 원인을 먼저 확인하려고 합니다."
+            ),
+            "correct_points": [
+                "API 서버를 증설해 요청 처리량을 먼저 늘립니다."
+            ],
+            "wrong_points": [
+                "운영 입력 데이터의 피처 분포 변화를 학습 데이터와 비교합니다.",
+                "성능 하락이 특정 사용자군이나 입력 구간에 집중되는지 확인합니다.",
+                "최근 데이터로 재학습이 필요한지 평가 기준을 점검합니다.",
+                "drift 감지 결과와 예측 오류 증가 시점을 함께 비교합니다.",
+            ],
+            "log_or_metric": {
+                "avg_latency_ms": 210,
+                "error_rate": "0.2%",
+                "weekly_accuracy": 0.69,
+                "baseline_accuracy": 0.81,
+                "drift_score": 0.46,
+                "issue": "서빙은 안정적이지만 데이터 drift와 성능 하락이 발생함",
+            },
+        },
+    ],
+
+    "ai_quality_issue_diagnosis": [
+        {
+            "variant_id": "modelops_diagnosis_serving_bottleneck",
+            "scenario": (
+                "모델 API의 정확도 지표는 이전과 비슷하지만, 최근 요청에서 응답 지연과 timeout이 증가했습니다. "
+                "장애는 새 모델 버전 배포 이후 시작되었고, 운영 데이터 분포 변화는 크지 않습니다."
+            ),
+            "correct_points": [
+                "새 모델 버전의 추론 비용 증가나 서빙 리소스 병목이 원인일 가능성이 큽니다."
+            ],
+            "wrong_points": [
+                "운영 입력 데이터의 drift로 예측 기준이 달라졌을 가능성이 있습니다.",
+                "학습 데이터 라벨 품질 저하로 모델 정확도가 낮아졌을 가능성이 있습니다.",
+                "배치 추론 주기 설정으로 실시간 응답이 지연됐을 가능성이 있습니다.",
+                "모델 설명 리포트가 부족해 예측 근거 해석이 어려웠을 가능성이 있습니다.",
+            ],
+            "log_or_metric": {
+                "accuracy": 0.84,
+                "previous_accuracy": 0.85,
+                "p95_latency_ms": 3600,
+                "timeout_rate": "7%",
+                "recent_deploy": True,
+                "drift_score": 0.04,
+                "issue": "정확도는 유지되지만 배포 이후 서빙 지연이 증가함",
+            },
+        },
+        {
+            "variant_id": "modelops_diagnosis_data_drift",
+            "scenario": (
+                "운영 모델의 주간 정확도가 하락했지만 API 응답 시간과 timeout 비율은 안정적입니다. "
+                "최근 사용자 입력의 피처 분포가 학습 데이터 기준과 달라졌고, 새 모델 배포는 없었습니다."
+            ),
+            "correct_points": [
+                "운영 입력 데이터의 분포 변화로 모델 예측 품질이 낮아졌을 가능성이 큽니다."
+            ],
+            "wrong_points": [
+                "새 모델 버전의 추론 시간이 늘어 timeout이 증가했을 가능성이 있습니다.",
+                "서빙 서버 리소스 부족으로 요청 처리 지연이 발생했을 가능성이 있습니다.",
+                "출력 포맷 변경으로 API 응답 파싱이 실패했을 가능성이 있습니다.",
+                "모델 버전 롤백 절차가 없어 장애 복구가 지연됐을 가능성이 있습니다.",
+            ],
+            "log_or_metric": {
+                "weekly_accuracy": 0.68,
+                "baseline_accuracy": 0.82,
+                "avg_latency_ms": 230,
+                "timeout_rate": "0.2%",
+                "recent_deploy": False,
+                "drift_score": 0.52,
+                "issue": "서빙은 안정적이지만 성능 저하와 데이터 drift가 관찰됨",
+            },
+        },
+    ],
+
+    "ai_method_compare_decision": [
+        {
+            "variant_id": "modelops_compare_rollback_vs_monitoring",
+            "scenario": (
+                "새 모델 버전 배포 직후 latency와 timeout이 증가했습니다. "
+                "서비스 영향이 커지고 있어 팀은 빠르게 안정성을 회복해야 합니다. "
+                "동시에 원인 분석을 위한 운영 로그는 이미 수집되고 있습니다."
+            ),
+            "correct_points": [
+                "이전 안정 버전으로 롤백한 뒤 리소스 사용량을 분석합니다."
+            ],
+            "wrong_points": [
+                "운영 대시보드의 latency와 timeout 추이를 계속 관찰합니다.",
+                "사용자 피드백을 수집해 응답 품질 만족도를 비교합니다.",
+                "학습 데이터 샘플을 추가해 다음 재학습 후보를 준비합니다.",
+                "모델 설명 리포트를 생성해 예측 근거의 일관성을 점검합니다.",
+            ],
+            "log_or_metric": {
+                "recent_deploy": True,
+                "p95_latency_ms": 4300,
+                "timeout_rate": "11%",
+                "rollback_available": True,
+                "monitoring_enabled": True,
+                "issue": "배포 직후 서비스 안정성 문제가 커지고 있음",
+            },
+        },
+        {
+            "variant_id": "modelops_compare_realtime_vs_batch",
+            "scenario": (
+                "추천 모델 결과를 하루에 한 번 갱신해도 서비스 요구사항을 만족할 수 있습니다. "
+                "현재는 모든 요청마다 실시간 추론을 수행해 피크 시간대 latency가 높아지고 있습니다. "
+                "팀은 응답 지연을 줄이면서 운영 비용도 낮추려 합니다."
+            ),
+            "correct_points": [
+                "일 단위 배치 추론으로 추천 결과를 미리 계산하고 요청 시 저장된 결과를 제공합니다."
+            ],
+            "wrong_points": [
+                "실시간 추론 서버를 증설해 피크 시간대 처리량을 늘립니다.",
+                "모델 입력 feature를 늘려 추천 결과의 설명력을 높입니다.",
+                "사용자 피드백 로그를 수집해 다음 재학습에 반영합니다.",
+                "추천 API 응답 포맷을 단순화해 클라이언트 처리 비용을 줄입니다.",
+            ],
+            "log_or_metric": {
+                "real_time_required": False,
+                "refresh_interval": "daily",
+                "peak_p95_latency_ms": 2900,
+                "inference_cost": "high",
+                "issue": "실시간 추론 요구가 낮지만 모든 요청에서 추론을 수행함",
+            },
+        },
+    ],
+
+    "ai_log_or_metric_interpretation": [
+        {
+            "variant_id": "modelops_log_latency_timeout_after_deploy",
+            "scenario": (
+                "운영 로그에서 최근 배포 이후 latency와 timeout이 함께 증가했습니다. "
+                "정확도 하락이나 데이터 drift는 아직 뚜렷하지 않습니다."
+            ),
+            "correct_points": [
+                "recent_deploy가 True이고 p95 latency와 timeout이 증가했으므로 배포 버전과 서빙 리소스를 우선 점검합니다."
+            ],
+            "wrong_points": [
+                "운영 입력 데이터의 분포 변화를 기준으로 재학습 필요성을 검토합니다.",
+                "정확도 지표를 중심으로 모델 품질 변화를 먼저 점검합니다.",
+                "사용자 피드백 수집을 진행해 응답 만족도 변화를 확인합니다.",
+                "출력 포맷을 단순화해 클라이언트 처리 비용을 줄입니다.",
+            ],
+            "log_or_metric": {
+                "recent_deploy": True,
+                "avg_latency_ms": 1900,
+                "p95_latency_ms": 4200,
+                "timeout_rate": "10%",
+                "accuracy": 0.84,
+                "drift_score": 0.03,
+                "issue": "최근 배포 이후 latency와 timeout이 증가함",
+            },
+        },
+        {
+            "variant_id": "modelops_log_drift_accuracy_drop",
+            "scenario": (
+                "운영 지표에서 모델 정확도 하락과 drift score 상승이 함께 확인되었습니다. "
+                "latency와 timeout은 안정적이고 최근 배포도 없었습니다."
+            ),
+            "correct_points": [
+                "drift score 상승과 정확도 하락이 함께 나타났으므로 운영 데이터 분포 변화를 우선 분석합니다."
+            ],
+            "wrong_points": [
+                "recent_deploy가 False여도 새 모델 버전의 추론 비용을 먼저 비교합니다.",
+                "latency와 timeout 추이를 중심으로 운영 상태를 계속 관찰합니다.",
+                "timeout이 낮으므로 API 서버 증설을 우선 진행합니다.",
+                "응답 포맷을 단순화해 예측 품질 저하를 먼저 개선합니다.",
+            ],
+            "log_or_metric": {
+                "recent_deploy": False,
+                "weekly_accuracy": 0.69,
+                "baseline_accuracy": 0.82,
+                "avg_latency_ms": 220,
+                "timeout_rate": "0.2%",
+                "drift_score": 0.55,
+                "issue": "정확도 하락과 drift score 상승이 함께 나타남",
+            },
+        },
+    ],
+}
+
+ML_INTERMEDIATE_VARIANTS: Dict[str, List[Dict[str, Any]]] = {
+    "ai_scenario_best_action": [
+        {
+            "variant_id": "ml_best_action_data_leakage_split_before_preprocess",
+            "scenario": (
+                "이탈 예측 모델의 검증 성능은 매우 높게 나왔지만, 운영 테스트에서는 성능이 크게 낮아졌습니다. "
+                "확인 결과 전체 데이터에 대해 scaling과 결측치 대체를 먼저 수행한 뒤 train/test split을 적용했습니다. "
+                "팀은 평가 결과가 실제 일반화 성능을 반영하도록 학습 절차를 점검하려 합니다."
+            ),
+            "correct_points": [
+                "split 이후 학습 데이터 기준으로 전처리합니다."
+            ],
+            "wrong_points": [
+                "threshold를 조정해 예측 비율을 비교합니다.",
+                "class weight로 소수 클래스 비중을 조정합니다.",
+                "교차 검증으로 fold별 성능 차이를 확인합니다.",
+                "feature importance로 변수 영향을 분석합니다.",
+            ],
+            "log_or_metric": {
+                "train_accuracy": 0.96,
+                "test_accuracy": 0.94,
+                "holdout_accuracy": 0.71,
+                "preprocessing_order": "scaling_before_split",
+                "leakage_signal": True,
+                "issue": "split 전에 전체 데이터 기준 전처리를 수행해 data leakage 가능성이 있음",
+            },
+        },
+        {
+            "variant_id": "ml_best_action_class_imbalance_low_recall",
+            "scenario": (
+                "불량 탐지 모델의 전체 accuracy는 0.96으로 높지만, 실제 불량 클래스의 recall은 0.28에 머물고 있습니다. "
+                "정상 데이터가 대부분을 차지해 모델이 정상 클래스를 잘 맞히는 방향으로 평가되고 있습니다. "
+                "팀은 불량 탐지 목적에 맞게 모델 평가와 개선 방향을 조정하려 합니다."
+            ),
+            "correct_points": [
+                "recall과 precision을 함께 보고 불균형 대응을 검토합니다."
+            ],
+            "wrong_points": [
+                "전체 accuracy 기준으로 모델 버전을 선택합니다.",
+                "fold별 accuracy 변동을 교차 검증으로 확인합니다.",
+                "feature importance로 주요 변수를 분석합니다.",
+                "학습 기간을 늘려 전체 표본 수를 확장합니다.",
+            ],
+            "log_or_metric": {
+                "accuracy": 0.96,
+                "positive_class_ratio": "3%",
+                "precision": 0.62,
+                "recall": 0.28,
+                "threshold": 0.5,
+                "issue": "class imbalance 상황에서 accuracy는 높지만 positive recall이 낮음",
+            },
+        },
+    ],
+
+    "ai_scenario_find_incorrect_action": [
+        {
+            "variant_id": "ml_incorrect_accuracy_only_for_imbalanced_data",
+            "scenario": (
+                "고객 이탈 예측 모델에서 이탈 고객 비율은 8%입니다. "
+                "새 모델은 accuracy가 높지만 이탈 고객 recall이 낮아, 실제 캠페인 대상자를 충분히 찾지 못하고 있습니다. "
+                "팀은 이탈 탐지 목적에 맞는 평가 기준을 검토하려 합니다."
+            ),
+            "correct_points": [
+                "전체 accuracy만 기준으로 모델을 선택합니다."
+            ],
+            "wrong_points": [
+                "이탈 클래스의 recall과 precision을 비교합니다.",
+                "threshold별 캠페인 대상자 규모를 비교합니다.",
+                "class weight 적용 전후 성능을 비교합니다.",
+                "confusion matrix로 미탐지 비율을 확인합니다.",
+            ],
+            "log_or_metric": {
+                "positive_class_ratio": "8%",
+                "accuracy": 0.93,
+                "precision": 0.41,
+                "recall": 0.24,
+                "threshold": 0.5,
+                "issue": "전체 accuracy는 높지만 이탈 고객 탐지 recall이 낮음",
+            },
+        },
+        {
+            "variant_id": "ml_incorrect_random_split_for_time_series",
+            "scenario": (
+                "월별 매출 예측 모델을 평가하고 있습니다. "
+                "데이터는 시간 순서에 따라 분포가 변하고 있으며, 운영에서는 미래 월 데이터를 예측해야 합니다. "
+                "팀은 운영 환경과 비슷한 방식으로 검증 데이터를 구성하려 합니다."
+            ),
+            "correct_points": [
+                "전체 기간을 섞어 random split으로 평가합니다."
+            ],
+            "wrong_points": [
+                "과거 기간으로 학습하고 이후 기간으로 평가합니다.",
+                "검증 기간 성능으로 모델 선택 기준을 정합니다.",
+                "기간별 성능 차이로 분포 변화를 확인합니다.",
+                "예측 시점 이후 feature 포함 여부를 점검합니다.",
+            ],
+            "log_or_metric": {
+                "split_method": "random_split",
+                "train_period": "2024-01~2025-12 mixed",
+                "test_period": "2024-01~2025-12 mixed",
+                "deployment_target": "future_month",
+                "issue": "시간 순서가 중요한 예측 문제에서 random split은 운영 평가와 다를 수 있음",
+            },
+        },
+    ],
+
+    "ai_quality_issue_diagnosis": [
+        {
+            "variant_id": "ml_diagnosis_overfitting_train_test_gap",
+            "scenario": (
+                "분류 모델의 train accuracy는 0.99로 매우 높지만 test accuracy는 0.72에 머물고 있습니다. "
+                "train loss는 계속 낮아졌지만 validation 성능은 일정 시점 이후 개선되지 않았습니다. "
+                "팀은 성능 차이가 발생한 원인을 진단하려 합니다."
+            ),
+            "correct_points": [
+                "train/test 성능 차이가 크므로 overfitting을 우선 의심합니다."
+            ],
+            "wrong_points": [
+                "소수 클래스 비율이 낮아 recall이 낮은 상황입니다.",
+                "threshold가 높아 positive 예측 수가 줄어든 상황입니다.",
+                "accuracy 지표만 사용해 precision을 놓친 상황입니다.",
+                "학습 기간이 짧아 최신 패턴이 빠진 상황입니다.",
+            ],
+            "log_or_metric": {
+                "train_accuracy": 0.99,
+                "test_accuracy": 0.72,
+                "train_loss": 0.03,
+                "validation_accuracy": 0.73,
+                "issue": "train 성능과 test 성능 차이가 크게 나타남",
+            },
+        },
+        {
+            "variant_id": "ml_diagnosis_target_leakage_feature",
+            "scenario": (
+                "대출 연체 예측 모델의 검증 성능이 비정상적으로 높게 나타났습니다. "
+                "feature 목록을 확인하니 실제 연체 발생 이후에 생성되는 납부 지연 일수가 입력 변수에 포함되어 있었습니다. "
+                "팀은 평가 성능이 과도하게 높게 나온 원인을 확인하려 합니다."
+            ),
+            "correct_points": [
+                "예측 시점 이후 생성되는 feature가 포함된 target leakage 상황입니다."
+            ],
+            "wrong_points": [
+                "class imbalance로 소수 클래스 recall이 낮아진 상황입니다.",
+                "threshold가 낮아 positive 예측 비율이 증가한 상황입니다.",
+                "교차 검증 fold 수가 부족해 분산을 놓친 상황입니다.",
+                "feature importance 분석이 부족해 설명력이 낮은 상황입니다.",
+            ],
+            "log_or_metric": {
+                "validation_accuracy": 0.98,
+                "test_accuracy": 0.97,
+                "feature_name": "days_late_after_due_date",
+                "available_at_prediction_time": False,
+                "leakage_signal": True,
+                "issue": "예측 시점 이후 생성되는 target 관련 feature가 포함됨",
+            },
+        },
+    ],
+
+    "ai_method_compare_decision": [
+        {
+            "variant_id": "ml_compare_precision_recall_for_campaign",
+            "scenario": (
+                "마케팅 팀은 이탈 가능성이 높은 고객 상위 5%를 선정해 리텐션 캠페인을 진행하려 합니다. "
+                "캠페인 예산이 제한되어 있어 모든 고객을 대상으로 할 수 없고, 실제 이탈 고객을 최대한 포함하는 것이 중요합니다. "
+                "팀은 운영 목적에 맞는 평가 기준을 선택하려 합니다."
+            ),
+            "correct_points": [
+                "top-K precision, recall, lift를 함께 평가합니다."
+            ],
+            "wrong_points": [
+                "전체 고객 기준 accuracy가 높은 모델을 선택합니다.",
+                "전체 데이터의 평균 loss만 비교해 선택합니다.",
+                "feature importance가 단순한 모델을 선택합니다.",
+                "학습 데이터 크기가 큰 모델을 우선 선택합니다.",
+            ],
+            "log_or_metric": {
+                "targeting_ratio": "top_5%",
+                "accuracy": 0.91,
+                "top_k_precision": 0.37,
+                "top_k_recall": 0.22,
+                "lift": 2.8,
+                "issue": "운영 목적이 전체 분류보다 top-K 타겟팅 성능에 가까움",
+            },
+        },
+        {
+            "variant_id": "ml_compare_threshold_vs_retrain",
+            "scenario": (
+                "부정 거래 탐지 모델에서 기본 threshold 0.5를 적용하면 precision은 높지만 recall이 낮습니다. "
+                "운영팀은 탐지 누락을 줄이고 싶지만, 재학습 전에 현재 모델의 의사결정 기준을 먼저 조정해 보려 합니다. "
+                "팀은 즉시 비교 가능한 방법을 선택하려 합니다."
+            ),
+            "correct_points": [
+                "threshold를 낮춰 recall과 precision 변화를 비교합니다."
+            ],
+            "wrong_points": [
+                "학습 데이터를 확장해 다음 재학습 계획을 세웁니다.",
+                "교차 검증으로 fold별 accuracy 변동을 확인합니다.",
+                "feature importance로 주요 변수 순위를 분석합니다.",
+                "class weight를 조정한 새 모델을 별도 학습합니다.",
+            ],
+            "log_or_metric": {
+                "threshold": 0.5,
+                "precision": 0.82,
+                "recall": 0.31,
+                "false_negative_cost": "high",
+                "retrain_available_now": False,
+                "issue": "현재 모델에서 탐지 누락을 줄이기 위한 threshold 검토가 필요함",
+            },
+        },
+    ],
+
+    "ai_log_or_metric_interpretation": [
+        {
+            "variant_id": "ml_log_train_test_gap_overfitting",
+            "scenario": (
+                "모델 학습 결과에서 train 성능과 test 성능의 차이가 크게 나타났습니다. "
+                "팀은 아래 평가 지표를 바탕으로 모델 품질 문제를 해석하려 합니다."
+            ),
+            "correct_points": [
+                "train/test 성능 차이로 overfitting을 우선 점검합니다."
+            ],
+            "wrong_points": [
+                "class imbalance에 따른 recall 저하를 먼저 확인합니다.",
+                "threshold 조정으로 예측 비율 변화를 비교합니다.",
+                "time-based split으로 기간별 성능 차이를 확인합니다.",
+                "feature importance로 주요 변수 영향을 분석합니다.",
+            ],
+            "log_or_metric": {
+                "train_accuracy": 0.99,
+                "test_accuracy": 0.70,
+                "train_loss": 0.02,
+                "test_loss": 0.61,
+                "issue": "train 성능은 높지만 test 성능이 낮아 일반화 차이가 큼",
+            },
+        },
+        {
+            "variant_id": "ml_log_imbalance_accuracy_recall",
+            "scenario": (
+                "불균형 데이터로 학습한 분류 모델의 평가 결과입니다. "
+                "팀은 아래 지표를 바탕으로 모델이 실제 양성 클래스를 충분히 탐지하는지 판단하려 합니다."
+            ),
+            "correct_points": [
+                "positive 비율과 recall을 함께 보고 탐지 성능을 점검합니다."
+            ],
+            "wrong_points": [
+                "train/test accuracy 차이로 overfitting 여부를 확인합니다.",
+                "feature importance로 주요 변수 영향을 분석합니다.",
+                "교차 검증 평균 accuracy로 모델을 선택합니다.",
+                "학습 데이터 수를 늘려 전체 accuracy를 확인합니다.",
+            ],
+            "log_or_metric": {
+                "accuracy": 0.95,
+                "positive_class_ratio": "4%",
+                "precision": 0.58,
+                "recall": 0.21,
+                "threshold": 0.5,
+                "issue": "전체 accuracy는 높지만 positive recall이 낮음",
+            },
+        },
+    ],
+}
+
+DL_INTERMEDIATE_VARIANTS: Dict[str, List[Dict[str, Any]]] = {
+    "ai_scenario_best_action": [
+        {
+            "variant_id": "dl_best_action_overfitting_validation_loss",
+            "scenario": (
+                "이미지 분류 모델 학습 중 train loss는 계속 낮아지고 있지만 validation loss는 증가하고 있습니다. "
+                "train accuracy는 높아지는 반면 validation accuracy는 일정 시점 이후 개선되지 않습니다. "
+                "팀은 모델의 일반화 성능을 개선하려 합니다."
+            ),
+            "correct_points": [
+                "dropout과 regularization으로 과적합 완화를 검토합니다."
+            ],
+            "wrong_points": [
+                "epoch 수를 늘려 train loss를 더 낮춥니다.",
+                "batch size를 키워 학습 속도를 먼저 높입니다.",
+                "입력 이미지 해상도를 낮춰 연산량을 줄입니다.",
+                "출력 클래스 수를 줄여 예측 범위를 제한합니다.",
+            ],
+            "log_or_metric": {
+                "epoch": 30,
+                "train_loss": 0.08,
+                "validation_loss": 0.52,
+                "train_accuracy": 0.98,
+                "validation_accuracy": 0.74,
+                "issue": "train loss는 감소하지만 validation loss가 증가함",
+            },
+        },
+        {
+            "variant_id": "dl_best_action_gpu_memory_batch_size",
+            "scenario": (
+                "CNN 모델 학습 중 GPU 메모리 부족 오류가 반복적으로 발생합니다. "
+                "모델 구조와 입력 이미지 크기는 유지해야 하지만, 현재 batch size가 커서 학습이 중단되고 있습니다. "
+                "팀은 학습을 안정적으로 진행할 수 있는 조치를 먼저 검토하려 합니다."
+            ),
+            "correct_points": [
+                "batch size를 줄여 GPU 메모리 사용량을 낮춥니다."
+            ],
+            "wrong_points": [
+                "epoch 수를 늘려 모델이 더 오래 학습되게 합니다.",
+                "dropout 비율을 높여 과적합을 완화합니다.",
+                "validation split을 조정해 평가 데이터를 늘립니다.",
+                "learning rate를 낮춰 loss 변동을 줄입니다.",
+            ],
+            "log_or_metric": {
+                "batch_size": 128,
+                "gpu_memory_error": True,
+                "input_resolution": "224x224",
+                "model_type": "CNN",
+                "issue": "큰 batch size로 GPU 메모리 부족이 발생함",
+            },
+        },
+    ],
+
+    "ai_scenario_find_incorrect_action": [
+        {
+            "variant_id": "dl_incorrect_more_epochs_for_overfitting",
+            "scenario": (
+                "딥러닝 모델의 train loss는 계속 감소하지만 validation loss는 증가하고 있습니다. "
+                "validation accuracy도 더 이상 개선되지 않아 과적합 가능성이 의심됩니다. "
+                "팀은 일반화 성능을 개선하기 위한 대응을 검토하고 있습니다."
+            ),
+            "correct_points": [
+                "epoch 수를 늘려 train loss를 더 낮춥니다."
+            ],
+            "wrong_points": [
+                "dropout을 적용해 특정 뉴런 의존도를 낮춥니다.",
+                "regularization으로 가중치가 과도해지는 것을 줄입니다.",
+                "early stopping으로 validation 성능 기준 학습을 멈춥니다.",
+                "데이터 증강으로 학습 샘플 다양성을 높입니다.",
+            ],
+            "log_or_metric": {
+                "epoch": 40,
+                "train_loss": 0.05,
+                "validation_loss": 0.63,
+                "train_accuracy": 0.99,
+                "validation_accuracy": 0.72,
+                "issue": "과적합 징후가 있는데 train loss만 더 낮추려 함",
+            },
+        },
+        {
+            "variant_id": "dl_incorrect_shuffle_for_sequence_model",
+            "scenario": (
+                "시계열 데이터를 입력으로 사용하는 딥러닝 모델을 학습하고 있습니다. "
+                "입력 순서 정보가 예측에 중요하며, 팀은 sequence 패턴이 유지되도록 데이터 구성을 점검하려 합니다. "
+                "학습 안정성을 위해 적용할 전처리와 검증 방식을 검토하고 있습니다."
+            ),
+            "correct_points": [
+                "시점 순서를 무시하고 sequence 내부 순서를 섞어 학습합니다."
+            ],
+            "wrong_points": [
+                "시간 순서가 유지되도록 입력 window를 구성합니다.",
+                "미래 시점 정보가 feature에 섞였는지 점검합니다.",
+                "검증 데이터는 이후 기간 기준으로 분리합니다.",
+                "sequence 길이에 따른 성능 변화를 비교합니다.",
+            ],
+            "log_or_metric": {
+                "data_type": "time_series",
+                "sequence_order_required": True,
+                "window_size": 30,
+                "issue": "sequence 내부 순서를 유지해야 하는 예측 문제임",
+            },
+        },
+    ],
+
+    "ai_quality_issue_diagnosis": [
+        {
+            "variant_id": "dl_diagnosis_overfitting_loss_gap",
+            "scenario": (
+                "딥러닝 모델 학습 로그에서 train loss는 지속적으로 감소하지만 validation loss는 일정 시점 이후 증가합니다. "
+                "train accuracy는 높지만 validation accuracy는 정체되어 있습니다. "
+                "팀은 이 현상의 원인을 진단하려 합니다."
+            ),
+            "correct_points": [
+                "학습 데이터에 과도하게 맞춰진 overfitting 상황입니다."
+            ],
+            "wrong_points": [
+                "batch size가 작아 GPU 메모리가 부족한 상황입니다.",
+                "learning rate가 낮아 loss가 전혀 줄지 않는 상황입니다.",
+                "출력층 클래스 설정이 맞지 않아 예측 범위가 어긋난 상황입니다.",
+                "입력 해상도가 낮아 추론 latency가 증가한 상황입니다.",
+            ],
+            "log_or_metric": {
+                "epoch": 25,
+                "train_loss": 0.06,
+                "validation_loss": 0.49,
+                "train_accuracy": 0.97,
+                "validation_accuracy": 0.73,
+                "issue": "train 성능과 validation 성능 차이가 커짐",
+            },
+        },
+        {
+            "variant_id": "dl_diagnosis_learning_rate_unstable_loss",
+            "scenario": (
+                "딥러닝 모델 학습 초반부터 loss가 크게 진동하며 안정적으로 감소하지 않습니다. "
+                "같은 데이터와 모델 구조에서 learning rate를 낮춘 실험은 더 안정적인 loss 감소를 보였습니다. "
+                "팀은 학습 불안정의 원인을 확인하려 합니다."
+            ),
+            "correct_points": [
+                "learning rate가 커서 loss가 불안정하게 변동하는 상황입니다."
+            ],
+            "wrong_points": [
+                "dropout이 없어 validation loss만 증가하는 상황입니다.",
+                "batch size가 너무 커서 GPU 메모리가 부족한 상황입니다.",
+                "데이터 증강이 부족해 일반화 성능이 낮은 상황입니다.",
+                "epoch 수가 부족해 학습 기회가 모자란 상황입니다.",
+            ],
+            "log_or_metric": {
+                "learning_rate": 0.1,
+                "loss_pattern": "oscillating",
+                "stable_with_lower_lr": True,
+                "issue": "높은 learning rate에서 loss가 크게 진동함",
+            },
+        },
+    ],
+
+    "ai_method_compare_decision": [
+        {
+            "variant_id": "dl_compare_transfer_learning_vs_scratch",
+            "scenario": (
+                "이미지 분류 프로젝트에서 학습 데이터가 많지 않습니다. "
+                "처음부터 CNN을 학습하는 방법과 사전학습 모델을 fine-tuning하는 방법을 비교하고 있습니다. "
+                "팀은 제한된 데이터에서 일반화 성능을 높이는 방법을 선택하려 합니다."
+            ),
+            "correct_points": [
+                "사전학습 모델을 fine-tuning해 특징 표현을 활용합니다."
+            ],
+            "wrong_points": [
+                "처음부터 깊은 CNN을 학습해 전체 특징을 새로 학습합니다.",
+                "epoch 수를 늘려 train accuracy를 우선 높입니다.",
+                "batch size를 키워 한 번에 학습할 샘플 수를 늘립니다.",
+                "출력 클래스 수를 줄여 예측 범위를 단순화합니다.",
+            ],
+            "log_or_metric": {
+                "dataset_size": "small",
+                "task": "image_classification",
+                "pretrained_model_available": True,
+                "issue": "데이터가 적어 scratch 학습보다 전이학습 검토가 필요함",
+            },
+        },
+        {
+            "variant_id": "dl_compare_early_stopping_vs_more_epochs",
+            "scenario": (
+                "모델 학습 중 초반에는 validation loss가 감소했지만 이후 다시 증가하기 시작했습니다. "
+                "train loss는 계속 낮아지고 있어 더 오래 학습하면 train 성능은 좋아질 수 있습니다. "
+                "팀은 validation 성능 기준으로 학습 종료 전략을 선택하려 합니다."
+            ),
+            "correct_points": [
+                "early stopping으로 validation 악화 전에 학습을 멈춥니다."
+            ],
+            "wrong_points": [
+                "epoch 수를 늘려 train loss를 계속 낮춥니다.",
+                "batch size를 키워 한 번의 업데이트 샘플 수를 늘립니다.",
+                "입력 해상도를 낮춰 학습 연산량을 먼저 줄입니다.",
+                "출력층 노드 수를 줄여 예측 클래스를 단순화합니다.",
+            ],
+            "log_or_metric": {
+                "best_validation_epoch": 12,
+                "current_epoch": 30,
+                "train_loss": 0.04,
+                "validation_loss": 0.55,
+                "issue": "validation loss가 증가하는데 학습이 계속 진행됨",
+            },
+        },
+    ],
+
+    "ai_log_or_metric_interpretation": [
+        {
+            "variant_id": "dl_log_train_val_loss_overfitting",
+            "scenario": (
+                "딥러닝 모델 학습 로그입니다. "
+                "팀은 아래 학습 지표를 바탕으로 모델의 일반화 문제를 해석하려 합니다."
+            ),
+            "correct_points": [
+                "dropout과 regularization으로 overfitting을 완화합니다."
+            ],
+            "wrong_points": [
+                "GPU 메모리 부족 여부를 batch size 기준으로 확인합니다.",
+                "learning rate를 높여 loss 감소 속도를 빠르게 합니다.",
+                "출력 클래스 수를 줄여 예측 문제를 단순화합니다.",
+                "입력 해상도를 낮춰 추론 latency를 줄입니다.",
+            ],
+            "log_or_metric": {
+                "epoch": 30,
+                "train_loss": 0.04,
+                "validation_loss": 0.58,
+                "train_accuracy": 0.99,
+                "validation_accuracy": 0.71,
+                "issue": "train loss는 낮지만 validation loss가 높음",
+            },
+        },
+        {
+            "variant_id": "dl_log_learning_rate_loss_oscillation",
+            "scenario": (
+                "딥러닝 모델 학습 중 loss가 안정적으로 감소하지 않고 크게 진동하고 있습니다. "
+                "팀은 아래 로그를 보고 학습 설정을 해석하려 합니다."
+            ),
+            "correct_points": [
+                "loss 진동이 크므로 learning rate를 낮춰 안정성을 확인합니다."
+            ],
+            "wrong_points": [
+                "현재 설정을 유지한 채 epoch 수를 늘립니다.",
+                "출력 클래스 수를 줄여 loss 계산 대상을 줄입니다.",
+                "validation 비율을 낮춰 학습 데이터 비중을 늘립니다.",
+                "입력 feature를 줄여 모델의 표현력을 낮춥니다.",
+            ],
+            "log_or_metric": {
+                "learning_rate": 0.1,
+                "loss_pattern": "oscillating",
+                "loss_values": [1.8, 0.9, 1.5, 0.7, 1.3],
+                "issue": "loss가 안정적으로 감소하지 않고 크게 진동함",
+            },
+        },
+    ],
+}
+
+AI_INTERMEDIATE_VARIANT_POOLS: Dict[str, Dict[str, List[Dict[str, Any]]]] = {
+    "rag": RAG_INTERMEDIATE_VARIANTS,
+    "llm": LLM_INTERMEDIATE_VARIANTS,
+    "modelops": MODELOPS_INTERMEDIATE_VARIANTS,
+    "ml": ML_INTERMEDIATE_VARIANTS,
+    "dl": DL_INTERMEDIATE_VARIANTS,
+}
+
 def normalize_ai_topic(topic: str) -> str:
     text = topic.strip().lower()
 
-    for key, preset in AI_TOPIC_PRESETS.items():
-        for alias in preset["aliases"]:
-            if alias.lower() in text:
-                return key
+    dl_keywords = [
+        "dl",
+        "딥러닝",
+        "deep learning",
+        "신경망",
+        "neural network",
+        "cnn",
+        "rnn",
+        "lstm",
+        "validation loss",
+        "train loss",
+        "dropout",
+        "regularization",
+        "batch size",
+        "gpu",
+        "gpu memory",
+        "fine-tuning",
+        "transfer learning",
+        "early stopping",
+    ]
 
-    # 사용자가 애매하게 입력하면 기본은 RAG로 두지 말고 LLM 일반 주제로 처리
+    if any(keyword in text for keyword in dl_keywords):
+        return "dl"
+
+    modelops_keywords = [
+        "modelops",
+        "모델옵스",
+        "모델 배포",
+        "모니터링",
+        "서빙",
+        "latency",
+        "timeout",
+        "drift",
+        "rollback",
+        "batch inference",
+        "real-time inference",
+    ]
+
+    if any(keyword in text for keyword in modelops_keywords):
+        return "modelops"
+
+    rag_keywords = [
+        "rag",
+        "검색 품질",
+        "retrieval",
+        "chunk",
+        "metadata",
+        "metadata filter",
+        "reranker",
+        "hybrid search",
+        "top_k",
+        "vector search",
+        "keyword search",
+    ]
+
+    if any(keyword in text for keyword in rag_keywords):
+        return "rag"
+
+    ml_keywords = [
+        "ml",
+        "머신러닝",
+        "machine learning",
+        "모델 평가",
+        "train/test",
+        "data leakage",
+        "target leakage",
+        "class imbalance",
+        "precision",
+        "recall",
+        "threshold",
+        "cross validation",
+        "feature leakage",
+        "top-k",
+        "top k",
+    ]
+
+    if any(keyword in text for keyword in ml_keywords):
+        return "ml"
+
+    llm_keywords = [
+        "llm",
+        "프롬프트",
+        "prompt",
+        "환각",
+        "hallucination",
+        "temperature",
+        "답변 품질",
+        "system prompt",
+        "출력 형식",
+    ]
+
+    if any(keyword in text for keyword in llm_keywords):
+        return "llm"
+
+    general_ai_keywords = [
+        "ai",
+        "인공지능",
+        "ai 관련",
+        "ai 문제",
+        "ai 실무",
+        "ai 역량",
+    ]
+
+    if any(keyword in text for keyword in general_ai_keywords):
+        return random.choice(["rag", "llm", "modelops", "ml", "dl"])
+
     return "llm"
 
 
@@ -539,8 +1668,9 @@ def build_evidence_pack(
     correct_points = preset["correct_points"]
     wrong_points = preset["wrong_points"]
 
-    if difficulty == "중급" and topic_key == "rag":
-        correct_points, wrong_points, scenario, log_or_metric = _build_rag_intermediate_variant_evidence(
+    if difficulty == "중급" and topic_key in AI_INTERMEDIATE_VARIANT_POOLS:
+        correct_points, wrong_points, scenario, log_or_metric = _build_ai_intermediate_variant_evidence(
+            topic_key=topic_key,
             question_format=plan.question_format,
             correct_points=correct_points,
             wrong_points=wrong_points,
@@ -597,12 +1727,187 @@ def _build_body_context_for_log_or_metric(log_or_metric: dict | None) -> str | N
             + f"\n문제 상황: {log_or_metric.get('issue')}"
         )
 
-    if "train_accuracy" in log_or_metric:
+    if (
+        "p95_latency_ms" in log_or_metric
+        or "drift_score" in log_or_metric
+        or "weekly_accuracy" in log_or_metric
+        or "recent_deploy" in log_or_metric
+    ):
+        metric_lines = []
+
+        for key in [
+            "recent_deploy",
+            "avg_latency_ms",
+            "p95_latency_ms",
+            "timeout_rate",
+            "error_rate",
+            "accuracy",
+            "previous_accuracy",
+            "weekly_accuracy",
+            "baseline_accuracy",
+            "drift_score",
+            "rollback_available",
+            "monitoring_enabled",
+            "real_time_required",
+            "refresh_interval",
+            "inference_cost",
+        ]:
+            if key in log_or_metric:
+                metric_lines.append(f"{key}: {log_or_metric.get(key)}")
+
         return (
-            "[평가 지표]\n"
-            f"train_accuracy: {log_or_metric.get('train_accuracy')}\n"
-            f"test_accuracy: {log_or_metric.get('test_accuracy')}\n"
+            "[ModelOps 운영 지표]\n"
+            + "\n".join(metric_lines)
+            + f"\n문제 상황: {log_or_metric.get('issue')}"
+        )
+
+    if (
+        "schema_provided" in log_or_metric
+        or "parse_error_rate" in log_or_metric
+        or "expected_format" in log_or_metric
+        or "observed_outputs" in log_or_metric
+        or "required_fields" in log_or_metric
+    ):
+        metric_lines = []
+
+        for key in [
+            "prompt",
+            "schema_provided",
+            "json_only_required",
+            "expected_format",
+            "required_fields",
+            "parse_error_rate",
+            "observed_output",
+            "observed_outputs",
+        ]:
+            if key in log_or_metric:
+                metric_lines.append(f"{key}: {log_or_metric.get(key)}")
+
+        return (
+            "[응답 형식 로그]\n"
+            + "\n".join(metric_lines)
+            + f"\n문제 상황: {log_or_metric.get('issue')}"
+        )
+
+    if "temperature" in log_or_metric:
+        return (
+            "[응답 설정 로그]\n"
+            f"prompt: {log_or_metric.get('prompt')}\n"
+            f"context_provided: {log_or_metric.get('context_provided')}\n"
+            f"source_count: {log_or_metric.get('source_count')}\n"
+            f"temperature: {log_or_metric.get('temperature')}\n"
             f"문제 상황: {log_or_metric.get('issue')}"
+        )
+
+    if any(
+        key in log_or_metric
+        for key in [
+            "validation_loss",
+            "validation_accuracy",
+            "learning_rate",
+            "loss_pattern",
+            "loss_values",
+            "batch_size",
+            "gpu_memory_error",
+            "input_resolution",
+            "model_type",
+            "best_validation_epoch",
+            "current_epoch",
+            "dataset_size",
+            "pretrained_model_available",
+            "sequence_order_required",
+            "window_size",
+        ]
+    ):
+        metric_lines = []
+
+        for key in [
+            "epoch",
+            "current_epoch",
+            "best_validation_epoch",
+            "train_loss",
+            "validation_loss",
+            "train_accuracy",
+            "validation_accuracy",
+            "learning_rate",
+            "loss_pattern",
+            "loss_values",
+            "batch_size",
+            "gpu_memory_error",
+            "input_resolution",
+            "model_type",
+            "dataset_size",
+            "pretrained_model_available",
+            "sequence_order_required",
+            "window_size",
+        ]:
+            if key in log_or_metric:
+                metric_lines.append(f"{key}: {log_or_metric.get(key)}")
+
+        return (
+            "[DL 학습 지표]\n"
+            + "\n".join(metric_lines)
+            + f"\n문제 상황: {log_or_metric.get('issue')}"
+        )
+
+    if any(
+        key in log_or_metric
+        for key in [
+            "train_accuracy",
+            "test_accuracy",
+            "holdout_accuracy",
+            "validation_accuracy",
+            "accuracy",
+            "precision",
+            "recall",
+            "threshold",
+            "positive_class_ratio",
+            "top_k_precision",
+            "top_k_recall",
+            "lift",
+            "leakage_signal",
+            "split_method",
+            "preprocessing_order",
+            "feature_name",
+            "available_at_prediction_time",
+            "targeting_ratio",
+            "false_negative_cost",
+            "retrain_available_now",
+        ]
+    ):
+        metric_lines = []
+
+        for key in [
+            "train_accuracy",
+            "test_accuracy",
+            "holdout_accuracy",
+            "validation_accuracy",
+            "train_loss",
+            "test_loss",
+            "accuracy",
+            "precision",
+            "recall",
+            "threshold",
+            "positive_class_ratio",
+            "top_k_precision",
+            "top_k_recall",
+            "lift",
+            "split_method",
+            "preprocessing_order",
+            "feature_name",
+            "available_at_prediction_time",
+            "leakage_signal",
+            "targeting_ratio",
+            "false_negative_cost",
+            "retrain_available_now",
+        ]:
+            if key in log_or_metric:
+                metric_lines.append(f"{key}: {log_or_metric.get(key)}")
+
+        return (
+            "[ML 평가 지표]\n"
+            + "\n".join(metric_lines)
+            + f"\n문제 상황: {log_or_metric.get('issue')}"
         )
 
     if "train_loss" in log_or_metric:
@@ -620,15 +1925,6 @@ def _build_body_context_for_log_or_metric(log_or_metric: dict | None) -> str | N
             f"avg_latency_ms: {log_or_metric.get('avg_latency_ms')}\n"
             f"timeout_rate: {log_or_metric.get('timeout_rate')}\n"
             f"recent_deploy: {log_or_metric.get('recent_deploy')}\n"
-            f"문제 상황: {log_or_metric.get('issue')}"
-        )
-
-    if "temperature" in log_or_metric:
-        return (
-            "[응답 설정 로그]\n"
-            f"prompt: {log_or_metric.get('prompt')}\n"
-            f"context_provided: {log_or_metric.get('context_provided')}\n"
-            f"temperature: {log_or_metric.get('temperature')}\n"
             f"문제 상황: {log_or_metric.get('issue')}"
         )
 
@@ -803,15 +2099,21 @@ def _refine_intermediate_evidence_by_format(
             ]
     return correct_points, wrong_points, scenario, log_or_metric
 
-def _build_rag_intermediate_variant_evidence(
+def _build_ai_intermediate_variant_evidence(
     *,
+    topic_key: str,
     question_format: str,
     correct_points: list[str],
     wrong_points: list[str],
     scenario: str | None,
     log_or_metric: dict | None,
 ) -> tuple[list[str], list[str], str | None, dict | None]:
-    variants = RAG_INTERMEDIATE_VARIANTS.get(question_format)
+    variant_pool = AI_INTERMEDIATE_VARIANT_POOLS.get(topic_key)
+
+    if not variant_pool:
+        return correct_points, wrong_points, scenario, log_or_metric
+
+    variants = variant_pool.get(question_format)
 
     if not variants:
         return correct_points, wrong_points, scenario, log_or_metric

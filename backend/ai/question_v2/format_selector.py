@@ -59,26 +59,203 @@ AI_INTERMEDIATE_FORMATS = [
 ]
 
 
+def _infer_preferred_intermediate_format_from_topic(topic: str) -> str | None:
+    text = topic.strip().lower()
+
+    if any(
+        keyword in text
+        for keyword in [
+            "옳지 않은",
+            "부적절",
+            "잘못된",
+            "틀린",
+            "오답",
+            "잘못된 대응",
+            "부적절한 대응",
+        ]
+    ):
+        return "ai_scenario_find_incorrect_action"
+
+    if any(
+        keyword in text
+        for keyword in [
+            "원인",
+            "이유",
+            "진단",
+            "왜",
+            "문제 원인",
+            "품질 저하",
+        ]
+    ):
+        return "ai_quality_issue_diagnosis"
+
+    if any(
+        keyword in text
+        for keyword in [
+            "로그",
+            "지표",
+            "metric",
+            "loss",
+            "accuracy",
+            "precision",
+            "recall",
+            "latency",
+            "timeout",
+            "drift",
+            "learning rate",
+            "validation loss",
+        ]
+    ):
+        return "ai_log_or_metric_interpretation"
+
+    if any(
+        keyword in text
+        for keyword in [
+            "비교",
+            "선택",
+            "방법",
+            "어떤 방법",
+            "어느 방식",
+        ]
+    ):
+        return "ai_method_compare_decision"
+
+    if any(
+        keyword in text
+        for keyword in [
+            "개선",
+            "조치",
+            "대응",
+            "해결",
+            "가장 적절",
+        ]
+    ):
+        return "ai_scenario_best_action"
+
+    return None
+
+
+def _infer_preferred_beginner_format_from_topic(topic: str) -> str | None:
+    text = topic.strip().lower()
+
+    if any(
+        keyword in text
+        for keyword in [
+            "옳지 않은",
+            "부적절",
+            "잘못된",
+            "틀린",
+            "오답",
+        ]
+    ):
+        return "ai_basic_concept_find_incorrect"
+
+    if any(
+        keyword in text
+        for keyword in [
+            "목적",
+            "사용 목적",
+            "왜 사용",
+            "쓰는 이유",
+        ]
+    ):
+        return "ai_purpose_find_correct"
+
+    if any(
+        keyword in text
+        for keyword in [
+            "차이",
+            "비교",
+            "구분",
+        ]
+    ):
+        return "ai_concept_compare_basic"
+
+    if any(
+        keyword in text
+        for keyword in [
+            "역할",
+            "용어",
+            "매칭",
+        ]
+    ):
+        return "ai_term_role_match"
+
+    if any(
+        keyword in text
+        for keyword in [
+            "개념",
+            "정의",
+            "무엇",
+            "옳은",
+        ]
+    ):
+        return "ai_basic_concept_find_correct"
+
+    return None
+
+
+def _build_plan(
+    *,
+    index: int,
+    item: dict,
+) -> QuestionFormatPlan:
+    return QuestionFormatPlan(
+        index=index,
+        question_format=item["question_format"],
+        answer_style=item["answer_style"],
+        focus=item["focus"],
+    )
+
+
+def _reorder_formats_by_preferred(
+    *,
+    source: list[dict],
+    preferred_format: str | None,
+) -> list[dict]:
+    if not preferred_format:
+        return source
+
+    preferred_items = [
+        item for item in source if item["question_format"] == preferred_format
+    ]
+
+    if not preferred_items:
+        return source
+
+    remaining_items = [
+        item for item in source if item["question_format"] != preferred_format
+    ]
+
+    return preferred_items + remaining_items
+
+
 def select_question_formats(
     *,
     difficulty: str,
     count: int,
+    topic: str = "",
 ) -> list[QuestionFormatPlan]:
     if difficulty == "초급":
         source = AI_BEGINNER_FORMATS
+        preferred_format = _infer_preferred_beginner_format_from_topic(topic)
     elif difficulty == "중급":
         source = AI_INTERMEDIATE_FORMATS
+        preferred_format = _infer_preferred_intermediate_format_from_topic(topic)
     else:
         raise ValueError(f"지원하지 않는 난이도입니다: {difficulty}")
 
-    selected = source[:count]
+    ordered_source = _reorder_formats_by_preferred(
+        source=source,
+        preferred_format=preferred_format,
+    )
+
+    selected = ordered_source[:count]
 
     return [
-        QuestionFormatPlan(
+        _build_plan(
             index=i + 1,
-            question_format=item["question_format"],
-            answer_style=item["answer_style"],
-            focus=item["focus"],
+            item=item,
         )
         for i, item in enumerate(selected)
     ]

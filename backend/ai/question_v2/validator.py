@@ -30,6 +30,15 @@ ANSWER_LEAK_PATTERNS = [
     "우선순위가 낮습니다",
     "정답입니다",
     "오답입니다",
+    "출처 확인 없이",
+    "그대로 제공합니다",
+    "생략합니다",
+    "자신 있게 답하라는",
+    "친절하라는",
+    "역할만",
+    "문장만 추가",
+    "검증을 생략",
+    "확인 단계를 생략",
 ]
 
 META_CHOICE_PATTERNS = [
@@ -91,6 +100,8 @@ def validate_generated_question(question: GeneratedQuestion) -> None:
     _validate_explanation_answer_consistency(question)
 
     body = question.body
+
+    _validate_body_polite_question(question.body)
 
     if question.answer_style == "find_correct":
         if not any(keyword in body for keyword in ["옳은 것은", "적절한 것은"]):
@@ -190,3 +201,28 @@ def _validate_explanation_answer_consistency(question: GeneratedQuestion) -> Non
         for marker in forbidden_markers:
             if marker in explanation:
                 raise ValueError("해설에 answer와 다른 선택지 번호가 포함되어 있습니다.")
+
+def _validate_body_polite_question(body: str) -> None:
+    stripped = body.strip()
+
+    informal_question_endings = [
+        "무엇인가?",
+        "어떤 것인가?",
+        "무엇인가요?",
+    ]
+
+    for ending in informal_question_endings:
+        if stripped.endswith(ending):
+            raise ValueError("문제 본문이 존댓말 질문형으로 끝나야 합니다.")
+
+    polite_question_endings = [
+        "무엇입니까?",
+        "어떤 조치입니까?",
+        "어떤 방법입니까?",
+        "어떤 원인입니까?",
+        "어떤 판단입니까?",
+        "어떤 대응입니까?",
+    ]
+
+    if not any(stripped.endswith(ending) for ending in polite_question_endings):
+        raise ValueError("문제 본문 마지막 문장이 허용된 존댓말 질문형이 아닙니다.")

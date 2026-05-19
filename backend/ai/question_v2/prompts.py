@@ -27,17 +27,19 @@ COMMON_MULTIPLE_CHOICE_RULES = """
 - evidence_pack.correct_points와 wrong_points의 문장을 선택지에 그대로 복사하지 마세요. 핵심 의미만 유지하고, 문제 상황에 맞는 새로운 선택지 문장으로 재작성하세요.
 - 선택지는 단순 기술명만 쓰지 말고, 현재 상황과의 연결이 드러나도록 짧은 조치 문장으로 작성하세요.
 - 조건, 효과, 한계를 길게 설명하지 말고 선택지는 1문장으로만 작성하세요.
+- correct_points와 wrong_points의 길이가 달라도 최종 선택지 길이는 서로 비슷하게 맞추세요.
 """
 
 QUESTION_BODY_RULES = """
 [문제 본문 작성 규칙]
 - 문제 본문은 scenario를 먼저 제시한 뒤, 마지막 문장에서 상황의 목표를 포함한 질문으로 끝내세요.
-- 단순히 "옳지 않은 것은?", "가장 적절한 방법은?"처럼 짧게 끝내지 마세요.
-- find_incorrect 문제는 "위 상황에서 검색 품질을 개선하기 위한 대응으로 옳지 않은 것은?"처럼 목적을 포함하세요.
-- best_action 문제는 "위 상황에서 검색 품질을 개선하기 위해 가장 적절한 조치는 무엇인가?"처럼 행동 기준을 명확히 하세요.
-- diagnosis 문제는 "위 현상의 원인으로 가장 적절한 것은 무엇인가?"처럼 진단 대상을 명확히 하세요.
-- method_compare_decision 문제는 "위 상황에서 목표를 달성하기 위해 가장 적절한 방법은 무엇인가?"처럼 비교 기준을 명확히 하세요.
-- log_or_metric_interpretation 문제는 "위 로그를 해석했을 때 가장 적절한 판단은 무엇인가?"처럼 로그 해석 기준을 명확히 하세요.
+- 문제 본문 마지막 문장은 반드시 존댓말 질문형으로 작성하세요.
+- "무엇인가?", "어떤 것인가?"처럼 끝내지 말고 "무엇입니까?", "어떤 조치입니까?", "어떤 방법입니까?", "어떤 원인입니까?"처럼 끝내세요.
+- find_incorrect 문제는 "위 상황에서 답변 품질을 개선하기 위한 대응으로 옳지 않은 것은 무엇입니까?"처럼 목적을 포함하세요.
+- best_action 문제는 "위 상황에서 답변 품질을 개선하기 위해 가장 적절한 조치는 무엇입니까?"처럼 행동 기준을 명확히 하세요.
+- diagnosis 문제는 "위 현상의 원인으로 가장 적절한 것은 무엇입니까?"처럼 진단 대상을 명확히 하세요.
+- method_compare_decision 문제는 "위 상황에서 목표를 달성하기 위해 가장 적절한 방법은 무엇입니까?"처럼 비교 기준을 명확히 하세요.
+- log_or_metric_interpretation 문제는 "위 로그를 해석했을 때 가장 적절한 판단은 무엇입니까?"처럼 로그 해석 기준을 명확히 하세요.
 - scenario 문장과 log_or_metric의 issue 문장을 기계적으로 이어 붙이지 말고, 자연스러운 문제 본문으로 정리하세요.
 """
 
@@ -47,13 +49,16 @@ CHOICE_STYLE_RULES = """
 - 선택지를 "~방법입니다", "~방식입니다", "~내용입니다" 같은 설명문으로 끝내지 마세요.
 - 선택지는 가능하면 "~합니다" 형태의 행동 문장으로 통일하세요.
 - 각 선택지는 25~45자 정도의 길이로 작성하세요.
+- evidence_pack의 point가 길어도 선택지는 25~45자 안에서 짧게 재작성하세요.
 - 정답 선택지가 다른 선택지보다 1.5배 이상 길어지지 않게 작성하세요.
 - best_action과 method_compare_decision 문제의 선택지는 모두 실행 가능한 조치처럼 작성하세요.
 - diagnosis 문제의 선택지는 모두 가능한 원인 후보처럼 작성하세요.
+- diagnosis 문제의 선택지는 모두 원인 후보 문장으로 작성하고, 정답만 긴 설명형 문장으로 만들지 마세요.
 - log_or_metric_interpretation 문제의 선택지는 모두 로그를 바탕으로 한 판단 또는 조치처럼 작성하세요.
 - 정답 선택지만 이유, 조건, 효과를 길게 덧붙이지 마세요.
 - 오답도 실제 가능한 조치처럼 보이게 작성하되, 현재 scenario의 핵심 원인과는 직접성이 낮게 작성하세요.
 - 선택지에 "만 사용합니다", "만 확인합니다", "무시합니다", "제외합니다"처럼 정답 힌트가 되는 단정적 표현을 쓰지 마세요.
+- 선택지는 너무 짧은 명령문으로 쓰지 말고, 판단 기준이나 대상이 드러나는 1문장으로 작성하세요.
 """
 
 COMMON_EXPLANATION_RULES = """
@@ -68,6 +73,7 @@ COMMON_EXPLANATION_RULES = """
 - 정답 번호 외의 다른 선택지 번호를 해설에서 언급하지 마세요.
 - "1번은", "2번은", "3번은", "4번은", "5번은"처럼 선택지 번호별 설명을 쓰지 마세요.
 - 오답 설명은 반드시 "다른 선택지들은 ..." 또는 "나머지 선택지들은 ..."처럼 공통 한계로 설명하세요.
+- 오답을 설명할 때 "효과가 없습니다", 성능을 저하시킵니다", "해결할 수 없습니다, "적절하지 않습니다"처럼 단정하지 말고, 현재 scenario의 핵심 원인과 직접성이 낮다고 설명하세요.
 """
 
 
@@ -98,9 +104,33 @@ AI_INTERMEDIATE_CHOICE_RULES = """
 [AI 문제 관련 중급 선택지 규칙]
 - RAG 문제에서 metadata filter가 정답인 경우, 오답은 reranker, query rewrite, chunk 조정, top_k 조정처럼 실제 가능한 개선 방법으로 구성하되 현재 문제에는 우선순위가 낮게 만드세요.
 - RAG 문제에서 reranker가 정답인 경우, 오답은 metadata filter, chunk 조정, query rewrite, top_k 조정처럼 실제 가능한 개선 방법으로 구성하되 "검색 결과 순위 부정확" 문제와는 덜 직접적으로 연결되게 만드세요.
+
+- ModelOps 문제에서 latency와 timeout이 핵심이면 정답은 최근 배포 버전, 추론 시간, 서빙 리소스, 롤백 가능성과 연결되게 작성하세요.
+- ModelOps 문제에서 drift와 정확도 하락이 핵심이면 정답은 운영 데이터 분포 변화, 피처 drift, 재학습 필요성 검토와 연결되게 작성하세요.
+- ModelOps 문제에서 batch와 real-time 추론을 비교할 때는 서비스 요구사항의 실시간성, latency, 비용을 함께 고려하게 작성하세요.
+- ModelOps 문제의 오답은 서버 증설, 모니터링, 재학습, 로그 수집, 배치 전환처럼 실제 가능한 조치로 작성하되 현재 로그의 핵심 원인과는 덜 직접적으로 연결하세요.
+- ModelOps 선택지에서 정답만 rollback, drift, latency 같은 핵심 단어를 과도하게 많이 포함하지 않게 하세요.
+- ModelOps 문제에서 latency와 timeout이 핵심이면, 정답은 서빙 로그, 리소스 사용량, 최근 배포 버전, 롤백 가능성과 연결되게 만드세요.
+
+- LLM 설정값 temperature는 "온도"로 번역하지 말고 반드시 "temperature"라고 쓰세요.
 - LLM 문제에서 근거 부족이 핵심이면, 정답은 RAG, context 제공, 검증 절차처럼 근거 확보와 연결되게 만드세요.
 - LLM 문제에서 temperature 조정은 답변 무작위성 제어에는 관련이 있지만, 최신 사실의 근거 부족을 직접 해결하는 정답으로 만들지 마세요.
-- ModelOps 문제에서 latency와 timeout이 핵심이면, 정답은 서빙 로그, 리소스 사용량, 최근 배포 버전, 롤백 가능성과 연결되게 만드세요.
+
+- ML 문제에서 data leakage가 핵심이면 정답은 split 순서, 예측 시점 이후 feature, 전처리 기준 분리와 연결되게 작성하세요.
+- ML 문제에서 overfitting이 핵심이면 정답은 train/test 성능 차이, validation 성능 정체, 일반화 성능 점검과 연결되게 작성하세요.
+- ML 문제에서 class imbalance가 핵심이면 정답은 accuracy만이 아니라 precision, recall, class weight, sampling, threshold 검토와 연결되게 작성하세요.
+- ML 문제에서 threshold가 핵심이면 정답은 precision-recall tradeoff와 운영 목적에 맞는 기준점 조정으로 작성하세요.
+- ML 문제에서 top-K 타겟팅이 핵심이면 정답은 전체 accuracy보다 상위 score 구간의 precision, recall, lift와 연결되게 작성하세요.
+- ML 문제의 오답은 교차 검증, feature importance, threshold 조정, class weight, 데이터 기간 확장처럼 실제 가능한 조치로 작성하되 현재 로그의 핵심 원인과는 덜 직접적으로 연결하세요.
+- ML 선택지에서 정답만 data leakage, overfitting, class imbalance 같은 핵심 단어를 과도하게 많이 포함하지 않게 하세요.
+
+- DL 문제에서 train loss는 낮아지고 validation loss가 증가하면 정답은 overfitting, dropout, regularization, early stopping과 연결되게 작성하세요.
+- DL 문제에서 GPU 메모리 부족이 핵심이면 정답은 batch size, 입력 크기, 모델 크기 조정과 연결되게 작성하세요.
+- DL 문제에서 loss가 크게 진동하면 정답은 learning rate 조정과 학습 안정성 확인으로 작성하세요.
+- DL 문제에서 데이터가 적은 이미지 분류가 핵심이면 정답은 transfer learning 또는 fine-tuning 활용과 연결되게 작성하세요.
+- DL 문제의 오답은 epoch 증가, batch size 조정, dropout, 입력 해상도 조정, 데이터 증강처럼 실제 가능한 조치로 작성하되 현재 로그의 핵심 원인과는 덜 직접적으로 연결하세요.
+- DL 선택지에서 정답만 overfitting, learning rate, dropout 같은 핵심 단어를 과도하게 많이 포함하지 않게 하세요.
+- early stopping 선택지는 "validation 악화 전" 또는 "validation 성능 기준"을 포함해 작성하세요.
 """
 
 FIND_INCORRECT_RULES = """
@@ -118,13 +148,14 @@ FIND_INCORRECT_RULES = """
 
 ANSWER_STYLE_RULES = """
 [문제 형식 규칙]
-- answer_style이 find_correct이면 body는 상황의 목표를 포함하여 "적절한 것은 무엇인가?" 또는 "옳은 것은 무엇인가?" 형태로 끝나야 합니다.
-- answer_style이 find_incorrect이면 body는 상황의 목표를 포함하여 "옳지 않은 것은 무엇인가?", "부적절한 것은 무엇인가?", "잘못된 것은 무엇인가?" 중 하나로 끝나야 합니다.
-- answer_style이 best_action이면 body는 상황의 목표를 포함하여 "가장 적절한 조치는 무엇인가?" 또는 "가장 적절한 방법은 무엇인가?" 형태로 끝나야 합니다.
-- answer_style이 diagnosis이면 body는 증상이나 현상을 포함하여 "원인으로 가장 적절한 것은 무엇인가?" 형태로 끝나야 합니다.
-- question_format이 ai_method_compare_decision이면 body는 비교 또는 선택의 목표를 포함하여 "가장 적절한 방법은 무엇인가?" 형태로 끝나야 합니다.
+- answer_style이 find_correct이면 body는 상황의 목표를 포함하여 "적절한 것은 무엇입니까?" 또는 "옳은 것은 무엇입니까?" 형태로 끝나야 합니다.
+- answer_style이 find_incorrect이면 body는 상황의 목표를 포함하여 "옳지 않은 것은 무엇입니까?", "부적절한 것은 무엇입니까?", "잘못된 것은 무엇입니까?" 중 하나로 끝나야 합니다.
+- answer_style이 best_action이면 body는 상황의 목표를 포함하여 "가장 적절한 조치는 무엇입니까?" 또는 "가장 적절한 방법은 무엇입니까?" 형태로 끝나야 합니다.
+- answer_style이 diagnosis이면 body는 증상이나 현상을 포함하여 "원인으로 가장 적절한 것은 무엇입니까?" 형태로 끝나야 합니다.
+- question_format이 ai_method_compare_decision이면 body는 비교 또는 선택의 목표를 포함하여 "가장 적절한 방법은 무엇입니까?" 형태로 끝나야 합니다.
 - question_format이 ai_log_or_metric_interpretation이면 body에 evidence_pack.body_context의 로그/지표 내용을 반드시 포함하세요.
 - body_context가 제공된 경우, 문제 본문 앞부분에 해당 내용을 요약하지 말고 그대로 포함하세요.
+- log_or_metric 값을 Python dict 형태로 그대로 출력하지 말고, body_context에 정리된 로그/지표 형식을 사용하세요.
 """
 
 
