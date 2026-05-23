@@ -50,15 +50,18 @@ def generate_ai_questions_v2(request: QuestionV2Request) -> list[GeneratedQuesti
                 try:
                     validate_generated_question(question)
                 except Exception as validation_exc:
+                    last_error = validation_exc
                     logger.warning(
-                        "AI Question V2 검증 실패 상세: format=%s, attempt=%s, answer=%s, body=%s, lengths=%s, choices=%s",
+                        "AI Question V2 검증 실패 상세: format=%s, attempt=%s, error=%s, answer=%s, body=%s, lengths=%s, choices=%s",
                         plan.question_format,
                         attempt,
+                        validation_exc,
                         question.answer,
                         question.body,
                         [len(choice.strip()) for choice in question.choices],
                         question.choices,
                     )
+                    raise validation_exc
 
                 questions.append(question)
                 generated = True

@@ -39,6 +39,21 @@ ANSWER_LEAK_PATTERNS = [
     "문장만 추가",
     "검증을 생략",
     "확인 단계를 생략",
+    "만으로 해결",
+    "만 기준으로",
+    "만 점검",
+    "만 비교",
+]
+
+CHOICE_PRIORITY_HINT_PATTERNS = [
+    "가장 먼저",
+    "우선적으로",
+    "최우선",
+    "즉시",
+    "우선 진행",
+    "우선 점검",
+    "우선 확인",
+    "우선 분석",
 ]
 
 META_CHOICE_PATTERNS = [
@@ -96,13 +111,18 @@ def validate_generated_question(question: GeneratedQuestion) -> None:
     # 추가 검증
     if question.difficulty == "초급":
         _validate_beginner_choice_basic_quality(question)
+        _validate_beginner_explanation_style(question)
     else:
+        _validate_intermediate_body_has_context(question)
         _validate_choice_length_balance(
             question.choices,
             difficulty=question.difficulty,
         )
         _validate_answer_length_not_obvious(question)
-        _validate_no_answer_leak_patterns(question.choices)
+        _validate_no_answer_leak_patterns(question.choices, difficulty=question.difficulty)
+        _validate_ai_intermediate_terms(question)
+        _validate_no_priority_hint_only_in_answer(question)
+        _validate_answer_body_keyword_overlap_not_obvious(question)
 
     _validate_explanation_answer_consistency(question)
 
@@ -118,9 +138,27 @@ def validate_generated_question(question: GeneratedQuestion) -> None:
                 raise ValueError("find_correct 문제는 body에 '옳은 것은' 또는 '적절한 것은'이 포함되어야 합니다.")
 
         if question.answer_style == "find_incorrect":
-            if not any(keyword in body for keyword in ["옳지 않은 것은", "부적절한 것은", "잘못된 것은"]):
+            find_incorrect_body_keywords = [
+                "옳지 않은 것은",
+                "옳지 않은 설명",
+                "옳지 않은 조치",
+                "옳지 않은 대응",
+                "부적절한 것은",
+                "부적절한 설명",
+                "부적절한 조치",
+                "부적절한 대응",
+                "잘못된 것은",
+                "잘못된 설명",
+                "잘못된 조치",
+                "잘못된 대응",
+                "부적절합니까",
+                "옳지 않습니까",
+                "잘못되었습니까",
+            ]
+
+            if not any(keyword in body for keyword in find_incorrect_body_keywords):
                 raise ValueError(
-                    "find_incorrect 문제는 body에 '옳지 않은 것은', '부적절한 것은', '잘못된 것은' 중 하나가 포함되어야 합니다."
+                    "find_incorrect 문제는 body에 옳지 않은/부적절한/잘못된 설명·조치·대응을 묻는 표현이 포함되어야 합니다."
                 )
 
         if question.answer_style == "best_action":
@@ -181,6 +219,10 @@ def _validate_beginner_body_by_format(question: GeneratedQuestion) -> None:
     elif question_format == "ai_term_role_match":
         if not any(keyword in body for keyword in ["역할", "연결"]):
             raise ValueError("초급 용어-역할 문제는 역할 또는 연결을 묻는 표현이 포함되어야 합니다.")
+
+        answer_choice = question.choices[question.answer - 1].strip()
+        if answer_choice and answer_choice in body:
+            raise ValueError("초급 용어-역할 문제의 body에 정답 선택지가 그대로 포함되어 있습니다.")
             
 def validate_generated_questions(questions: list[GeneratedQuestion]) -> None:
     for question in questions:
@@ -199,13 +241,21 @@ def _validate_choice_length_balance(
     min_len = min(lengths)
     max_len = max(lengths)
 
-    min_allowed_len = 10 if difficulty == "초급" else 18
-    max_ratio = 2.5 if difficulty == "초급" else 2.2
+    if difficulty == "초급":
+        min_allowed_len = 10
+        max_ratio = 2.8
+        max_gap = 45
+    else:
+        min_allowed_len = 16
+        max_ratio = 3.0
+        max_gap = 45
 
     if min_len < min_allowed_len:
         raise ValueError("선택지 중 지나치게 짧은 문장이 있습니다.")
 
-    if max_len >= min_len * max_ratio:
+    # 비율만 보면 19자 vs 47자 같은 정상 범위도 과하게 실패할 수 있으므로
+    # 비율과 절대 길이 차이를 함께 본다.
+    if max_len >= min_len * max_ratio and (max_len - min_len) >= max_gap:
         raise ValueError("선택지 간 길이 차이가 지나치게 큽니다.")
 
 def _validate_answer_length_not_obvious(question: GeneratedQuestion) -> None:
@@ -227,13 +277,21 @@ def _validate_answer_length_not_obvious(question: GeneratedQuestion) -> None:
 
     avg_other_len = sum(other_lengths) / len(other_lengths)
 
-    upper_ratio = 1.6 if question.difficulty == "초급" else 1.45
-    lower_ratio = 0.55 if question.difficulty == "초급" else 0.65
+    if question.difficulty == "초급":
+        upper_ratio = 1.7
+        lower_ratio = 0.5
+        min_gap = 35
+    else:
+        upper_ratio = 1.8
+        lower_ratio = 0.55
+        min_gap = 35
 
-    if answer_len > avg_other_len * upper_ratio:
+    # 정답이 조금 긴 정도는 허용하고,
+    # 평균 대비 비율도 크고 절대 차이도 큰 경우만 실패 처리한다.
+    if answer_len > avg_other_len * upper_ratio and (answer_len - avg_other_len) >= min_gap:
         raise ValueError("정답 선택지가 다른 선택지보다 지나치게 깁니다.")
 
-    if answer_len < avg_other_len * lower_ratio:
+    if answer_len < avg_other_len * lower_ratio and (avg_other_len - answer_len) >= min_gap:
         raise ValueError("정답 선택지가 다른 선택지보다 지나치게 짧습니다.")
 
 def _validate_no_answer_leak_patterns(
@@ -310,3 +368,145 @@ def _validate_body_polite_question(body: str) -> None:
         return
 
     raise ValueError("문제 본문 마지막 문장이 허용된 존댓말 질문형이 아닙니다.")
+
+def _validate_beginner_explanation_style(question: GeneratedQuestion) -> None:
+    if question.difficulty != "초급":
+        return
+
+    forbidden_words = [
+        "적절한 대응",
+        "대응입니다",
+        "조치입니다",
+        "개선 방향",
+        "현재 상황",
+        "핵심 원인",
+    ]
+
+    for word in forbidden_words:
+        if word in question.explanation:
+            raise ValueError(f"초급 해설에 중급/실무형 표현이 포함되어 있습니다: {word}")
+
+def _validate_ai_intermediate_terms(question: GeneratedQuestion) -> None:
+    if question.difficulty != "중급":
+        return
+
+    if question.competency_type != "ai":
+        return
+
+    text = " ".join([
+        question.title,
+        question.body,
+        *question.choices,
+        question.explanation,
+    ])
+
+    if "온도" in text:
+        raise ValueError("AI 중급 문제에서는 temperature를 '온도'로 번역하지 말고 temperature로 표기해야 합니다.")
+
+def _validate_intermediate_body_has_context(question: GeneratedQuestion) -> None:
+    if question.difficulty != "중급":
+        return
+
+    body = question.body.strip()
+
+    # "위 상황에서 ..."만 있고 실제 상황 설명이 없는 문제 방지
+    weak_body_prefixes = [
+        "위 상황에서",
+        "위 현상에서",
+        "위 로그를",
+        "이 상황에서",
+        "이 현상에서",
+    ]
+
+    if any(body.startswith(prefix) for prefix in weak_body_prefixes) and len(body) < 80:
+        raise ValueError("중급 문제 body에 실제 상황 설명 없이 질문 문장만 포함되어 있습니다.")
+
+    # 중급 문제는 최소한 상황 설명 + 질문으로 구성되어야 함
+    if any(body.startswith(prefix) for prefix in weak_body_prefixes) and len(body) < 80:
+        raise ValueError("중급 문제 body에 실제 상황 설명 없이 질문 문장만 포함되어 있습니다.")
+
+    # 문장이 1문장뿐이면 대부분 상황 없이 질문만 있는 문제
+    sentence_count = body.count(".") + body.count("?")
+    if sentence_count < 2 and question.question_format != "ai_log_or_metric_interpretation":
+        raise ValueError("중급 문제 body는 최소 2문장 이상의 상황 설명과 질문을 포함해야 합니다.")
+
+def _validate_no_priority_hint_only_in_answer(question: GeneratedQuestion) -> None:
+    if question.difficulty != "중급":
+        return
+
+    answer_index = question.answer - 1
+    if not (0 <= answer_index < len(question.choices)):
+        return
+
+    answer_choice = question.choices[answer_index]
+
+    answer_has_hint = any(
+        pattern in answer_choice
+        for pattern in CHOICE_PRIORITY_HINT_PATTERNS
+    )
+
+    if not answer_has_hint:
+        return
+
+    other_has_hint = any(
+        any(pattern in choice for pattern in CHOICE_PRIORITY_HINT_PATTERNS)
+        for index, choice in enumerate(question.choices)
+        if index != answer_index
+    )
+
+    if not other_has_hint:
+        raise ValueError("정답 선택지에만 우선순위 힌트 표현이 포함되어 있습니다.")
+def _extract_body_keywords_for_overlap(body: str) -> set[str]:
+    tokens = re.findall(r"[A-Za-z가-힣0-9_+-]{2,}", body.lower())
+
+    stopwords = {
+        "합니다", "있습니다", "없습니다", "됩니다", "않습니다",
+        "상황", "문제", "팀은", "가장", "적절한", "조치",
+        "방법", "원인", "판단", "무엇입니까", "어떤",
+        "현재", "위해", "통해", "대한", "관련", "경우",
+        "확인", "검토", "분석", "비교", "사용", "적용",
+    }
+
+    return {
+        token
+        for token in tokens
+        if token not in stopwords and len(token) >= 3
+    }
+
+
+def _validate_answer_body_keyword_overlap_not_obvious(question: GeneratedQuestion) -> None:
+    if question.difficulty != "중급":
+        return
+
+    answer_index = question.answer - 1
+    if not (0 <= answer_index < len(question.choices)):
+        return
+
+    body_keywords = _extract_body_keywords_for_overlap(question.body)
+    if len(body_keywords) < 4:
+        return
+
+    overlap_counts = []
+    for choice in question.choices:
+        choice_text = choice.lower()
+        overlap_count = sum(
+            1 for keyword in body_keywords
+            if keyword in choice_text
+        )
+        overlap_counts.append(overlap_count)
+
+    answer_overlap = overlap_counts[answer_index]
+    other_overlaps = [
+        count
+        for index, count in enumerate(overlap_counts)
+        if index != answer_index
+    ]
+
+    if not other_overlaps:
+        return
+
+    max_other_overlap = max(other_overlaps)
+    avg_other_overlap = sum(other_overlaps) / len(other_overlaps)
+
+    if answer_overlap >= 4 and answer_overlap >= max_other_overlap + 2 and answer_overlap >= avg_other_overlap * 2:
+        raise ValueError("정답 선택지만 문제 본문의 핵심 키워드를 과도하게 반복합니다.")

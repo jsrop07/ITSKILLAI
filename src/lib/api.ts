@@ -1,32 +1,11 @@
 import axios from "axios";
-import type {
-  Admin,
-  Applicant,
-  ApplicantCreate,
-  Diagnosis,
-  DiagnosisCreate,
-  DiagnosisUpdate,
-  Question,
-  QuestionCreate,
-  ExamRecord,
-  RecordCreate,
-  PageContent,
-  PageContentUpdate,
-  DashboardStats,
-  RecentExamRecord,
-  WeakCompetency,
-  ExamLoginResponse,
-  QuestionForExam,
-  AnswerSubmit,
-  ExamResultResponse,
-  AnswerDetail,
-} from "./types";
+import type { Admin, Applicant, ApplicantCreate, Diagnosis, DiagnosisCreate, DiagnosisUpdate, Question, QuestionCreate, ExamRecord, RecordCreate, PageContent, PageContentUpdate, DashboardStats, RecentExamRecord, WeakCompetency, ExamLoginResponse, QuestionForExam, AnswerSubmit, ExamResultResponse, AnswerDetail, GenerateAIQuestionsV2Payload, GenerateAIQuestionsV2Response, } from "./types";
 
 // ──────────────────────────────────────────────
 // Axios 인스턴스
 // ──────────────────────────────────────────────
 const api = axios.create({
-  baseURL: "http://localhost:8002",
+  baseURL: "http://localhost:9000",
   headers: { "Content-Type": "application/json" },
 });
 
@@ -424,6 +403,16 @@ export const aiDocumentApi = {
 export const aiQuestionApi = {
   generateGeneral: async (payload: GenerateAIQuestionsPayload) => {
     const res = await api.post("/api/ai/generate-questions", payload);
+    return res.data;
+  },
+
+  generateV2: async (
+    payload: GenerateAIQuestionsV2Payload
+  ): Promise<GenerateAIQuestionsV2Response> => {
+    const res = await api.post<GenerateAIQuestionsV2Response>(
+      "/api/ai/v2/generate-questions",
+      payload
+    );
     return res.data;
   },
 

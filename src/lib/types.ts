@@ -44,6 +44,7 @@ export const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
 
 export const AI_GENERATION_TYPE_LABELS: Record<string, string> = {
   general_graph: "설계서 기반",
+  ai_question_v2: "AI V2",
   rag: "문서 기반 RAG",
   manual: "수동/기존",
 };
@@ -160,6 +161,44 @@ export interface QuestionCreate {
   competency_tags_json?: string[];
   score?: number;
   ai_generation_type?: string | null;
+}
+
+export type AIDifficultyValue = "초급" | "중급" | "고급";
+export type AIQuestionTypeValue = "multiple_choice" | "essay" | "coding";
+
+export interface GenerateAIQuestionsV2Payload {
+  topic: string;
+  difficulty: AIDifficultyValue;
+  count: number;
+  question_type: AIQuestionTypeValue;
+  competency_type: "ai";
+}
+
+export interface AIQuestionV2Result {
+  id?: number;
+  question_id?: number;
+  title?: string;
+  body?: string;
+  question?: string;
+  choices?: string[];
+  choices_json?: string[];
+  answer?: number | string | any;
+  answer_json?: any;
+  explanation?: string;
+  difficulty?: string;
+  competency_type?: string;
+  question_type?: string;
+  review_status?: string;
+  ai_generation_type?: string | null;
+  created_at?: string;
+}
+
+export interface GenerateAIQuestionsV2Response {
+  message?: string;
+  source: "ai_question_v2";
+  count: number;
+  questions: AIQuestionV2Result[];
+  data?: AIQuestionV2Result[];
 }
 
 // ──────────────────────────────────────────────

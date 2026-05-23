@@ -1,31 +1,15 @@
 import { useState } from "react";
-import {
-  Card,
-  CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
-} from "../components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, } from "../components/ui/card";
 import { Button } from "../components/ui/button";
 import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Textarea } from "../components/ui/textarea";
 import { Badge } from "../components/ui/badge";
 import { Sparkles, RotateCw } from "lucide-react";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "../components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, } from "../components/ui/select";
 import { aiQuestionApi } from "../../lib/api";
-import {
-  COMPETENCY_OPTIONS,
-  TOPIC_PLACEHOLDER_MAP,
-  AI_GENERATION_TYPE_LABELS,
-  type CompetencyTypeValue,
-} from "../../lib/types";
+import { COMPETENCY_OPTIONS, TOPIC_PLACEHOLDER_MAP, AI_GENERATION_TYPE_LABELS, type CompetencyTypeValue, type GenerateAIQuestionsV2Payload, } from "../../lib/types";
+
 const formatDate = (dateStr?: string) => {
   if (!dateStr) return "-";
   try {
@@ -103,6 +87,7 @@ export default function AIQuestionGeneration() {
   const [documentScope, setDocumentScope] = useState<"none" | "rag_all">("none");
   const [detailedTopic, setDetailedTopic] = useState("");
   const [count, setCount] = useState(5);
+  const [useV2, setUseV2] = useState(true);
   const [topK, setTopK] = useState(5);
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatedQuestions, setGeneratedQuestions] = useState<any[]>([]);
@@ -175,9 +160,23 @@ export default function AIQuestionGeneration() {
     try {
       setIsGenerating(true);
 
-      const result = isRagEnabled
-        ? await aiQuestionApi.generateFromDocument(ragPayload)
-        : await aiQuestionApi.generateGeneral(generalPayload);
+      let result;
+
+      if (isRagEnabled) {
+        result = await aiQuestionApi.generateFromDocument(ragPayload);
+      } else if (competencyType === "ai" && useV2) {
+        const v2Payload: GenerateAIQuestionsV2Payload = {
+          topic: detailedTopic,
+          difficulty,
+          count,
+          question_type: questionType,
+          competency_type: "ai",
+        };
+
+        result = await aiQuestionApi.generateV2(v2Payload);
+      } else {
+        result = await aiQuestionApi.generateGeneral(generalPayload);
+      }
 
       console.log("AI 문제 생성 결과:", result);
 
@@ -313,6 +312,24 @@ export default function AIQuestionGeneration() {
                 </SelectContent>
               </Select>
             </div>
+
+            {competencyType === "ai" && !isRagEnabled && (
+              <div className="space-y-2">
+                <Label htmlFor="useV2">AI 생성 엔진</Label>
+                <Select
+                  value={useV2 ? "v2" : "v1"}
+                  onValueChange={(value) => setUseV2(value === "v2")}
+                >
+                  <SelectTrigger id="useV2">
+                    <SelectValue placeholder="AI 생성 엔진 선택" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="v2">AI V2 사용</SelectItem>
+                    <SelectItem value="v1">기존 AI 생성 사용</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
 
             <div className="space-y-2">
               <Label htmlFor="scope">문서 범위 (RAG)</Label>
