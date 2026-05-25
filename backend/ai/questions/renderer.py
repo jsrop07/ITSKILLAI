@@ -6,8 +6,8 @@ from dotenv import load_dotenv
 
 from openai import OpenAI
 
-from ai.question_v2.models import EvidencePack, GeneratedQuestion
-from ai.question_v2.prompts import QUESTION_RENDER_SYSTEM_PROMPT
+from ai.questions.models import EvidencePack, GeneratedQuestion
+from ai.questions.prompts import QUESTION_RENDER_SYSTEM_PROMPT
 
 load_dotenv()
 
@@ -84,10 +84,10 @@ def render_question_from_evidence(
         difficulty=evidence_pack.difficulty,
         competency_type="ai",
     )
-    question = _ensure_body_context_in_question(
-        question=question,
-        evidence_pack=evidence_pack,
-    )
+    # question = _ensure_body_context_in_question(
+    #     question=question,
+    #     evidence_pack=evidence_pack,
+    # )
     return question
 
 def _ensure_body_context_in_question(

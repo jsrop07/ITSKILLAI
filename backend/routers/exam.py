@@ -6,6 +6,7 @@ from datetime import datetime
 from sqlalchemy.orm import Session
 from fastapi import APIRouter, Depends, HTTPException
 from models import Record, Applicant, Diagnosis, Question
+from services.result_analysis import build_result_analysis_report
 from schemas import (ExamLoginRequest, ExamLoginResponse,QuestionForExam, ExamSubmit, ExamResultResponse,)
 
 router = APIRouter(prefix="/api/exam", tags=["exam"])
@@ -235,7 +236,22 @@ def get_exam_result(record_id: int, db: Session = Depends(get_db)):
 
     applicant = db.query(Applicant).filter(Applicant.applicant_id == record.applicant_id).first()
     diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == record.diagnosis_id).first()
+    analysis_report = None
 
+    if diagnosis and diagnosis.question_idxs:
+        q_idxs = [
+            int(idx.strip())
+            for idx in diagnosis.question_idxs.split(",")
+            if idx.strip().isdigit()
+        ]
+
+        if q_idxs:
+            questions = db.query(Question).filter(Question.question_id.in_(q_idxs)).all()
+            analysis_report = build_result_analysis_report(
+                record=record,
+                diagnosis=diagnosis,
+                questions=questions,
+            )
     return ExamResultResponse(
         record_id=record.record_id,
         applicant_name=applicant.name if applicant else "",
@@ -245,4 +261,6 @@ def get_exam_result(record_id: int, db: Session = Depends(get_db)):
         pass_yn=record.pass_yn or False,
         competency_breakdown=record.competency_breakdown_json,
         submitted_at=record.submitted_at,
+        analysis_report=analysis_report,
+        summary_comment=record.summary_comment,
     )

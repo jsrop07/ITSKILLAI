@@ -274,6 +274,8 @@ class QuestionRead(QuestionBase):
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+    has_rag_evidence: bool = False
+    rag_evidence: Optional[dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -362,6 +364,10 @@ class PageContentRead(PageContentBase):
     class Config:
         from_attributes = True
 
+class AIResultReportResponse(BaseModel):
+    record_id: int
+    summary_comment: str
+
 
 # ──────────────────────────────────────────────
 # Exam Flow Schemas (응시자)
@@ -410,6 +416,46 @@ class QuestionForExam(BaseModel):
 
         return value
 
+class ResultSummary(BaseModel):
+    total_questions: int
+    correct_count: int
+    wrong_count: int
+    accuracy_rate: float
+    total_score: float
+    pass_score: int
+    pass_yn: bool
+
+
+class ResultStatItem(BaseModel):
+    key: str
+    label: str
+    total_count: int
+    correct_count: int
+    wrong_count: int
+    accuracy_rate: float
+    earned_score: float
+    total_score: float
+
+
+class WrongAnswerItem(BaseModel):
+    question_id: int
+    question_title: str
+    competency_type: Optional[str] = None
+    competency_label: Optional[str] = None
+    difficulty: Optional[str] = None
+    submitted_answer: Optional[Any] = None
+    correct_answer: Optional[Any] = None
+    explanation: Optional[str] = None
+
+
+class ResultAnalysisReport(BaseModel):
+    summary: ResultSummary
+    competency_stats: List[ResultStatItem] = []
+    difficulty_stats: List[ResultStatItem] = []
+    weak_competencies: List[ResultStatItem] = []
+    wrong_answers: List[WrongAnswerItem] = []
+    recommendations: List[str] = []
+
 class ExamResultResponse(BaseModel):
     record_id: int
     applicant_name: str
@@ -419,6 +465,8 @@ class ExamResultResponse(BaseModel):
     pass_yn: bool
     competency_breakdown: Optional[Any] = None
     submitted_at: Optional[datetime] = None
+    analysis_report: Optional[ResultAnalysisReport] = None
+    summary_comment: Optional[str] = None
 
 
 # ──────────────────────────────────────────────

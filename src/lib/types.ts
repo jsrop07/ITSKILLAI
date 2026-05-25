@@ -45,6 +45,7 @@ export const REVIEW_STATUS_LABELS: Record<ReviewStatus, string> = {
 export const AI_GENERATION_TYPE_LABELS: Record<string, string> = {
   general_graph: "설계서 기반",
   ai_question_v2: "AI V2",
+  ai_question_v2_rag: "문서 기반 RAG V2",
   rag: "문서 기반 RAG",
   manual: "수동/기존",
 };
@@ -125,6 +126,31 @@ export interface DiagnosisUpdate extends Partial<DiagnosisCreate> {
   question_count?: number;
 }
 
+export interface RAGEvidenceDocument {
+  title?: string | null;
+  file_name?: string | null;
+  category?: string | null;
+  source_type?: string | null;
+  chunk_id?: number | null;
+  chunk_index?: number | null;
+  search_source?: string | null;
+  vector_score?: number | null;
+  keyword_score?: number | null;
+  hybrid_score?: number | null;
+  rrf_score?: number | null;
+  vector_rank?: number | null;
+  keyword_rank?: number | null;
+  content_preview?: string | null;
+}
+
+export interface RAGEvidence {
+  search_query?: string | null;
+  search_mode?: "vector" | "keyword" | "hybrid" | string;
+  top_k?: number | null;
+  category?: string | null;
+  documents?: RAGEvidenceDocument[];
+}
+
 // ──────────────────────────────────────────────
 // Question
 // ──────────────────────────────────────────────
@@ -146,6 +172,8 @@ export interface Question {
   created_by?: number;
   created_at: string;
   updated_at: string;
+  has_rag_evidence?: boolean;
+  rag_evidence?: RAGEvidence | null;
 }
 
 export interface QuestionCreate {
@@ -216,7 +244,7 @@ export interface ExamRecord {
   total_score?: number;
   pass_yn?: boolean;
   competency_breakdown_json?: Record<string, number>;
-  summary_comment?: string;
+  summary_comment?: string | null;
   result_visible: boolean;
   created_at: string;
   updated_at: string;
@@ -319,6 +347,54 @@ export interface ExamResultResponse {
   pass_yn: boolean;
   competency_breakdown?: Record<string, number>;
   submitted_at?: string;
+  analysis_report?: ResultAnalysisReport | null;
+  summary_comment?: string | null;
+}
+
+export interface AIResultReportResponse {
+  record_id: number;
+  summary_comment: string;
+}
+
+export interface ResultSummary {
+  total_questions: number;
+  correct_count: number;
+  wrong_count: number;
+  accuracy_rate: number;
+  total_score: number;
+  pass_score: number;
+  pass_yn: boolean;
+}
+
+export interface ResultStatItem {
+  key: string;
+  label: string;
+  total_count: number;
+  correct_count: number;
+  wrong_count: number;
+  accuracy_rate: number;
+  earned_score: number;
+  total_score: number;
+}
+
+export interface WrongAnswerItem {
+  question_id: number;
+  question_title: string;
+  competency_type?: string;
+  competency_label?: string;
+  difficulty?: string;
+  submitted_answer?: unknown;
+  correct_answer?: unknown;
+  explanation?: string | null;
+}
+
+export interface ResultAnalysisReport {
+  summary: ResultSummary;
+  competency_stats: ResultStatItem[];
+  difficulty_stats: ResultStatItem[];
+  weak_competencies: ResultStatItem[];
+  wrong_answers: WrongAnswerItem[];
+  recommendations: string[];
 }
 
 // ──────────────────────────────────────────────

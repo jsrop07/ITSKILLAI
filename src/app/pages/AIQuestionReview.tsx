@@ -5,6 +5,7 @@ import {
   XCircle,
   Loader2,
   Sparkles,
+  Database,
 } from "lucide-react";
 
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../components/ui/card";
@@ -141,6 +142,13 @@ export default function AIQuestionReview() {
   const selectedQuestion = useMemo(() => {
     return questions.find((q) => q.question_id === selectedId) ?? null;
   }, [questions, selectedId]);
+
+  const ragEvidence = selectedQuestion?.rag_evidence;
+  const ragDocuments = ragEvidence?.documents ?? [];
+  const shouldShowRagEvidence =
+    selectedQuestion?.ai_generation_type === "ai_question_v2_rag" &&
+    !!ragEvidence &&
+    ragDocuments.length > 0;
 
   const choices = useMemo(() => {
     return parseChoices(selectedQuestion?.choices_json);
@@ -388,6 +396,84 @@ export default function AIQuestionReview() {
                       {selectedQuestion.explanation || "-"}
                     </p>
                   </div>
+
+                  {shouldShowRagEvidence && (
+                    <div className="border border-indigo-200 bg-indigo-50/40 rounded-lg p-4 space-y-4">
+                      <div className="flex items-center gap-2">
+                        <Database className="size-4 text-indigo-700" />
+                        <p className="text-sm font-semibold text-indigo-900">
+                          RAG 생성 근거
+                        </p>
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 text-sm">
+                        <div>
+                          <p className="text-xs text-slate-500 mb-1">검색어</p>
+                          <p className="font-medium text-slate-800">
+                            {ragEvidence?.search_query || "-"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-500 mb-1">검색 방식</p>
+                          <p className="font-medium text-slate-800">
+                            {ragEvidence?.search_mode || "-"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-500 mb-1">top_k</p>
+                          <p className="font-medium text-slate-800">
+                            {ragEvidence?.top_k ?? "-"}
+                          </p>
+                        </div>
+
+                        <div>
+                          <p className="text-xs text-slate-500 mb-1">category</p>
+                          <p className="font-medium text-slate-800">
+                            {ragEvidence?.category || "-"}
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="space-y-3">
+                        {ragDocuments.map((doc, index) => (
+                          <div
+                            key={`${doc.file_name}-${doc.chunk_index}-${index}`}
+                            className="rounded-lg border border-indigo-100 bg-white p-4"
+                          >
+                            <div className="flex items-start justify-between gap-3 mb-2">
+                              <div>
+                                <p className="text-sm font-semibold text-slate-800">
+                                  {doc.title || "문서명 없음"}
+                                </p>
+                                <p className="text-xs text-slate-500">
+                                  {doc.file_name || "-"} · chunk {doc.chunk_index ?? "-"}
+                                </p>
+                              </div>
+
+                              <Badge
+                                variant="secondary"
+                                className="bg-indigo-100 text-indigo-700"
+                              >
+                                {doc.search_source || "unknown"}
+                              </Badge>
+                            </div>
+
+                            <div className="grid grid-cols-3 gap-2 text-xs text-slate-600 mb-3">
+                              <div>vector: {doc.vector_score ?? "-"}</div>
+                              <div>keyword: {doc.keyword_score ?? "-"}</div>
+                              <div>hybrid: {doc.hybrid_score ?? "-"}</div>
+                            </div>
+
+                            <div className="rounded-md bg-slate-50 border border-slate-100 p-3 text-xs text-slate-700 whitespace-pre-wrap">
+                              {doc.content_preview || "-"}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
 

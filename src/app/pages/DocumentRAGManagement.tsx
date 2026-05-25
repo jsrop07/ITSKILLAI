@@ -218,6 +218,7 @@ export default function DocumentRAGManagement() {
         competency_type: generateCategory,
         search_query: `${categoryLabel} ${topic}`,
         top_k: topK,
+        search_mode: searchMode,
       });
 
       console.log("문서 기반 문제 생성 결과:", res);
@@ -243,7 +244,7 @@ export default function DocumentRAGManagement() {
             문서 / RAG 관리
           </h1>
           <p className="text-sm text-slate-500 mt-1">
-            ChromaDB 벡터 검색 및 문서 인덱싱 관리
+            Hybrid RAG 검색 및 문서 인덱싱 관리
           </p>
         </div>
 
@@ -279,7 +280,7 @@ export default function DocumentRAGManagement() {
                 ChromaDB 벡터 데이터베이스
               </h3>
               <p className="text-sm text-slate-600 mt-0.5">
-                OpenAI Embeddings를 활용한 RAG 검색 엔진
+                OpenAI Embeddings + MariaDB FULLTEXT + RRF 기반 검색 엔진
               </p>
             </div>
 

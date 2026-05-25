@@ -9,15 +9,10 @@ from ai.questions.graph_nodes import (
     topic_validation_node,
     route_node,
     route_by_generation_mode,
-    planner_node,
-    template_node,
-    generate_stem_and_explanation_node,
-    generate_options_node,
-    rag_generation_node,
-    validation_node,
-    route_after_validation,
-    save_node,
     retrieval_node,
+    question_generation_node,
+    validation_node,
+    save_node,
 )
 
 logger = logging.getLogger("uvicorn.info")
@@ -25,29 +20,24 @@ logger = logging.getLogger("uvicorn.info")
 
 def build_question_generation_graph():
     """
-    멀티 스테이지 문제 생성 LangGraph.
+    V2 중심 문제 생성 LangGraph.
 
     흐름:
     START
     → normalize
     → topic_validation
     → route
-    → [planner / template / retrieval] 분기
-    → generate_stem_and_explanation  (planner 경로: Stage-1, template은 바이패스)
-    → generate_options               (planner/template 경로: Stage-2)
-    → rag_generation                 (rag 경로)
-    → validation
-        ↓ 충분 or retry>=3           ↓ 부족(retry<3)
-       save                    generate_stem_and_explanation (planner)
-                               generate_options              (template)
-                               rag_generation                (rag)
-    → END
+    → 조건 분기:
+        question_v2     → question_generation
+        question_v2_rag → retrieval → question_generation
+    → question_generation → validation → save → END
 
     정책:
-    - 일반 초급/중급 및 Python/Java 고급: planner → Stage-1 → Stage-2
-    - AI/SQL 고급: template → Stage-2(choice_generator 사용)
-    - 문서 기반 생성: retrieval → rag_generation
-    - retry_count >= 3: validation에서 강제 repair 후 save 진입
+    - competency_type != "ai" → route_node에서 ValueError
+    - difficulty == "고급" → route_node에서 ValueError
+    - generation_source == "rag" → retrieval_node에서 RAG 검색 후 question_generation_node로
+    - 초급/중급 일반 생성 → question_generation_node로 직행
+    - V2 service 내부에서 자체 retry/validate를 수행하므로 LangGraph retry 루프 없음
     """
     graph = StateGraph(QuestionGenerationState)
 
@@ -55,16 +45,8 @@ def build_question_generation_graph():
     graph.add_node("normalize", normalize_node)
     graph.add_node("topic_validation", topic_validation_node)
     graph.add_node("route", route_node)
-
-    graph.add_node("planner", planner_node)
-    graph.add_node("template", template_node)
     graph.add_node("retrieval", retrieval_node)
-
-    # 멀티 스테이지 생성 노드
-    graph.add_node("generate_stem_and_explanation", generate_stem_and_explanation_node)
-    graph.add_node("generate_options", generate_options_node)
-    graph.add_node("rag_generation", rag_generation_node)
-
+    graph.add_node("question_generation", question_generation_node)
     graph.add_node("validation", validation_node)
     graph.add_node("save", save_node)
 
@@ -73,43 +55,22 @@ def build_question_generation_graph():
     graph.add_edge("normalize", "topic_validation")
     graph.add_edge("topic_validation", "route")
 
-    # route → 각 경로 분기
+    # route → 조건 분기
     graph.add_conditional_edges(
         "route",
         route_by_generation_mode,
         {
-            "planner": "planner",
-            "template": "template",
-            "rag": "retrieval",
+            "question_v2": "question_generation",
+            "question_v2_rag": "retrieval",
         },
     )
 
-    # planner 경로: planner → Stage-1 → Stage-2
-    graph.add_edge("planner", "generate_stem_and_explanation")
-    graph.add_edge("generate_stem_and_explanation", "generate_options")
+    # RAG 경로: retrieval → question_generation
+    graph.add_edge("retrieval", "question_generation")
 
-    # template 경로: template → Stage-1(바이패스) → Stage-2
-    graph.add_edge("template", "generate_stem_and_explanation")
-
-    # generate_options → validation (planner + template 경로 공통)
-    graph.add_edge("generate_options", "validation")
-
-    # rag 경로
-    graph.add_edge("retrieval", "rag_generation")
-    graph.add_edge("rag_generation", "validation")
-
-    # validation → 조건부 라우팅 (충분/강제 save or 루프백)
-    graph.add_conditional_edges(
-        "validation",
-        route_after_validation,
-        {
-            "save": "save",
-            "generate_stem_and_explanation": "generate_stem_and_explanation",
-            "generate_options": "generate_options",
-            "rag_generation": "rag_generation",
-        },
-    )
-
+    # 공통: question_generation → validation → save → END
+    graph.add_edge("question_generation", "validation")
+    graph.add_edge("validation", "save")
     graph.add_edge("save", END)
 
     compiled_graph = graph.compile()

@@ -6,7 +6,7 @@ import { Input } from "../components/ui/input";
 import { Label } from "../components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { useNavigate, useParams } from "react-router";
-import { ArrowLeft, Award, Sparkles, Loader2, Save, Send } from "lucide-react";
+import { ArrowLeft, Sparkles, Loader2, Save, Send } from "lucide-react";
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from "../components/ui/table";
@@ -16,6 +16,7 @@ import {
 import { Switch } from "../components/ui/switch";
 import { applicantsApi, recordsApi, diagnosesApi } from "../../lib/api";
 import type { Applicant, ExamRecord, AnswerDetail, Diagnosis } from "../../lib/types";
+import AIReportCard from "../components/result/AIReportCard";
 
 export default function ApplicantDetail() {
   const navigate = useNavigate();
@@ -29,7 +30,8 @@ export default function ApplicantDetail() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [selectedAnswer, setSelectedAnswer] = useState<AnswerDetail | null>(null);
-
+  const [aiReportLoading, setAiReportLoading] = useState(false);
+  const [aiReportOpen, setAiReportOpen] = useState(false);
   const [form, setForm] = useState({
     name: "", email: "", phone: "", target_role: "", experience_level: "", tech_stack: "",
   });
@@ -62,7 +64,7 @@ export default function ApplicantDetail() {
           try {
             const d = await diagnosesApi.get(latest.diagnosis_id);
             setGradedDiagnosis(d);
-          } catch (e) {}
+          } catch (e) { }
         }
       }
 
@@ -86,6 +88,29 @@ export default function ApplicantDetail() {
   };
 
   useEffect(() => { loadData(); }, [id]);
+
+  const handleGenerateAIReport = async (recordId: number) => {
+    try {
+      setAiReportLoading(true);
+
+      const res = await recordsApi.generateAIReport(recordId);
+
+      setRecord((prev) =>
+        prev
+          ? {
+            ...prev,
+            summary_comment: res.summary_comment,
+          }
+          : prev
+      );
+      setAiReportOpen(true);
+    } catch (error) {
+      console.error(error);
+      alert("AI 결과 리포트 생성에 실패했습니다.");
+    } finally {
+      setAiReportLoading(false);
+    }
+  };
 
   const handleSave = async () => {
     if (!applicant) return;
@@ -204,45 +229,84 @@ export default function ApplicantDetail() {
         )}
       </div>
 
-      <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+      <div className="grid grid-cols-1 items-start gap-6 lg:grid-cols-2">
         {/* 좌: 기본 정보 */}
-        <Card className="border-slate-200">
-          <CardHeader>
-            <CardTitle>응시자 기본 정보</CardTitle>
-            <CardDescription>
-              {isPending ? "시험지 배정 전까지 응시자 정보를 수정할 수 있습니다." : "시험이 배정되어 정보를 수정할 수 없습니다."}
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-2">
-              <Label>이름 *</Label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} disabled={!isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>이메일 *</Label>
-              <Input value={form.email} onChange={(e) => setForm({ ...form, email: e.target.value })} disabled={!isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>전화번호</Label>
-              <Input value={form.phone} onChange={(e) => setForm({ ...form, phone: e.target.value })} disabled={!isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>지원 직무</Label>
-              <Input value={form.target_role} onChange={(e) => setForm({ ...form, target_role: e.target.value })} disabled={!isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>경력 수준</Label>
-              <Input value={form.experience_level} onChange={(e) => setForm({ ...form, experience_level: e.target.value })} disabled={!isPending} />
-            </div>
-            <div className="space-y-2">
-              <Label>기술 스택</Label>
-              <Input value={form.tech_stack} onChange={(e) => setForm({ ...form, tech_stack: e.target.value })} disabled={!isPending} />
-            </div>
-          </CardContent>
-        </Card>
+        <div className="space-y-4 self-start">
+          <Card className="border-slate-200 bg-white shadow-sm">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg">응시자 기본 정보</CardTitle>
+              <CardDescription>시험 배정 후에는 일부 정보만 확인 가능합니다.</CardDescription>
+            </CardHeader>
+
+            <CardContent className="p-4">
+              <div className="grid grid-cols-2 gap-2">
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs text-slate-500">이름</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{applicant?.name || "-"}</p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs text-slate-500">이메일</p>
+                  <p className="mt-1 font-medium text-slate-900 break-all">{applicant?.email || "-"}</p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs text-slate-500">전화번호</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{applicant?.phone || "-"}</p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs text-slate-500">지원 직무</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{applicant?.target_role || "-"}</p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs text-slate-500">경력 수준</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{applicant?.experience_level || "-"}</p>
+                </div>
+
+                <div className="rounded-lg bg-slate-50 px-3 py-2">
+                  <p className="text-xs text-slate-500">기술 스택</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{applicant?.tech_stack || "-"}</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+          {/* 역량 세부 분석 */}
+          {record?.competency_breakdown_json && (
+            <Card className="border-slate-200 bg-white shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-lg">역량 세부 분석</CardTitle>
+                <CardDescription>각 역량 영역별 평가 결과 (%)</CardDescription>
+              </CardHeader>
+              <CardContent className="p-4 pt-0">
+                <div className="space-y-4">
+                  {Object.entries(record.competency_breakdown_json).map(([key, value]) => {
+                    const score = Number(value || 0);
+
+                    return (
+                      <div key={key}>
+                        <div className="mb-1 flex items-center justify-between text-sm">
+                          <span className="font-medium text-slate-700">{key}</span>
+                          <span className="font-semibold text-slate-900">{score}%</span>
+                        </div>
+                        <div className="h-2 rounded-full bg-slate-100">
+                          <div
+                            className="h-2 rounded-full bg-sky-500"
+                            style={{ width: `${Math.min(score, 100)}%` }}
+                          />
+                        </div>
+                      </div>
+                    );
+                  })}
+                </div>
+              </CardContent>
+            </Card>
+          )}
+        </div>
 
         {/* 우: 시험 배정 / 결과 대시보드 */}
-        <div className="space-y-6">
+        <div className="space-y-4">
           {/* ── 배정 전 또는 배정 후 시작 전(ready) 상태: 시험 선택 수정 가능 ── */}
           {(isPending || isReady) && (
             <Card className="border-sky-200 bg-sky-50">
@@ -289,28 +353,22 @@ export default function ApplicantDetail() {
 
           {/* ── 배정 후 (Ready 상태가 아닐 때만 정보 카드 표시, Ready일 때는 위에서 수정 가능하므로 설명만) ── */}
           {isAssigned && !isReady && record && (
-            <Card className="border-sky-100 bg-sky-50">
-              <CardHeader>
-                <CardTitle className="text-sky-800 text-base">배정된 시험 정보</CardTitle>
+            <Card className="border-sky-100 bg-sky-50/60 shadow-sm">
+              <CardHeader className="pb-3">
+                <CardTitle className="text-base">배정된 시험 정보</CardTitle>
               </CardHeader>
-              <CardContent className="space-y-3 text-sm">
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">시험지</span>
-                  <div className="flex items-center gap-2">
-                    <span className="font-medium text-slate-800">{assignedDiagnosisName}</span>
-                  </div>
+
+              <CardContent className="grid grid-cols-1 gap-3 md:grid-cols-2 p-4">
+                <div className="rounded-lg bg-white/80 px-4 py-3">
+                  <p className="text-xs text-slate-500">시험지</p>
+                  <p className="mt-1 text-sm font-medium text-slate-900">{gradedDiagnosis?.title || "-"}</p>
                 </div>
-                {record.deadline_at && (
-                  <div className="flex items-center justify-between">
-                    <span className="text-slate-500">응시 마감일</span>
-                    <span className="font-medium text-slate-800">
-                      {new Date(record.deadline_at).toLocaleDateString("ko-KR")}
-                    </span>
-                  </div>
-                )}
-                <div className="flex items-center justify-between">
-                  <span className="text-slate-500">응시 토큰</span>
-                  <code className="text-xs bg-white border border-slate-200 rounded px-2 py-0.5 font-mono text-slate-700">{record.login_token}</code>
+
+                <div className="rounded-lg bg-white/80 px-4 py-3">
+                  <p className="text-xs text-slate-500">응시 토큰</p>
+                  <p className="mt-1 font-mono text-xs text-slate-700 break-all">
+                    {record?.login_token || "-"}
+                  </p>
                 </div>
               </CardContent>
             </Card>
@@ -320,82 +378,133 @@ export default function ApplicantDetail() {
           {isAssigned && (
             <Card className="border-slate-200">
               <CardHeader>
-                <CardTitle>시험 결과 대시보드</CardTitle>
-                <CardDescription>
-                  {gradedDiagnosis ? `응시한 시험: ${gradedDiagnosis.title}` : "응시 완료된 시험 내역"}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                {/* 결과 공개 토글 */}
-                <div className="flex items-center justify-between mb-4 pb-4 border-b border-slate-100">
-                  <div className="flex items-center gap-3">
-                    <Label className="text-sm font-medium text-slate-700">응시자에게 결과 공개</Label>
-                    <Switch
-                      checked={record?.result_visible ?? false}
-                      onCheckedChange={handleToggleVisible}
-                      disabled={!record}
-                    />
+                <div className="flex items-start justify-between gap-4">
+                  <div>
+                    <CardTitle>시험 결과 대시보드</CardTitle>
+                    <CardDescription>
+                      제출 결과와 공개 상태를 관리합니다.
+                    </CardDescription>
                   </div>
-                  {record?.submitted_at && (
-                    <p className="text-xs text-slate-500">
-                      제출일시: {new Date(record.submitted_at).toLocaleString()}
-                    </p>
+
+                  {record?.status === "graded" && (
+                    <Button
+                      type="button"
+                      size="sm"
+                      variant={record.summary_comment ? "outline" : "default"}
+                      onClick={() => {
+                        if (record.summary_comment) {
+                          setAiReportOpen(true);
+                        } else {
+                          handleGenerateAIReport(record.record_id);
+                        }
+                      }}
+                      disabled={aiReportLoading}
+                      className="shrink-0 gap-2"
+                    >
+                      {aiReportLoading ? (
+                        <>
+                          <Loader2 className="h-4 w-4 animate-spin" />
+                          생성 중...
+                        </>
+                      ) : (
+                        <>
+                          <Sparkles className="h-4 w-4" />
+                          {record.summary_comment ? "AI 분석 보기" : "AI 리포트 생성"}
+                        </>
+                      )}
+                    </Button>
                   )}
                 </div>
+              </CardHeader>
 
-                {/* 점수 표시 */}
-                <div className="flex items-center justify-center">
-                  {record && record.total_score != null ? (
-                    <div className="text-center w-full">
-                      <div className="inline-flex items-center justify-center size-24 rounded-full bg-gradient-to-br from-sky-100 to-sky-50 border-4 border-sky-200">
-                        <div>
-                          <p className="text-3xl font-bold text-sky-700">{record.total_score}</p>
-                          <p className="text-xs text-sky-600">점</p>
-                        </div>
+              <CardContent className="p-4 pt-0">
+                <div className="grid grid-cols-1 gap-4 md:grid-cols-[1.1fr_0.9fr]">
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <div className="flex items-center justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">
+                          응시자에게 결과 공개
+                        </p>
+                        <p className="mt-1 text-xs text-slate-500">
+                          공개 후 응시자 결과 화면에서 확인할 수 있습니다.
+                        </p>
                       </div>
-                      <div className="mt-3">
+
+                      <Switch
+                        checked={record?.result_visible ?? false}
+                        onCheckedChange={handleToggleVisible}
+                        disabled={!record}
+                      />
+                    </div>
+
+                    <div className="mt-4 grid grid-cols-2 gap-3">
+                      <div className="rounded-lg bg-white px-3 py-2">
+                        <p className="text-[11px] text-slate-500">제출일시</p>
+                        <p className="mt-1 text-xs font-medium text-slate-900">
+                          {record?.submitted_at
+                            ? new Date(record.submitted_at).toLocaleString("ko-KR")
+                            : "-"}
+                        </p>
+                      </div>
+
+                      <div className="rounded-lg bg-white px-3 py-2">
+                        <p className="text-[11px] text-slate-500">응시 상태</p>
+                        <p className="mt-1 text-xs font-medium text-slate-900">
+                          {record?.status || "-"}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="rounded-xl bg-slate-50 p-4">
+                    <div className="flex items-start justify-between gap-4">
+                      <div>
+                        <p className="text-sm font-medium text-slate-700">점수 요약</p>
+
+                        {record?.total_score != null ? (
+                          <>
+                            <p className="mt-3 text-3xl font-bold text-slate-900">
+                              {record.total_score}
+                              <span className="ml-1 text-base font-normal text-slate-500">
+                                점
+                              </span>
+                            </p>
+                            <p className="mt-1 text-xs text-slate-500">
+                              합격 기준 {gradedDiagnosis?.pass_score ?? 70}점
+                            </p>
+                          </>
+                        ) : (
+                          <p className="mt-3 text-sm text-slate-500">
+                            아직 채점 결과가 없습니다.
+                          </p>
+                        )}
+                      </div>
+
+                      {record?.total_score != null && (
                         <Badge
-                          variant="secondary"
-                          className={record.pass_yn ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}
+                          className={
+                            record.pass_yn
+                              ? "bg-emerald-100 text-emerald-700"
+                              : "bg-rose-100 text-rose-700"
+                          }
                         >
                           {record.pass_yn ? "합격" : "불합격"}
                         </Badge>
-                      </div>
+                      )}
                     </div>
-                  ) : (
-                    <div className="py-8 w-full text-center text-slate-400">
-                      <Award className="size-10 mx-auto mb-3 opacity-40" />
-                      <p>시험이 아직 진행되지 않았거나 채점 전입니다.</p>
-                    </div>
-                  )}
-                </div>
-              </CardContent>
-            </Card>
-          )}
 
-          {/* 역량 세부 분석 */}
-          {Object.keys(competencies).length > 0 && (
-            <Card className="border-slate-200">
-              <CardHeader>
-                <CardTitle className="text-lg">역량 세부 분석</CardTitle>
-                <CardDescription>각 역량 영역별 평가 결과 (%)</CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="space-y-4">
-                  {Object.entries(competencies).map(([name, score], idx) => (
-                    <div key={idx} className="space-y-2">
-                      <div className="flex items-center justify-between">
-                        <p className="text-sm font-medium text-slate-700">{name}</p>
-                        <p className="text-lg font-semibold text-slate-800">{score}%</p>
-                      </div>
-                      <div className="h-3 bg-slate-100 rounded-full overflow-hidden">
+                    {record?.total_score != null && (
+                      <div className="mt-4 h-2 rounded-full bg-slate-200">
                         <div
-                          className="h-full bg-gradient-to-r from-sky-500 to-sky-400 rounded-full transition-all"
-                          style={{ width: `${score}%` }}
+                          className={`h-2 rounded-full ${record.pass_yn ? "bg-emerald-500" : "bg-amber-500"
+                            }`}
+                          style={{
+                            width: `${Math.min(Number(record.total_score || 0), 100)}%`,
+                          }}
                         />
                       </div>
-                    </div>
-                  ))}
+                    )}
+                  </div>
                 </div>
               </CardContent>
             </Card>
@@ -404,95 +513,129 @@ export default function ApplicantDetail() {
       </div>
 
       {/* 문제별 상세 결과 */}
-      {answers.length > 0 && (
-        <Card className="border-slate-200">
-          <CardHeader>
-            <CardTitle className="text-lg">문제별 상세 결과</CardTitle>
-            <CardDescription>문제를 클릭하면 정답과 상세 내용을 확인할 수 있습니다.</CardDescription>
-          </CardHeader>
-          <CardContent className="p-0">
-            <Table>
-              <TableHeader>
-                <TableRow>
-                  <TableHead>#</TableHead>
-                  <TableHead>문제</TableHead>
-                  <TableHead>역량</TableHead>
-                  <TableHead>난이도</TableHead>
-                  <TableHead>응답</TableHead>
-                  <TableHead>정답 여부</TableHead>
-                  <TableHead>점수</TableHead>
-                </TableRow>
-              </TableHeader>
-              <TableBody>
-                {answers.map((ans, idx) => (
-                  <TableRow
-                    key={ans.answer_id}
-                    className="cursor-pointer hover:bg-slate-50 transition-colors"
-                    onClick={() => setSelectedAnswer(ans)}
-                  >
-                    <TableCell className="font-medium">{idx + 1}</TableCell>
-                    <TableCell className="max-w-sm text-slate-700 text-sm">{ans.question_title}</TableCell>
-                    <TableCell>
-                      {ans.competency_type && (
-                        <Badge variant="secondary" className="bg-sky-100 text-sky-700">{ans.competency_type}</Badge>
-                      )}
-                    </TableCell>
-                    <TableCell>
-                      {ans.difficulty && (
-                        <Badge
-                          variant="secondary"
-                          className={
-                            ans.difficulty === "고급"
-                              ? "bg-red-100 text-red-700"
-                              : ans.difficulty === "중급"
-                              ? "bg-amber-100 text-amber-700"
-                              : "bg-green-100 text-green-700"
-                          }
-                        >
-                          {ans.difficulty}
-                        </Badge>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-600 max-w-xs truncate" title={ans.answer_text || ""}>
-                      {ans.answer_text || "-"}
-                    </TableCell>
-                    <TableCell>
-                      {ans.is_correct != null ? (
-                        <Badge
-                          variant="secondary"
-                          className={ans.is_correct ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}
-                        >
-                          {ans.is_correct ? "정답" : "오답"}
-                        </Badge>
-                      ) : (
-                        <span className="text-slate-400 text-sm">-</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-sm text-slate-700">{ans.earned_score}점</TableCell>
+      {
+        answers.length > 0 && (
+          <Card className="border-slate-200">
+            <CardHeader>
+              <CardTitle className="text-lg">문제별 상세 결과</CardTitle>
+              <CardDescription>문제를 클릭하면 정답과 상세 내용을 확인할 수 있습니다.</CardDescription>
+            </CardHeader>
+            <CardContent className="p-0">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>#</TableHead>
+                    <TableHead>문제</TableHead>
+                    <TableHead>역량</TableHead>
+                    <TableHead>난이도</TableHead>
+                    <TableHead>응답</TableHead>
+                    <TableHead>정답 여부</TableHead>
+                    <TableHead>점수</TableHead>
                   </TableRow>
-                ))}
-              </TableBody>
-            </Table>
-          </CardContent>
-        </Card>
-      )}
+                </TableHeader>
+                <TableBody>
+                  {answers.map((ans, idx) => (
+                    <TableRow
+                      key={ans.answer_id}
+                      className="cursor-pointer hover:bg-slate-50 transition-colors"
+                      onClick={() => setSelectedAnswer(ans)}
+                    >
+                      <TableCell className="font-medium">{idx + 1}</TableCell>
+                      <TableCell className="max-w-sm text-slate-700 text-sm">{ans.question_title}</TableCell>
+                      <TableCell>
+                        {ans.competency_type && (
+                          <Badge variant="secondary" className="bg-sky-100 text-sky-700">{ans.competency_type}</Badge>
+                        )}
+                      </TableCell>
+                      <TableCell>
+                        {ans.difficulty && (
+                          <Badge
+                            variant="secondary"
+                            className={
+                              ans.difficulty === "고급"
+                                ? "bg-red-100 text-red-700"
+                                : ans.difficulty === "중급"
+                                  ? "bg-amber-100 text-amber-700"
+                                  : "bg-green-100 text-green-700"
+                            }
+                          >
+                            {ans.difficulty}
+                          </Badge>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-600 max-w-xs truncate" title={ans.answer_text || ""}>
+                        {ans.answer_text || "-"}
+                      </TableCell>
+                      <TableCell>
+                        {ans.is_correct != null ? (
+                          <Badge
+                            variant="secondary"
+                            className={ans.is_correct ? "bg-green-100 text-green-700" : "bg-red-100 text-red-700"}
+                          >
+                            {ans.is_correct ? "정답" : "오답"}
+                          </Badge>
+                        ) : (
+                          <span className="text-slate-400 text-sm">-</span>
+                        )}
+                      </TableCell>
+                      <TableCell className="text-sm text-slate-700">{ans.earned_score}점</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </CardContent>
+          </Card>
+        )
+      }
+      {/* AI 리포트 모달 */}
+      <Dialog open={aiReportOpen} onOpenChange={setAiReportOpen}>
+        <DialogContent className="w-[92vw] !max-w-5xl sm:!max-w-5xl">
+          <DialogHeader>
+            <div className="flex items-start justify-between gap-4">
+              <div>
+                <DialogTitle>AI 종합 진단 리포트</DialogTitle>
+                <p className="mt-1 text-sm text-slate-500">
+                  응시자의 정오답 패턴과 문제 내용을 기반으로 생성된 관리자용 AI 분석입니다.
+                </p>
+              </div>
 
-      {/* AI 분석 요약 */}
-      {record?.summary_comment && (
-        <Card className="border-slate-200">
-          <CardHeader>
-            <CardTitle className="text-lg flex items-center gap-2">
-              <Sparkles className="size-5 text-violet-600" />
-              AI 분석 요약
-            </CardTitle>
-            <CardDescription>LLM 기반 종합 평가</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-slate-700 leading-relaxed">{record.summary_comment}</p>
-          </CardContent>
-        </Card>
-      )}
+              {record?.status === "graded" && (
+                <Button
+                  type="button"
+                  size="sm"
+                  variant="outline"
+                  onClick={() => handleGenerateAIReport(record.record_id)}
+                  disabled={aiReportLoading}
+                  className="mr-8 shrink-0 gap-2"
+                >
+                  {aiReportLoading ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      재생성 중...
+                    </>
+                  ) : (
+                    <>
+                      <Sparkles className="h-4 w-4" />
+                      리포트 재생성
+                    </>
+                  )}
+                </Button>
+              )}
+            </div>
+          </DialogHeader>
 
+          {record?.summary_comment ? (
+            <AIReportCard
+              report={record.summary_comment}
+              description="응시자의 정오답 패턴과 문제 내용을 기반으로 생성된 관리자용 AI 분석입니다."
+            />
+          ) : (
+            <div className="rounded-lg bg-slate-50 p-4 text-sm text-slate-500">
+              아직 생성된 AI 리포트가 없습니다.
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
       {/* 문제 상세 클릭 모달 */}
       <Dialog open={!!selectedAnswer} onOpenChange={(open) => !open && setSelectedAnswer(null)}>
         <DialogContent className="max-w-2xl">
@@ -523,7 +666,7 @@ export default function ApplicantDetail() {
                   {selectedAnswer.choices_json.map((choice: string, i: number) => {
                     const isCorrect = String(selectedAnswer.correct_answer_json).startsWith(String(i + 1) + "번");
                     const isSelected = String(selectedAnswer.answer_text).startsWith(String(i + 1) + "번");
-                    
+
                     return (
                       <div key={i} className="flex items-center gap-2 bg-slate-50 p-2 rounded-lg">
                         <span className="size-7 flex-shrink-0 flex items-center justify-center rounded-full bg-slate-200 text-slate-600 text-sm font-medium">
@@ -570,6 +713,6 @@ export default function ApplicantDetail() {
           )}
         </DialogContent>
       </Dialog>
-    </div>
+    </div >
   );
 }

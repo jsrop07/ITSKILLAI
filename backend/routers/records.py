@@ -2,8 +2,9 @@ from database import get_db
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from models import Record, Applicant, Diagnosis, Question
-from schemas import RecordCreate, RecordUpdate, RecordRead
 from fastapi import APIRouter, Depends, HTTPException, Query
+from services.ai_result_report import generate_ai_result_report
+from schemas import RecordCreate, RecordUpdate, RecordRead, AIResultReportResponse
 
 router = APIRouter(prefix="/api/records", tags=["records"])
 
@@ -46,7 +47,53 @@ def create_record(data: RecordCreate, db: Session = Depends(get_db)):
     db.refresh(record)
     return record
 
+@router.post("/{record_id}/ai-report", response_model=AIResultReportResponse)
+def generate_record_ai_report(record_id: int, db: Session = Depends(get_db)):
+    record = db.query(Record).filter(Record.record_id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="응시 기록을 찾을 수 없습니다.")
 
+    if record.status != "graded":
+        raise HTTPException(status_code=400, detail="채점 완료된 기록만 AI 리포트를 생성할 수 있습니다.")
+
+    diagnosis = db.query(Diagnosis).filter(
+        Diagnosis.diagnosis_id == record.diagnosis_id
+    ).first()
+
+    if not diagnosis or not diagnosis.question_idxs:
+        raise HTTPException(status_code=404, detail="시험 정보를 찾을 수 없습니다.")
+
+    q_idxs = [
+        int(x.strip())
+        for x in diagnosis.question_idxs.split(",")
+        if x.strip().isdigit()
+    ]
+
+    if not q_idxs:
+        raise HTTPException(status_code=400, detail="시험 문항 정보가 없습니다.")
+
+    questions = db.query(Question).filter(
+        Question.question_id.in_(q_idxs)
+    ).all()
+
+    summary_comment = generate_ai_result_report(
+        record=record,
+        diagnosis=diagnosis,
+        questions=questions,
+    )
+
+    if not summary_comment:
+        raise HTTPException(status_code=500, detail="AI 리포트 생성에 실패했습니다.")
+
+    record.summary_comment = summary_comment
+    db.commit()
+    db.refresh(record)
+
+    return AIResultReportResponse(
+        record_id=record.record_id,
+        summary_comment=record.summary_comment,
+    )
+    
 @router.get("/{record_id}", response_model=RecordRead)
 def get_record(record_id: int, db: Session = Depends(get_db)):
     record = db.query(Record).filter(Record.record_id == record_id).first()

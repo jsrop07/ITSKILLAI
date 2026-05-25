@@ -10,8 +10,8 @@ from ai.core.config import normalize_competency_type, COMPETENCY_KEYWORDS
 from models import Question
 
 # 새로운 파일
-from ai.question_v2.models import QuestionV2Request
-from ai.question_v2.service import generate_ai_questions_v2
+from ai.questions.models import QuestionV2Request
+from ai.questions.service import generate_ai_questions_v2
 
 
 router = APIRouter(prefix="/api/ai", tags=["AI Questions"])
@@ -70,7 +70,7 @@ def generate_ai_questions(
 
         return {
             "message": "AI 문제가 생성되었습니다.",
-            "source": "general_graph",
+            "source": "langgraph_question_v2",
             "count": len(saved_questions),
             "questions": saved_questions
         }
@@ -125,7 +125,7 @@ def generate_ai_questions_from_document(
 
         return {
             "message": "문서 기반 AI 문제가 생성되었습니다.",
-            "source": "rag",
+            "source": "langgraph_question_v2_rag",
             "count": len(saved_questions),
             "questions": saved_questions,
         }

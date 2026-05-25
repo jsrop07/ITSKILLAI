@@ -1,4 +1,4 @@
-from ai.question_v2.models import QuestionFormatPlan
+from ai.questions.models import QuestionFormatPlan
 
 
 AI_BEGINNER_FORMATS = [

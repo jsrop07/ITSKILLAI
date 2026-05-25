@@ -1,1578 +1,594 @@
-# backend/ai/questions/validator.py
-
 import re
-import logging
-from typing import Any
-from ai.core.config import normalize_competency_type
-from ai.questions.text_normalizer import normalize_question_text
-
-logger = logging.getLogger("uvicorn.info")
-
-
-def _has_answer_length_bias(q: dict) -> bool:
-    """
-    정답 선택지가 오답들보다 과도하게 길어서 정답이 노출되는 문제를 감지한다.
-    단, 출력 결과 예측(output_prediction) 유형은 선택지가 원래 짧으므로 제외한다.
-    """
-    choices = q.get("choices", [])
-    answer = q.get("answer")
-    answer_style = str(q.get("answer_style", "")).strip()
-
-    # output_prediction 유형은 선택지가 짧을 수 있으므로 제외
-    if answer_style == "output_prediction":
-        return False
-
-    if not isinstance(choices, list) or len(choices) != 5:
-        return False
-    try:
-        ans_idx = int(answer) - 1
-        if ans_idx < 0 or ans_idx > 4:
-            return False
-    except Exception:
-        return False
-
-    correct_len = len(str(choices[ans_idx]).strip())
-    wrong_lens = [len(str(c).strip()) for i, c in enumerate(choices) if i != ans_idx]
-    if not wrong_lens:
-        return False
-
-    avg_wrong_len = sum(wrong_lens) / len(wrong_lens)
-    max_wrong_len = max(wrong_lens)
-
-    # 1.5배 이상이고 최장 오답보다 20자 이상 긴 경우에만 탈락
-    if correct_len >= avg_wrong_len * 1.5 and correct_len >= max_wrong_len + 20:
-        return True
-    return False
-
-def _is_explanation_too_similar_to_answer_choice(q: dict) -> bool:
-    choices = q.get("choices", [])
-    answer = q.get("answer")
-    explanation = q.get("explanation", "")
-
-    if not isinstance(choices, list) or len(choices) != 5 or not explanation:
-        return False
-    try:
-        ans_idx = int(answer) - 1
-        if ans_idx < 0 or ans_idx > 4:
-            return False
-    except Exception:
-        return False
-
-    ans_text = str(choices[ans_idx]).strip()
-    exp_text = str(explanation).strip()
-
-    exp_text_clean = re.sub(r"^정답은\s*\d\s*번입니다\.?\s*", "", exp_text).strip()
-
-    # 선택지 텍스트가 해설 전체에 그대로 있고, 해설이 선택지보다 40자 이하로만 더 긴 경우
-    if ans_text in exp_text_clean and len(exp_text_clean) < len(ans_text) + 40:
-        return True
-    return False
-
-def _has_too_obvious_distractors(q: dict) -> bool:
-    """
-    오답이 너무 뻔해서 쉽게 제거되는 패턴을 가진 문제를 감지한다.
-    lock_choices=True인 템플릿 문제는 선택지 품질을 별도 검증했으므로 제외한다.
-    """
-    # 템플릿 문제는 이미 수작업으로 선택지를 검증했으므로 제외
-    if q.get("lock_choices") is True:
-        return False
-
-    choices = q.get("choices", [])
-    if not isinstance(choices, list) or len(choices) != 5:
-        return False
-
-    extreme_patterns = [
-        "항상", "무조건", "절대", "전혀", "모든 ", "유일한",
-        "보장한다", "보장합니다",
-        "필요하지 않다", "필요하지 않습니다",
-        "사용하지 않는다", "사용하지 않습니다",
-        "삭제한다", "삭제합니다",
-        "생략한다", "생략합니다",
-        "무시한다", "무시합니다",
-        "아무 조치", "관련 없는",
-        "잘못된 설명:",
-        "오답 후보:",
-        "관련 없는 설명:",
-        "혼동하기 쉬운 설명:",
-    ]
-
-    count = 0
-    for choice in choices:
-        c_text = str(choice)
-        if any(p in c_text for p in extreme_patterns):
-            count += 1
-
-    # 2개 이상의 선택지가 극단 표현을 가질 때만 탈락 (기존 3 → 2 )
-    return count >= 2
-
-def validate_questions(
-    questions: list,
-    question_type: str,
-    difficulty: str,
-    score: int,
-) -> list[dict[str, Any]]:
-    """
-    LLM이 생성한 문제 목록을 검증하고, 통과한 문제만 반환한다.
-
-    - JSON 배열 구조 검증
-    - 객관식 choices / answer / explanation 검증
-    - 서술형/코드작성형 answer 검증
-    - validator는 항상 동일한 기준으로 통과/탈락만 판단한다.
-    """
-    return _validate_questions(
-        questions=questions,
-        question_type=question_type,
-        difficulty=difficulty,
-        score=score,
-    )
-
-
-def _extract_answer_number_from_explanation(explanation: str):
-    if not explanation:
-        return None
-
-    patterns = [
-        r"정답은\s*(\d)\s*번",
-        r"정답\s*:\s*(\d)\s*번",
-        r"답은\s*(\d)\s*번",
-        r"(\d)\s*번이\s*정답",
-    ]
-
-    for pattern in patterns:
-        match = re.search(pattern, explanation)
-        if match:
-            try:
-                return int(match.group(1))
-            except Exception:
-                return None
-
-    return None
-
-
-def _has_explanation_contradiction(explanation: str, answer: int) -> bool:
-    """
-    객관식 해설에서 정답이 아닌 선택지를 '정확하다', '올바르다', '맞다'처럼
-    설명하는 경우 복수정답 가능성이 있으므로 품질 경고로 남긴다.
-    """
-    if not explanation:
-        return False
-
-    text = str(explanation)
-
-    positive_patterns = [
-        r"(\d)\s*번\s*선택지는\s*.*(정확|올바르|맞는|타당|적절)",
-        r"(\d)\s*번은\s*.*(정확|올바르|맞는|타당|적절)",
-    ]
-
-    for pattern in positive_patterns:
-        for match in re.finditer(pattern, text):
-            try:
-                mentioned_no = int(match.group(1))
-            except Exception:
-                continue
-
-            if mentioned_no != answer:
-                return True
-
-    return False
-
-
-def _find_weak_multiple_choice_options(q: dict, difficulty: str) -> list[str]:
-    """
-    고급 객관식에서 너무 쉽게 제거되는 선택지 표현을 찾는다.
-    단, 여기서는 문제를 폐기하지 않고 quality_warnings 용도로만 사용한다.
-    """
-    if difficulty != "고급":
-        return []
-
-    choices = q.get("choices", [])
-
-    if not isinstance(choices, list):
-        return []
-
-    weak_patterns = [
-        "무시한다",
-        "완전히 제거",
-        "무조건",
-        "항상",
-        "오직",
-        "성능만",
-        "보안만",
-        "아무 조치",
-        "고려하지 않는다",
-        "방치한다",
-    ]
-
-    found: list[str] = []
-
-    for choice in choices:
-        choice_text = str(choice)
-
-        for pattern in weak_patterns:
-            if pattern in choice_text:
-                found.append(f"'{pattern}' 포함 선택지: {choice_text}")
-
-    return found
-
-def _find_meta_choice_expressions(q: dict) -> list[str]:
-    """
-    choices에 '오해할 수 있다', '혼동할 수 있다'처럼
-    학습자의 상태를 설명하는 메타 문장이 들어간 경우를 감지한다.
-    선택지는 개념/코드/쿼리에 대한 직접 설명이어야 한다.
-    """
-    choices = q.get("choices", [])
-
-    if not isinstance(choices, list):
-        return []
-
-    meta_patterns = [
-        "오해할 수 있다",
-        "오해할 수",
-        "오해한다",
-        "오해",
-        "혼동할 수 있다",
-        "혼동할 수",
-        "혼동한다",
-        "혼동",
-        "착각할 수 있다",
-        "착각할 수",
-        "착각한다",
-        "착각",
-        "잘못 이해할 수 있다",
-        "잘못 이해",
-    ]
-
-    found: list[str] = []
-
-    for choice in choices:
-        choice_text = str(choice)
-
-        for pattern in meta_patterns:
-            if pattern in choice_text:
-                found.append(f"메타 표현 선택지: '{pattern}' / {choice_text}")
-
-    return found
-
-def _should_reject_for_choice_quality(q: dict, difficulty: str) -> bool:
-    """
-    고급 객관식에서 정말 심각한 선택지 품질 문제만 실제 폐기한다.
-
-    주의:
-    - '무시', '고려하지 않는다'는 LLM이 오답 한계를 설명할 때 자주 쓰므로
-      지금 단계에서는 reject하지 않고 warning으로만 처리한다.
-    - 너무 강하게 reject하면 validated=0으로 400이 다시 발생한다.
-    """
-    if difficulty != "고급":
-        return False
-
-    choices = q.get("choices", [])
-
-    if not isinstance(choices, list) or len(choices) != 5:
-        return True
-
-    extreme_reject_patterns = [
-        "모든 컬럼",
-        "모든 테이블",
-        "모든 데이터",
-        "모든 조건",
-        "모든 조인",
-        "모든 접근",
-        "데이터를 삭제",
-        "접근을 차단",
-        "완전히 제거",
-    ]
-
-    bad_choice_count = 0
-
-    for choice in choices:
-        choice_text = str(choice)
-
-        if any(pattern in choice_text for pattern in extreme_reject_patterns):
-            bad_choice_count += 1
-
-    # 정말 심각한 선택지가 2개 이상일 때만 폐기
-    return bad_choice_count >= 2
-
-def _find_hard_choice_quality_errors(q: dict, difficulty: str) -> list[str]:
-    """
-    객관식 선택지 품질이 낮은 경우를 감지한다.
-    현재 단계에서는 hard reject하지 않고 quality_warnings에만 남긴다.
-    """
-    if difficulty != "고급":
-        return []
-
-    choices = q.get("choices", [])
-    answer = q.get("answer")
-
-    if not isinstance(choices, list) or len(choices) != 5:
-        return ["선택지가 5개가 아닙니다."]
-
-    try:
-        answer_int = int(answer)
-    except Exception:
-        return ["answer가 숫자가 아닙니다."]
-
-    if answer_int < 1 or answer_int > 5:
-        return ["answer가 1~5 범위를 벗어났습니다."]
-
-    errors: list[str] = []
-
-    correct_choice = str(choices[answer_int - 1]).strip()
-    wrong_choices = [
-        str(choice).strip()
-        for idx, choice in enumerate(choices)
-        if idx != answer_int - 1
-    ]
-
-    choice_lengths = [len(str(choice).strip()) for choice in choices]
-    wrong_lengths = [len(choice) for choice in wrong_choices]
-
-    avg_wrong_len = sum(wrong_lengths) / max(len(wrong_lengths), 1)
-    min_len = min(choice_lengths)
-    max_len = max(choice_lengths)
-
-    if len(correct_choice) > avg_wrong_len * 1.35:
-        errors.append("정답 선택지만 다른 오답보다 과도하게 길어 정답이 노출됩니다.")
-
-    if min_len > 0 and max_len / min_len >= 2.0:
-        errors.append("선택지 간 길이 편차가 너무 커서 정답 추측 가능성이 높습니다.")
-
-    too_short_choices = [
-        choice for choice in choices
-        if len(str(choice).strip()) < 22
-    ]
-
-    if too_short_choices:
-        errors.append(
-            f"고급 문제에 너무 짧은 선택지가 포함되어 있습니다: {too_short_choices}"
+
+from ai.questions.models import GeneratedQuestion
+
+ANSWER_LEAK_PATTERNS = [
+    "부적절합니다",
+    "잘못된 접근입니다",
+    "오답입니다",
+    "틀렸습니다",
+    "정답입니다",
+    "항상 해결",
+    "무조건",
+    "필요 없습니다",
+    "무시합니다",
+    "삭제합니다",
+    "제거합니다",
+    "원인을 구분하지",
+    "평가하지 않고",
+    "검토하지 않고",
+    "확인하지 않고",
+    "만 판단합니다",
+    "만 확인합니다",
+    "만 조정합니다",
+    "만 사용합니다",
+    "인식할 수 없습니다",
+    "적절하지 않습니다",
+    "효과적이지 않습니다",
+    "직접적인 해결책이 아닙니다",
+    "관련이 부족합니다",
+    "우선순위가 낮습니다",
+    "정답입니다",
+    "오답입니다",
+    "출처 확인 없이",
+    "그대로 제공합니다",
+    "생략합니다",
+    "자신 있게 답하라는",
+    "친절하라는",
+    "역할만",
+    "문장만 추가",
+    "검증을 생략",
+    "확인 단계를 생략",
+    "만으로 해결",
+    "만 기준으로",
+    "만 점검",
+    "만 비교",
+]
+
+META_CHOICE_PATTERNS = [
+    "오해할 수 있다",
+    "혼동할 수 있다",
+    "착각할 수 있다",
+    "잘못 이해할 수 있다",
+]
+
+INFORMAL_ENDING_PATTERNS = [
+    r"한다\.$",
+    r"된다\.$",
+    r"이다\.$",
+    r"없다\.$",
+    r"있다\.$",
+]
+
+
+def _has_informal_ending(text: str) -> bool:
+    stripped = text.strip()
+    return any(re.search(pattern, stripped) for pattern in INFORMAL_ENDING_PATTERNS)
+
+
+def validate_generated_question(question: GeneratedQuestion) -> None:
+    if not question.title.strip():
+        raise ValueError("title이 비어 있습니다.")
+
+    if not question.body.strip():
+        raise ValueError("body가 비어 있습니다.")
+
+    if not isinstance(question.choices, list) or len(question.choices) != 5:
+        raise ValueError("choices는 반드시 5개여야 합니다.")
+
+    if not isinstance(question.answer, int) or not (1 <= question.answer <= 5):
+        raise ValueError("answer는 1~5 정수여야 합니다.")
+
+    if not question.explanation.strip():
+        raise ValueError("explanation이 비어 있습니다.")
+
+    expected_prefix = f"정답은 {question.answer}번입니다."
+    if not question.explanation.strip().startswith(expected_prefix):
+        raise ValueError(f"explanation은 '{expected_prefix}'로 시작해야 합니다.")
+
+    if _has_informal_ending(question.explanation):
+        raise ValueError("explanation에 반말 종결 표현이 포함되어 있습니다.")
+
+    for choice in question.choices:
+        if not choice.strip():
+            raise ValueError("빈 선택지가 있습니다.")
+
+        for pattern in META_CHOICE_PATTERNS:
+            if pattern in choice:
+                raise ValueError(f"선택지에 메타 표현이 포함되어 있습니다: {pattern}")
+    
+    # 추가 검증
+    if question.difficulty == "초급":
+        _validate_beginner_choice_basic_quality(question)
+        _validate_beginner_explanation_style(question)
+    else:
+        _validate_intermediate_body_has_context(question)
+        _validate_choice_length_balance(
+            question.choices,
+            difficulty=question.difficulty,
         )
-
-    hard_reject_patterns = [
-        "모든 컬럼",
-        "모든 테이블",
-        "모든 데이터",
-        "모든 조건",
-        "모든 조인",
-        "모든 접근",
-        "데이터를 삭제",
-        "접근을 차단",
-        "완전히 제거",
-    ]
-
-    warning_patterns = [
-        "고려하지 않는다",
-        "무시",
-        "무조건",
-        "항상",
-        "오직",
-        "쿼리를 단순화",
-        "조인 순서를 수동으로 고정",
-        "조인 순서를 무조건",
-        "인덱스를 추가하여 모든",
-        "쓰기 작업의 성능을 높인다",
-    ]
-
-    for choice in choices:
-        choice_text = str(choice)
-
-        for pattern in hard_reject_patterns:
-            if pattern in choice_text:
-                errors.append(
-                    f"강한 품질 저하 선택지 표현이 포함되어 있습니다: '{pattern}' / {choice_text}"
-                )
-
-        for pattern in warning_patterns:
-            if pattern in choice_text:
-                errors.append(
-                    f"품질 저하 선택지 표현이 포함되어 있습니다: '{pattern}' / {choice_text}"
-                )
-
-    correct_judgment_words = [
-        "고려",
-        "평가",
-        "종합",
-        "분석",
-        "판단",
-        "리스크",
-        "트레이드오프",
-    ]
-
-    simple_action_patterns = [
-        "추가한다",
-        "제거한다",
-        "단순화한다",
-        "변경한다",
-        "고정한다",
-        "높인다",
-    ]
-
-    correct_has_judgment = any(word in correct_choice for word in correct_judgment_words)
-    simple_wrong_count = 0
-
-    for wrong_choice in wrong_choices:
-        if any(pattern in wrong_choice for pattern in simple_action_patterns):
-            if not any(word in wrong_choice for word in correct_judgment_words):
-                simple_wrong_count += 1
-
-    if correct_has_judgment and simple_wrong_count >= 2:
-        errors.append(
-            "정답만 종합 판단형이고 오답은 단순 조치형이라 정답이 쉽게 드러납니다."
-        )
-
-    return errors
-
-
-def _has_numbered_distractor_explanation(explanation: str) -> bool:
-    """
-    해설에서 오답을 '1번은', '2번은'처럼 번호 기준으로 설명하는지 감지한다.
-    정답 첫 문장 '정답은 N번입니다.'는 허용한다.
-    """
-    if not explanation:
-        return False
-
-    text = str(explanation).strip()
-
-    text = re.sub(r"^정답은\s*\d\s*번입니다\.?\s*", "", text)
-
-    numbered_patterns = [
-        r"\b[1-5]\s*번은",
-        r"\b[1-5]\s*번의",
-        r"\b[1-5]\s*번 선택지",
-        r"\b[1-5]\s*번 보기",
-        r"\b[1-5]\s*번과\s*[1-5]\s*번",
-        r"\b[1-5]\s*번,\s*[1-5]\s*번",
-    ]
-
-    return any(re.search(pattern, text) for pattern in numbered_patterns)
-
-def _has_informal_explanation_ending(explanation: str) -> bool:
-    """
-    해설이 존댓말 설명체가 아니라 '~다', '~한다', '~된다' 같은 반말/평서체로 끝나는지 감지한다.
-    단, 첫 문장 '정답은 N번입니다.'는 허용한다.
-    """
-    if not explanation:
-        return False
-
-    text = str(explanation).strip()
-
-    # 첫 문장 정답 안내 제거
-    text = re.sub(r"^정답은\s*\d\s*번입니다\.?\s*", "", text).strip()
-
-    if not text:
-        return False
-
-    # 문장 단위로 나눠서 마지막 표현 확인
-    sentences = [s.strip() for s in re.split(r"(?<=[.!?。])\s+", text) if s.strip()]
-
-    informal_endings = [
-        "다.",
-        "한다.",
-        "된다.",
-        "이다.",
-        "아니다.",
-        "있다.",
-        "없다.",
-        "높아진다.",
-        "낮아진다.",
-        "발생한다.",
-        "증가한다.",
-        "감소한다.",
-        "필요하다.",
-        "적절하다.",
-        "타당하다.",
-    ]
-
-    polite_endings = [
-        "입니다.",
-        "합니다.",
-        "됩니다.",
-        "아닙니다.",
-        "있습니다.",
-        "없습니다.",
-        "높아집니다.",
-        "낮아집니다.",
-        "발생합니다.",
-        "증가합니다.",
-        "감소합니다.",
-        "필요합니다.",
-        "적절합니다.",
-        "타당합니다.",
-    ]
-
-    for sentence in sentences:
-        if any(sentence.endswith(polite) for polite in polite_endings):
-            continue
-
-        if any(sentence.endswith(informal) for informal in informal_endings):
-            return True
-
-    return False
+        _validate_answer_length_not_obvious(question)
+        _validate_no_answer_leak_patterns(question.choices, difficulty=question.difficulty)
+        _validate_ai_intermediate_terms(question)
     
-def _has_required_evidence_for_competency(
-    q: dict,
-    difficulty: str,
-) -> tuple[bool, str | None]:
-    """
-    중급/고급 문제에서 역량별 실전 자료가 포함되어 있는지 확인한다.
-    비문학형 문제를 저장하지 않기 위한 검증이다.
-    """
-    if difficulty not in {"중급", "고급"}:
-        return True, None
+        _validate_explanation_not_choice_copy(question)
+        _validate_explanation_has_reasoning_depth(question)
+        _validate_explanation_answer_consistency(question)
+    body = question.body
 
-    competency_type = normalize_competency_type(q.get("competency_type")) or str(q.get("competency_type") or "").strip()
-    body = str(q.get("body", "") or "")
-    
-    question_format = str(q.get("question_format") or q.get("template_format") or "").strip()
-    code_formats = [
-        "code_output", "runtime_error", "exception_flow", "generator_behavior",
-        "override_behavior", "equals_hashcode", "polymorphism_dispatch",
-        "collection_behavior", "data_structure_fix", "list_dict_mutation",
-        "shallow_deep_copy", "decorator_behavior", "scope_closure", "compile_error",
-        "interface_abstract"
-    ]
-    sql_query_formats = [
-        "query_result", "join_where_bug", "index_plan_choice"
-    ]
-    
-    if competency_type in {"python", "java"} and question_format in code_formats:
-        if "```" not in body and "def " not in body and "class " not in body and "print(" not in body and "System.out" not in body:
-            return False, f"{competency_type} 코드 기반 문제({question_format})에는 반드시 코드블럭 또는 코드가 포함되어야 합니다."
-            
-    if competency_type == "sql" and question_format in sql_query_formats:
-        if "```sql" not in body and not any(k in body.upper() for k in ["SELECT", "WHERE", "JOIN", "GROUP BY", "HAVING"]):
-            return False, f"SQL 쿼리 기반 문제({question_format})에는 반드시 SQL 코드블럭이나 핵심 쿼리 키워드가 포함되어야 합니다."
+    _validate_body_polite_question(question.body)
 
-    if competency_type == "java":
-        signals = [
-            "class ",
-            "extends",
-            "@Override",
-            "new ",
-            "public ",
-            "private ",
-            "void ",
-            "System.out.println",
-            "interface ",
-            "implements",
-            "List<",
-            "Map<",
-        ]
-        if not any(signal in body for signal in signals) and "```java" not in body:
-            return False, "java 중급/고급 문제에는 Java 코드 조각, 상속/인터페이스 구조, 컬렉션 사용 예시 중 하나가 필요합니다."
+    if question.difficulty == "초급":
+        _validate_beginner_body_by_format(question)
+    else:
+        if question.answer_style == "find_correct":
+            if not any(keyword in body for keyword in ["옳은 것은", "적절한 것은"]):
+                raise ValueError("find_correct 문제는 body에 '옳은 것은' 또는 '적절한 것은'이 포함되어야 합니다.")
 
-    if competency_type == "python":
-        signals = [
-            "def ",
-            "for ",
-            "while ",
-            "if ",
-            "try:",
-            "except",
-            "print(",
-            ".get(",
-            "KeyError",
-            "TypeError",
-            "users =",
-            "items =",
-            "data =",
-            "[",
-            "{",
-        ]
-        if not any(signal in body for signal in signals):
-            return False, "python 중급/고급 문제에는 Python 코드 조각 또는 실제 리스트/딕셔너리 예시가 필요합니다."
-        if any(keyword in body for keyword in ["얕은 복사", "shallow copy", "리스트 복사"]):
-            shallow_copy_signals = [
-                ".copy()",
-                "[:]",
-                "copy.copy",
+        if question.answer_style == "find_incorrect":
+            find_incorrect_body_keywords = [
+                "옳지 않은 것은",
+                "옳지 않은 설명",
+                "옳지 않은 조치",
+                "옳지 않은 대응",
+                "부적절한 것은",
+                "부적절한 설명",
+                "부적절한 조치",
+                "부적절한 대응",
+                "잘못된 것은",
+                "잘못된 설명",
+                "잘못된 조치",
+                "잘못된 대응",
+                "부적절합니까",
+                "옳지 않습니까",
+                "잘못되었습니까",
             ]
 
-            reference_assignment_patterns = [
-                r"\w+\s*=\s*\w+\s*\n",
-                r"copied_list\s*=\s*original_list",
-                r"list_b\s*=\s*list_a",
-                r"copied\s*=\s*original",
+            if not any(keyword in body for keyword in find_incorrect_body_keywords):
+                raise ValueError(
+                    "find_incorrect 문제는 body에 옳지 않은/부적절한/잘못된 설명·조치·대응을 묻는 표현이 포함되어야 합니다."
+                )
+
+        if question.answer_style == "best_action":
+            best_action_body_keywords = [
+                "가장 적절한 조치",
+                "가장 적절한 방법",
+                "가장 적절한 것은",
+                "적절한 조치",
+                "적절한 방법",
+                "어떤 조치",
+                "어떤 방법",
+                "개선 방향",
+                "대응",
             ]
 
-            has_shallow_copy_signal = any(signal in body for signal in shallow_copy_signals)
-            has_reference_assignment_only = any(
-                re.search(pattern, body)
-                for pattern in reference_assignment_patterns
-            )
+            if not any(keyword in body for keyword in best_action_body_keywords):
+                raise ValueError("best_action 문제는 body에 적절한 조치/방법/대응을 묻는 표현이 포함되어야 합니다.")
 
-            if has_reference_assignment_only and not has_shallow_copy_signal:
-                return False, (
-                    "얕은 복사 문제에서 copied = original 형태의 참조 할당만 제시하고 있습니다. "
-                    "list.copy(), slicing [:], copy.copy() 중 하나를 포함해야 합니다."
-                )
-    if competency_type == "sql":
-        upper_body = body.upper()
-        signals = [
-            "SELECT",
-            "FROM",
-            "JOIN",
-            "WHERE",
-            "GROUP BY",
-            "ORDER BY",
-            "HAVING",
-            "EXPLAIN",
-            "CREATE TABLE",
-            "테이블",
-            "실행 계획",
-        ]
-        if not any(signal in upper_body for signal in signals):
-            return False, "sql 중급/고급 문제에는 SQL 쿼리, 테이블 구조, 실행 계획 설명 중 하나가 필요합니다."
+        if question.answer_style == "diagnosis":
+            if not any(keyword in body for keyword in ["원인으로 가장 적절한 것은", "원인으로 적절한 것은"]):
+                raise ValueError("diagnosis 문제는 원인 판단 표현이 포함되어야 합니다.")
 
-    if competency_type == "ai":
-        lower_body = body.lower()
-        template_format = str(q.get("template_format") or "").strip().lower()
+    if question.question_format == "ai_log_or_metric_interpretation":
+        required_log_keywords = ["query","top_k","similarity","accuracy","loss","latency","검색 로그","검색 결과","평가 지표","학습 지표","운영 로그","응답 설정 로그","로그","지표",]
+        if not any(keyword in body for keyword in required_log_keywords):
+            raise ValueError("log_or_metric_interpretation 문제는 로그/지표 정보가 body에 포함되어야 합니다.")
 
-        def count_signals(signals: list[str]) -> int:
-            return sum(1 for signal in signals if signal.lower() in lower_body)
+def _validate_beginner_choice_basic_quality(question: GeneratedQuestion) -> None:
+    """
+    초급 문제는 개념 이해 확인이 목적이므로
+    중급처럼 선택지 힌트성 표현을 강하게 제한하지 않는다.
+    """
+    for choice in question.choices:
+        text = choice.strip()
 
-        def has_any(signals: list[str]) -> bool:
-            return any(signal.lower() in lower_body for signal in signals)
+        if len(text) < 6:
+            raise ValueError("초급 선택지 중 지나치게 짧은 문장이 있습니다.")
 
-        rag_signals = [
-            "rag",
-            "query",
-            "질의",
-            "top_k",
-            "top-k",
-            "chunk",
-            "청크",
-            "similarity",
-            "유사도",
-            "metadata",
-            "메타데이터",
-            "metadata_filter",
-            "검색 결과",
-            "검색된 문서",
-            "embedding",
-            "임베딩",
-            "vector search",
-            "벡터 검색",
-            "keyword search",
-            "키워드 검색",
-            "hybrid search",
-            "하이브리드 검색",
-            "reranker",
-            "리랭커",
-            "context filtering",
-            "컨텍스트 필터링",
-            "hallucination",
-            "환각",
+        hard_forbidden_patterns = [
+            "정답입니다",
+            "오답입니다",
+            "부적절합니다",
+            "잘못된 접근입니다",
         ]
 
-        llm_signals = [
-            "llm",
-            "prompt",
-            "프롬프트",
-            "json",
-            "schema",
-            "스키마",
-            "structured output",
-            "구조화 출력",
-            "response_format",
-            "parsing",
-            "파싱",
-            "choices",
-            "answer",
-            "explanation",
-            "tool calling",
-            "function calling",
-            "도구 호출",
-            "함수 호출",
-            "tool schema",
-            "인자",
-            "argument",
-            "타입 검증",
-            "validation",
-            "검증",
-            "fallback",
-            "재시도",
-        ]
+        for pattern in hard_forbidden_patterns:
+            if pattern in text:
+                raise ValueError(f"초급 선택지에 직접적인 정답/오답 표현이 포함되어 있습니다: {pattern}")
 
-        agent_signals = [
-            "agent",
-            "에이전트",
-            "langgraph",
-            "graph",
-            "그래프",
-            "node",
-            "노드",
-            "state",
-            "상태",
-            "plan",
-            "planning",
-            "tool call",
-            "tool",
-            "도구",
-            "observation",
-            "관찰",
-            "retry",
-            "재시도",
-            "repair_node",
-            "validation_node",
-            "human review",
-            "human-in-the-loop",
-            "human_review_node",
-            "검수",
-            "분기",
-        ]
+def _validate_beginner_body_by_format(question: GeneratedQuestion) -> None:
+    body = question.body.strip()
+    question_format = question.question_format
 
-        modelops_signals = [
-            "fine-tuning",
-            "파인튜닝",
-            "qlora",
-            "lora",
-            "vllm",
-            "serving",
-            "서빙",
-            "inference",
-            "추론",
-            "latency",
-            "지연",
-            "p95",
-            "cost",
-            "비용",
-            "gpu",
-            "canary",
-            "배포",
-            "monitoring",
-            "모니터링",
-            "quality_score",
-            "jsonl",
-            "approved",
-            "pending",
-            "rejected",
-        ]
+    if question_format == "ai_basic_concept_find_correct":
+        if not any(keyword in body for keyword in ["옳은 것은", "옳은 설명", "어떤 설명"]):
+            raise ValueError("초급 개념 문제는 옳은 설명을 묻는 표현이 포함되어야 합니다.")
 
-        ml_signals = [
-            "machine learning",
-            "머신러닝",
-            "deep learning",
-            "딥러닝",
-            "train",
-            "validation",
-            "test",
-            "accuracy",
-            "정확도",
-            "precision",
-            "정밀도",
-            "recall",
-            "재현율",
-            "f1",
-            "threshold",
-            "임계값",
-            "overfitting",
-            "과적합",
-            "regularization",
-            "early stopping",
-            "일반화",
-            "불균형",
-            "소수 클래스",
-            "false positive",
-            "false negative",
-        ]
+    elif question_format == "ai_basic_concept_find_incorrect":
+        if not any(keyword in body for keyword in ["옳지 않은 것은", "옳지 않은 설명", "잘못된 것은", "부적절한 것은"]):
+            raise ValueError("초급 오답 고르기 문제는 옳지 않은 설명을 묻는 표현이 포함되어야 합니다.")
 
-        # template_format이 남아 있으면 가장 정확하게 하위 유형을 판단한다.
-        if template_format.startswith(("retrieval_", "reranker_", "hybrid_", "chunking_", "context_", "hallucination_", "evaluation_", "query_rewrite")):
-            ai_subtype = "rag"
-        elif template_format.startswith("llm_"):
-            ai_subtype = "llm"
-        elif template_format.startswith("agent_"):
-            ai_subtype = "agent"
-        elif template_format.startswith("modelops_"):
-            ai_subtype = "modelops"
-        elif template_format.startswith("ml_"):
-            ai_subtype = "ml"
-        else:
-            # template_format이 이미 pop된 경우 body 기반으로 추론한다.
-            subtype_scores = {
-                "rag": count_signals(rag_signals),
-                "llm": count_signals(llm_signals),
-                "agent": count_signals(agent_signals),
-                "modelops": count_signals(modelops_signals),
-                "ml": count_signals(ml_signals),
-            }
-            ai_subtype = max(subtype_scores, key=subtype_scores.get)
+    elif question_format == "ai_purpose_find_correct":
+        if not any(keyword in body for keyword in ["목적", "사용", "활용"]):
+            raise ValueError("초급 목적 문제는 사용 목적이나 활용 목적을 묻는 표현이 포함되어야 합니다.")
 
-        if ai_subtype == "rag":
-            total_count = count_signals(rag_signals)
+    elif question_format == "ai_concept_compare_basic":
+        if not any(keyword in body for keyword in ["차이", "비교", "구분"]):
+            raise ValueError("초급 비교 문제는 개념 간 차이나 구분을 묻는 표현이 포함되어야 합니다.")
 
-            if difficulty == "중급" and total_count < 2:
-                return False, (
-                    "ai 중급 RAG 문제에는 query/top_k/chunk/similarity/metadata/embedding/"
-                    "reranker/context filtering 중 최소 2개 이상의 구체 단서가 필요합니다."
-                )
+    elif question_format == "ai_term_role_match":
+        if not any(keyword in body for keyword in ["역할", "연결"]):
+            raise ValueError("초급 용어-역할 문제는 역할 또는 연결을 묻는 표현이 포함되어야 합니다.")
 
-            if difficulty == "고급":
-                retrieval_ok = has_any([
-                    "query",
-                    "질의",
-                    "top_k",
-                    "top-k",
-                    "chunk",
-                    "청크",
-                    "similarity",
-                    "유사도",
-                    "검색 결과",
-                    "검색된 문서",
-                ])
-                pipeline_ok = has_any([
-                    "embedding",
-                    "임베딩",
-                    "vector search",
-                    "벡터 검색",
-                    "keyword search",
-                    "키워드 검색",
-                    "hybrid search",
-                    "하이브리드 검색",
-                    "reranker",
-                    "리랭커",
-                    "metadata_filter",
-                    "metadata",
-                    "메타데이터",
-                    "context filtering",
-                    "컨텍스트 필터링",
-                ])
+        answer_choice = question.choices[question.answer - 1].strip()
+        if answer_choice and answer_choice in body:
+            raise ValueError("초급 용어-역할 문제의 body에 정답 선택지가 그대로 포함되어 있습니다.")
+            
+def validate_generated_questions(questions: list[GeneratedQuestion]) -> None:
+    for question in questions:
+        validate_generated_question(question)
 
-                if total_count < 3 or not retrieval_ok or not pipeline_ok:
-                    return False, (
-                        "ai 고급 RAG 문제에는 검색 결과 단서(query/top_k/chunk/similarity 등)와 "
-                        "파이프라인 단서(embedding/vector search/keyword search/metadata_filter/"
-                        "reranker/context filtering 등)가 함께 필요합니다."
-                    )
-
-        elif ai_subtype == "llm":
-            total_count = count_signals(llm_signals)
-
-            if difficulty == "중급" and total_count < 2:
-                return False, (
-                    "ai 중급 LLM 문제에는 prompt/JSON/schema/structured output/tool calling/"
-                    "validation 중 최소 2개 이상의 구체 단서가 필요합니다."
-                )
-
-            if difficulty == "고급":
-                output_or_tool_ok = has_any([
-                    "json",
-                    "schema",
-                    "structured output",
-                    "구조화 출력",
-                    "response_format",
-                    "tool calling",
-                    "function calling",
-                    "도구 호출",
-                    "함수 호출",
-                    "tool schema",
-                ])
-                validation_ok = has_any([
-                    "validation",
-                    "검증",
-                    "필수 필드",
-                    "answer",
-                    "choices",
-                    "parsing",
-                    "파싱",
-                    "fallback",
-                    "재시도",
-                ])
-
-                if total_count < 3 or not output_or_tool_ok or not validation_ok:
-                    return False, (
-                        "ai 고급 LLM 문제에는 JSON/schema/structured output/tool calling 같은 출력·도구 조건과 "
-                        "validation/fallback/retry 같은 검증 단서가 함께 필요합니다."
-                    )
-
-        elif ai_subtype == "agent":
-            total_count = count_signals(agent_signals)
-
-            if difficulty == "중급" and total_count < 2:
-                return False, (
-                    "ai 중급 Agent 문제에는 agent/tool/observation/state/retry/graph 중 "
-                    "최소 2개 이상의 구체 단서가 필요합니다."
-                )
-
-            if difficulty == "고급":
-                workflow_ok = has_any([
-                    "agent",
-                    "에이전트",
-                    "langgraph",
-                    "graph",
-                    "node",
-                    "노드",
-                    "state",
-                    "상태",
-                ])
-                control_ok = has_any([
-                    "observation",
-                    "관찰",
-                    "retry",
-                    "재시도",
-                    "repair",
-                    "repair_node",
-                    "validation_node",
-                    "human review",
-                    "human_review_node",
-                    "human-in-the-loop",
-                    "검수",
-                    "분기",
-                ])
-
-                if total_count < 3 or not workflow_ok or not control_ok:
-                    return False, (
-                        "ai 고급 Agent 문제에는 Agent/LangGraph/state/node 같은 워크플로우 단서와 "
-                        "observation/retry/repair/human review 같은 제어 단서가 함께 필요합니다."
-                    )
-
-        elif ai_subtype == "modelops":
-            total_count = count_signals(modelops_signals)
-
-            if difficulty == "중급" and total_count < 2:
-                return False, (
-                    "ai 중급 ModelOps 문제에는 fine-tuning/QLoRA/vLLM/serving/latency/cost/"
-                    "quality_score/JSONL 중 최소 2개 이상의 구체 단서가 필요합니다."
-                )
-
-            if difficulty == "고급":
-                model_or_data_ok = has_any([
-                    "fine-tuning",
-                    "파인튜닝",
-                    "qlora",
-                    "lora",
-                    "quality_score",
-                    "jsonl",
-                    "approved",
-                    "pending",
-                    "rejected",
-                    "vllm",
-                    "serving",
-                    "서빙",
-                ])
-                ops_metric_ok = has_any([
-                    "latency",
-                    "지연",
-                    "p95",
-                    "cost",
-                    "비용",
-                    "gpu",
-                    "canary",
-                    "monitoring",
-                    "모니터링",
-                    "통과율",
-                    "운영",
-                ])
-
-                if total_count < 3 or not model_or_data_ok or not ops_metric_ok:
-                    return False, (
-                        "ai 고급 ModelOps 문제에는 fine-tuning/QLoRA/vLLM/serving/JSONL/quality_score 같은 "
-                        "모델·데이터 단서와 latency/cost/p95/canary/monitoring 같은 운영 단서가 함께 필요합니다."
-                    )
-
-        elif ai_subtype == "ml":
-            total_count = count_signals(ml_signals)
-
-            if difficulty == "중급" and total_count < 2:
-                return False, (
-                    "ai 중급 ML 문제에는 train/validation/test/accuracy/precision/recall/F1/"
-                    "overfitting 중 최소 2개 이상의 구체 단서가 필요합니다."
-                )
-
-            if difficulty == "고급":
-                metric_or_split_ok = has_any([
-                    "train",
-                    "validation",
-                    "test",
-                    "accuracy",
-                    "정확도",
-                    "precision",
-                    "정밀도",
-                    "recall",
-                    "재현율",
-                    "f1",
-                ])
-                risk_or_action_ok = has_any([
-                    "불균형",
-                    "소수 클래스",
-                    "threshold",
-                    "임계값",
-                    "비용",
-                    "overfitting",
-                    "과적합",
-                    "regularization",
-                    "early stopping",
-                    "일반화",
-                ])
-
-                if total_count < 3 or not metric_or_split_ok or not risk_or_action_ok:
-                    return False, (
-                        "ai 고급 ML 문제에는 평가 지표 또는 데이터 분리 단서와 "
-                        "불균형/threshold/비용/과적합/regularization/early stopping 같은 판단 단서가 함께 필요합니다."
-                    )
-    return True, None
-
-
-def _validate_questions(
-    questions: list,
-    question_type: str,
+def _validate_choice_length_balance(
+    choices: list[str],
+    *,
     difficulty: str,
-    score: int,
-) -> list[dict[str, Any]]:
-    if not isinstance(questions, list):
-        raise ValueError("AI 응답이 JSON 배열이 아닙니다.")
+) -> None:
+    lengths = [len(choice.strip()) for choice in choices]
 
-    validated: list[dict[str, Any]] = []
+    if not lengths:
+        return
 
-    for idx, q in enumerate(questions):
-        if not isinstance(q, dict):
-            logger.warning(f"문제 검증 제외: index={idx}, reason=not_dict")
-            continue
+    min_len = min(lengths)
+    max_len = max(lengths)
 
-        title = q.get("title")
-        body = q.get("body")
-        choices = q.get("choices")
-        answer = q.get("answer")
-        explanation = q.get("explanation")
+    if difficulty == "초급":
+        min_allowed_len = 10
+        max_ratio = 2.8
+        max_gap = 45
+    else:
+        min_allowed_len = 16
+        max_ratio = 3.0
+        max_gap = 45
 
-        if body:
-            q["body"] = str(body).strip()
-            body = q["body"]
+    if min_len < min_allowed_len:
+        raise ValueError("선택지 중 지나치게 짧은 문장이 있습니다.")
 
-        if not title or not body or explanation is None:
-            logger.warning(f"문제 검증 제외: index={idx}, reason=missing_required_fields")
-            continue
+    # 비율만 보면 19자 vs 47자 같은 정상 범위도 과하게 실패할 수 있으므로
+    # 비율과 절대 길이 차이를 함께 본다.
+    if max_len >= min_len * max_ratio and (max_len - min_len) >= max_gap:
+        raise ValueError("선택지 간 길이 차이가 지나치게 큽니다.")
 
-        has_evidence, evidence_reason = _has_required_evidence_for_competency(
-            q=q,
-            difficulty=difficulty,
-        )
+def _validate_answer_length_not_obvious(question: GeneratedQuestion) -> None:
+    answer_index = question.answer - 1
+    choices = question.choices
 
-        if not has_evidence:
-            logger.warning(
-                f"문제 검증 제외: index={idx}, reason=missing_required_evidence, details={evidence_reason}"
-            )
-            continue
+    if not (0 <= answer_index < len(choices)):
+        return
 
-        if question_type == "multiple_choice":
-            if not isinstance(choices, list) or len(choices) != 5:
-                logger.warning(f"문제 검증 제외: index={idx}, reason=invalid_choices")
-                continue
-
-            try:
-                answer_int = int(answer)
-            except Exception:
-                logger.warning(f"문제 검증 제외: index={idx}, reason=invalid_answer_type")
-                continue
-
-            if answer_int < 1 or answer_int > 5:
-                logger.warning(f"문제 검증 제외: index={idx}, reason=answer_out_of_range")
-                continue
-
-            quality_warnings: list[str] = []
-            meta_choice_errors = _find_meta_choice_expressions(q)
-
-            if meta_choice_errors:
-                logger.warning(
-                    f"문제 검증 제외: index={idx}, reason=meta_choice_expression, "
-                    f"details={meta_choice_errors}"
-                )
-                continue
-            explanation_answer = _extract_answer_number_from_explanation(str(explanation))
-
-            if explanation_answer is not None and explanation_answer != answer_int:
-                logger.warning(
-                    f"문제 검증 제외: index={idx}, reason=explanation_answer_mismatch, "
-                    f"answer={answer_int}, explanation_answer={explanation_answer}"
-                )
-                continue
-            
-            if _has_answer_choice_mismatch(q):
-                logger.warning(
-                    f"문제 검증 제외: index={idx}, reason=answer_choice_mismatch, "
-                    f"answer={answer_int}, answer_choice={str(choices[answer_int - 1])[:120]}, "
-                    f"explanation={str(explanation)[:200]}"
-                )
-                continue
-
-            if _has_output_explanation_mismatch(q):
-                logger.warning(
-                    f"문제 검증 제외: index={idx}, reason=output_explanation_mismatch, "
-                    f"answer={answer_int}, answer_choice={str(choices[answer_int - 1])[:120]}, "
-                    f"explanation={str(explanation)[:200]}"
-                )
-                continue
-            if _has_explanation_contradiction(str(q.get("explanation", explanation)), answer_int):
-                logger.warning(
-                    f"문제 검증 제외: index={idx}, reason=explanation_contradiction, "
-                    f"answer={answer_int}, answer_choice={str(choices[answer_int - 1])[:120]}, "
-                    f"explanation={str(q.get('explanation', explanation))[:200]}"
-                )
-                continue
-            if _has_informal_explanation_ending(str(q.get("explanation", explanation))):
-                logger.warning(
-                    f"문제 검증 제외: index={idx}, reason=informal_explanation_ending, "
-                    f"explanation={str(q.get('explanation', explanation))[:200]}"
-                )
-                continue
-            weak_option_reasons = _find_weak_multiple_choice_options(q, difficulty)
-            if weak_option_reasons:
-                logger.warning(
-                    f"문제 품질 경고: index={idx}, reason=weak_multiple_choice_options, "
-                    f"details={weak_option_reasons}"
-                )
-                quality_warnings.extend(weak_option_reasons)
-
-            hard_choice_errors = _find_hard_choice_quality_errors(q, difficulty)
-
-            if hard_choice_errors:
-                logger.warning(
-                    f"문제 품질 경고: index={idx}, reason=hard_choice_quality_error, "
-                    f"details={hard_choice_errors}"
-                )
-
-                if _should_reject_for_choice_quality(q, difficulty):
-                    logger.warning(
-                        f"문제 검증 제외: index={idx}, reason=hard_choice_quality_reject"
-                    )
-                    continue
-
-                quality_warnings.extend(hard_choice_errors)
-
-            if _has_answer_length_bias(q):
-                if difficulty == "고급":
-                    logger.warning(f"문제 검증 제외: index={idx}, reason=answer_length_bias")
-                    continue
-
-                quality_warnings.append(
-                    "정답 선택지가 오답보다 길어 정답 노출 가능성이 있습니다."
-                )
-
-            if _is_explanation_too_similar_to_answer_choice(q):
-                logger.warning(f"문제 검증 제외: index={idx}, reason=explanation_too_similar_to_answer_choice")
-                continue
-            if _has_too_shallow_explanation(q):
-                logger.warning(
-                    f"문제 검증 제외: index={idx}, reason=too_shallow_explanation, "
-                    f"answer={answer_int}, explanation={str(explanation)[:200]}"
-                )
-                continue
-            if _has_too_obvious_distractors(q):
-                logger.warning(f"문제 검증 제외: index={idx}, reason=too_obvious_distractors")
-                continue
-            if _has_java_static_instance_multiple_truth(q):
-                logger.warning(
-                    f"문제 검증 제외: index={idx}, reason=java_static_instance_multiple_truth, "
-                    f"answer={answer_int}, choices={choices}"
-                )
-                continue
-            if _has_numbered_distractor_explanation(str(q.get("explanation", explanation))):
-                logger.warning(
-                    f"문제 검증 제외: index={idx}, reason=numbered_distractor_explanation, "
-                    f"answer={answer_int}, answer_choice={str(choices[answer_int - 1])[:120]}, "
-                    f"explanation={str(q.get('explanation', explanation))[:200]}"
-                )
-                continue
-
-            # ─────────────────────────────────────────────
-            # find_incorrect 유형 전용 검증
-            # ─────────────────────────────────────────────
-            answer_style = str(q.get("answer_style", "")).strip()
-            body_str = str(body or "").strip()
-
-            find_incorrect_body_markers = [
-                "옳지 않",
-                "틀린",
-                "부적절한",
-                "잘못된",
-                "옳은 것이 아닌",
-                "incorrect",
-                "false",
-                "아닌 것",
-            ]
-
-            is_find_incorrect_question = (
-                answer_style == "find_incorrect"
-                or any(marker in body_str for marker in find_incorrect_body_markers)
-            )
-
-            if is_find_incorrect_question:
-                body_str = str(body or "").strip()
-                explanation_str = str(q.get("explanation", explanation) or "").strip()
-                answer_choice = ""
-                try:
-                    answer_choice = str(choices[answer_int - 1])
-                except Exception:
-                    answer_choice = ""
-
-                answer_choice_meta_patterns = [
-                    "오해할 수",
-                    "오해",
-                    "혼동할 수",
-                    "혼동",
-                    "착각할 수",
-                    "착각",
-                    "잘못 이해",
-                ]
-
-                if any(pattern in answer_choice for pattern in answer_choice_meta_patterns):
-                    logger.warning(
-                        f"문제 검증 제외: index={idx}, reason=find_incorrect_meta_answer_choice, "
-                        f"answer_choice={answer_choice}"
-                    )
-                    continue
-                # body 질문 형태 검증: "옳지 않은", "틀린", "부적절한" 등이 포함되어야 함
-                find_incorrect_body_markers = [
-                    "옳지 않", "틀린", "부적절한", "잘못된", "옳은 것이 아닌",
-                    "incorrect", "false", "아닌 것",
-                ]
-                if not any(m in body_str for m in find_incorrect_body_markers):
-                    logger.warning(
-                        f"find_incorrect 검증 경고: index={idx}, "
-                        f"reason=body_not_find_incorrect_form. body가 '옳지 않은 것'을 묻지 않음."
-                    )
-                    quality_warnings.append(
-                        "find_incorrect 유형인데 body 질문이 '옳지 않은 것'을 묻는 형태가 아닙니다."
-                    )
-
-                # explanation 방향 검증: 정답 선택지가 "틀렸다"는 내용을 설명해야 함
-                explanation_correct_markers = [
-                    "틀",
-                    "잘못",
-                    "부적절",
-                    "옳지 않",
-                    "incorrect",
-                    "false",
-                    "아니다",
-                    "아닙니다",
-                    "사용되지 않는다",
-                    "사용되지 않습니다",
-                    "해당하지 않는다",
-                    "해당하지 않습니다",
-                    "역할이 아니다",
-                    "역할이 아닙니다",
-                    "정렬하기 위해 사용되지",
-                    "그룹화하는 역할",
-                    "올바른 역할",
-                    "나머지 선택지",
-                ]
-                answer_choice = ""
-                try:
-                    answer_choice = str(choices[answer_int - 1])
-                except Exception:
-                    answer_choice = ""
-
-                answer_choice_keywords = [
-                    word
-                    for word in re.split(r"\s+|,|\.|\(|\)", answer_choice)
-                    if len(word.strip()) >= 2
-                ]
-
-                has_answer_choice_reference = any(
-                    keyword in explanation_str
-                    for keyword in answer_choice_keywords
-                )
-
-                if not any(m in explanation_str for m in explanation_correct_markers) and not has_answer_choice_reference:
-                    logger.warning(
-                        f"find_incorrect 검증 경고: index={idx}, "
-                        f"reason=explanation_not_pointing_to_incorrect. "
-                        f"explanation이 틀린 이유를 설명하지 않음."
-                    )
-                    quality_warnings.append(
-                        "find_incorrect 유형인데 explanation이 정답(틀린 것)의 오류 이유를 설명하지 않습니다."
-                    )
-            if quality_warnings:
-                q["quality_warnings"] = quality_warnings
-
-            q["answer"] = answer_int
-
-        else:
-            q["choices"] = []
-
-            if answer is None or str(answer).strip() == "":
-                logger.warning(f"문제 검증 제외: index={idx}, reason=empty_subjective_answer")
-                continue
-
-            explanation_text = str(explanation)
-            
-            if _extract_answer_number_from_explanation(explanation_text) is not None:
-                logger.warning(f"문제 검증 제외 : index={idx}, reason=subjective_question_answer_number_in_explanation")
-                continue
-            q["answer"]=str(answer)
-            q["explanation"]=explanation_text
-                
-
-        q["difficulty"] = difficulty
-        q["score"] = score
-
-        if not isinstance(q.get("competency_tags"), list):
-            q["competency_tags"] = []
-
-        normalize_question_text(q)
-
-        validated.append(q)
-
-    logger.info(f"문제 검증 결과: input={len(questions)}, validated={len(validated)}")
-
-    return validated
-
-def _has_answer_choice_mismatch(q: dict) -> bool:
-    """
-    해설에서 설명하는 핵심 결과/개념이 실제 정답 선택지와 충돌하는지 감지한다.
-    특히 코드 출력 결과형 문제에서 answer와 explanation이 서로 다른 값을 말하는 경우를 잡는다.
-    """
-    choices = q.get("choices", [])
-    answer = q.get("answer")
-    explanation = str(q.get("explanation", "") or "")
-
-    if not isinstance(choices, list) or len(choices) != 5 or not explanation:
-        return False
-
-    try:
-        answer_int = int(answer)
-    except Exception:
-        return False
-
-    if answer_int < 1 or answer_int > 5:
-        return False
-
-    answer_choice = str(choices[answer_int - 1])
-
-    bracket_patterns = [
-        r"\[[^\]]+\]",
+    answer_len = len(choices[answer_index].strip())
+    other_lengths = [
+        len(choice.strip())
+        for index, choice in enumerate(choices)
+        if index != answer_index
     ]
 
-    explanation_values = []
-    answer_values = []
+    if not other_lengths:
+        return
 
-    for pattern in bracket_patterns:
-        explanation_values.extend(re.findall(pattern, explanation))
-        answer_values.extend(re.findall(pattern, answer_choice))
+    avg_other_len = sum(other_lengths) / len(other_lengths)
 
-    if explanation_values and answer_values:
-        return explanation_values[0] != answer_values[0]
+    if question.difficulty == "초급":
+        upper_ratio = 1.7
+        lower_ratio = 0.5
+        min_gap = 35
+    else:
+        upper_ratio = 1.8
+        lower_ratio = 0.55
+        min_gap = 35
 
-    number_result_pattern = r"출력\s*결과는\s*([A-Za-z0-9_\[\],\s]+)"
-    exp_match = re.search(number_result_pattern, explanation)
-    ans_match = re.search(number_result_pattern, answer_choice)
+    # 정답이 조금 긴 정도는 허용하고,
+    # 평균 대비 비율도 크고 절대 차이도 큰 경우만 실패 처리한다.
+    if answer_len > avg_other_len * upper_ratio and (answer_len - avg_other_len) >= min_gap:
+        raise ValueError("정답 선택지가 다른 선택지보다 지나치게 깁니다.")
 
-    if exp_match and ans_match:
-        exp_value = exp_match.group(1).strip().rstrip(".입니다")
-        ans_value = ans_match.group(1).strip().rstrip(".입니다")
-        return exp_value != ans_value
+    if answer_len < avg_other_len * lower_ratio and (avg_other_len - answer_len) >= min_gap:
+        raise ValueError("정답 선택지가 다른 선택지보다 지나치게 짧습니다.")
 
-    return False
+def _validate_no_answer_leak_patterns(
+    choices: list[str],
+    *,
+    difficulty: str,
+) -> None:
+    if difficulty == "초급":
+        return
 
-def _extract_output_values(text: str) -> list[str]:
-    """
-    선택지/해설에서 출력값 후보를 추출한다.
-    예:
-    - 출력 결과는 0이다. -> ["0"]
-    - 출력 결과는 0과 1이다. -> ["0", "1"]
-    - 출력 결과는 [4, 6, 8]이다. -> ["[4, 6, 8]"]
-    """
-    text = str(text or "").strip()
+    for choice in choices:
+        for pattern in ANSWER_LEAK_PATTERNS:
+            if pattern in choice:
+                raise ValueError(f"선택지에 정답 힌트성 표현이 포함되어 있습니다: {pattern}")
 
-    list_values = re.findall(r"\[[^\]]+\]", text)
-    if list_values:
-        return [list_values[0].replace(" ", "")]
+def _validate_explanation_answer_consistency(question: GeneratedQuestion) -> None:
+    answer = int(question.answer)
+    explanation = question.explanation.strip()
 
-    patterns = [
-        r"출력\s*결과는\s*(.+?)(?:이다|입니다|가\s*된다|된다|\.|$)",
-        r"실행\s*결과는\s*(.+?)(?:이다|입니다|가\s*된다|된다|\.|$)",
-        r"결과는\s*(.+?)(?:이다|입니다|가\s*된다|된다|\.|$)",
-    ]
+    required_prefix = f"정답은 {answer}번입니다."
+    if not explanation.startswith(required_prefix):
+        raise ValueError("해설의 정답 번호가 answer와 일치하지 않습니다.")
 
-    for pattern in patterns:
-        match = re.search(pattern, text)
-        if not match:
+    for n in range(1, 6):
+        if n == answer:
             continue
 
-        value_text = match.group(1).strip().strip("'\"")
-        value_text = value_text.replace(" ", "")
+        forbidden_markers = [
+            f"정답은 {n}번",
+            f"정답인 {n}번",
+            f"{n}번 선택지",
+            f"{n}번은",
+        ]
 
-        if "과" in value_text:
-            return [v for v in value_text.split("과") if v]
+        for marker in forbidden_markers:
+            if marker in explanation:
+                raise ValueError("해설에 answer와 다른 선택지 번호가 포함되어 있습니다.")
 
-        if "," in value_text:
-            return [v for v in value_text.split(",") if v]
+def _validate_body_polite_question(body: str) -> None:
+    stripped = body.strip()
 
-        return [value_text]
-
-    # 해설에서 "첫 번째 ... 0", "두 번째 ... 1" 형태 추출
-    ordered_values = []
-    ordered_patterns = [
-        r"첫\s*번째[^0-9\[]*([0-9]+|\[[^\]]+\])",
-        r"두\s*번째[^0-9\[]*([0-9]+|\[[^\]]+\])",
-        r"세\s*번째[^0-9\[]*([0-9]+|\[[^\]]+\])",
+    informal_question_endings = [
+        "무엇인가?",
+        "어떤 것인가?",
+        "무엇인가요?",
     ]
 
-    for pattern in ordered_patterns:
-        match = re.search(pattern, text)
-        if match:
-            ordered_values.append(match.group(1).replace(" ", ""))
+    for ending in informal_question_endings:
+        if stripped.endswith(ending):
+            raise ValueError("문제 본문이 존댓말 질문형으로 끝나야 합니다.")
 
-    return ordered_values
+    # 존댓말 질문형이면 통과
+    if stripped.endswith("습니까?"):
+        return
 
-def _has_output_explanation_mismatch(q: dict) -> bool:
-    """
-    출력 결과 예측 문제에서 정답 선택지와 해설 또는 코드 출력 개수가 맞지 않으면 True.
-    """
-    body = str(q.get("body", "") or "")
-    explanation = str(
-        q.get("_llm_explanation_before_rebalance")
-        or q.get("_explanation_after_rebalance_before_repair")
-        or q.get("explanation", "")
-        or ""
-    )
-
-    choices = q.get("choices", [])
-    answer = q.get("answer")
-
-    if "출력 결과" not in body and "실행 결과" not in body and "print(" not in body:
-        return False
-
-    if not isinstance(choices, list) or len(choices) != 5:
-        return False
-
-    try:
-        answer_int = int(answer)
-    except Exception:
-        return False
-
-    if answer_int < 1 or answer_int > 5:
-        return False
-
-    answer_choice = str(choices[answer_int - 1])
-
-    answer_values = _extract_output_values(answer_choice)
-    explanation_values = _extract_output_values(explanation)
-
-    # print가 2개 이상이면 단일 출력값 선택지는 위험하므로 제외
-    # 단, body가 "두 번째 호출 결과"처럼 특정 출력 하나만 묻는 경우는 예외
-    asks_single_result = any(
-        marker in body
+    # 혹시 LLM이 다른 존댓말 질문형을 쓴 경우 최소 허용
+    if stripped.endswith("?") and any(
+        marker in stripped
         for marker in [
-            "두 번째 호출",
-            "첫 번째 호출",
-            "마지막 출력",
-            "최종 출력",
-            "마지막 결과",
+            "무엇입니까",
+            "어떤",
+            "옳은",
+            "옳지 않은",
+            "적절한",
+            "목적",
+            "역할",
+            "설명",
+            "조치",
+            "방법",
+            "원인",
+            "판단",
         ]
-    )
+    ):
+        return
 
-    if body.count("print(") >= 2 and not asks_single_result:
-        if len(answer_values) < 2:
-            return True
+    raise ValueError("문제 본문 마지막 문장이 허용된 존댓말 질문형이 아닙니다.")
 
-    if answer_values and explanation_values:
-        return answer_values != explanation_values
+def _validate_beginner_explanation_style(question: GeneratedQuestion) -> None:
+    if question.difficulty != "초급":
+        return
 
-    return False
+    forbidden_words = [
+        "적절한 대응",
+        "대응입니다",
+        "조치입니다",
+        "개선 방향",
+        "현재 상황",
+        "핵심 원인",
+    ]
 
-def _has_java_static_instance_multiple_truth(q: dict) -> bool:
-    """
-    Java static/instance 비교 문제에서 정답 외 선택지에
-    일반적으로 참인 설명만 단독으로 들어가 복수정답처럼 보이는 경우를 감지한다.
-    단, 참인 설명과 틀린 설명이 함께 들어간 오답은 허용한다.
-    """
-    competency_type = normalize_competency_type(q.get("competency_type"))
-    if competency_type != "java":
-        return False
+    for word in forbidden_words:
+        if word in question.explanation:
+            raise ValueError(f"초급 해설에 중급/실무형 표현이 포함되어 있습니다: {word}")
 
-    body = str(q.get("body", "") or "").lower()
-    choices = q.get("choices", [])
-    answer = q.get("answer")
+def _validate_ai_intermediate_terms(question: GeneratedQuestion) -> None:
+    if question.difficulty != "중급":
+        return
 
-    if "static" not in body or "인스턴스" not in body:
-        return False
+    if question.competency_type != "ai":
+        return
 
-    if not isinstance(choices, list) or len(choices) != 5:
-        return False
+    text = " ".join([
+        question.title,
+        question.body,
+        *question.choices,
+        question.explanation,
+    ])
+
+    if "온도" in text:
+        raise ValueError("AI 중급 문제에서는 temperature를 '온도'로 번역하지 말고 temperature로 표기해야 합니다.")
+
+def _validate_intermediate_body_has_context(question: GeneratedQuestion) -> None:
+    if question.difficulty != "중급":
+        return
+
+    body = question.body.strip()
+
+    # "위 상황에서 ..."만 있고 실제 상황 설명이 없는 문제 방지
+    weak_body_prefixes = [
+        "위 상황에서",
+        "위 현상에서",
+        "위 로그를",
+        "이 상황에서",
+        "이 현상에서",
+    ]
+
+    if any(body.startswith(prefix) for prefix in weak_body_prefixes) and len(body) < 80:
+        raise ValueError("중급 문제 body에 실제 상황 설명 없이 질문 문장만 포함되어 있습니다.")
+
+    # 중급 문제는 최소한 상황 설명 + 질문으로 구성되어야 함
+    if any(body.startswith(prefix) for prefix in weak_body_prefixes) and len(body) < 80:
+        raise ValueError("중급 문제 body에 실제 상황 설명 없이 질문 문장만 포함되어 있습니다.")
+
+    # 문장이 1문장뿐이면 대부분 상황 없이 질문만 있는 문제
+    sentence_count = body.count(".") + body.count("?")
+    if sentence_count < 2 and question.question_format != "ai_log_or_metric_interpretation":
+        raise ValueError("중급 문제 body는 최소 2문장 이상의 상황 설명과 질문을 포함해야 합니다.")
+
+def _normalize_for_overlap_check(text: str) -> str:
+    if not text:
+        return ""
+
+    text = str(text).lower()
+    text = re.sub(r"\s+", "", text)
+    text = re.sub(r"[^\w가-힣]", "", text)
+    return text
+
+
+def _validate_explanation_not_choice_copy(question) -> None:
+    choices = getattr(question, "choices", None) or []
+    answer = getattr(question, "answer", None)
+    explanation = getattr(question, "explanation", "") or ""
+
+    if not choices or not explanation:
+        return
 
     try:
-        answer_int = int(answer)
+        answer_index = int(answer) - 1
     except Exception:
-        return False
+        return
 
-    if answer_int < 1 or answer_int > 5:
-        return False
+    if answer_index < 0 or answer_index >= len(choices):
+        return
 
-    true_like_patterns = [
-        "인스턴스 메서드는 객체를 통해 호출",
-        "인스턴스 메서드는 객체의 상태",
-        "인스턴스 메서드는 인스턴스 변수에 접근",
-        "static 메서드는 클래스 레벨에서 호출",
-        "static 메서드는 클래스에 속",
-        "static 메서드는 인스턴스 변수에 접근할 수 없다",
-        "static 메서드는 this 키워드를 사용할 수 없다",
+    answer_choice = str(choices[answer_index])
+
+    normalized_choice = _normalize_for_overlap_check(answer_choice)
+    normalized_explanation = _normalize_for_overlap_check(explanation)
+
+    if not normalized_choice or not normalized_explanation:
+        return
+
+    # 정답 선택지 문장이 해설에 거의 그대로 포함된 경우 reject
+    if len(normalized_choice) >= 20 and normalized_choice in normalized_explanation:
+        raise ValueError("해설이 정답 선택지 문장을 거의 그대로 반복하고 있습니다.")
+
+    # 선택지 앞부분만 살짝 바꿔서 복붙한 경우도 일부 reject
+    choice_prefix = normalized_choice[:25]
+    if len(choice_prefix) >= 20 and choice_prefix in normalized_explanation:
+        raise ValueError("해설이 정답 선택지 표현을 과도하게 반복하고 있습니다.")
+
+def _normalize_for_similarity(text: str) -> str:
+    if not text:
+        return ""
+
+    text = str(text).lower()
+    text = re.sub(r"\s+", "", text)
+    text = re.sub(r"[^\w가-힣]", "", text)
+    return text
+
+
+def _similarity_ratio(a: str, b: str) -> float:
+    from difflib import SequenceMatcher
+
+    a_norm = _normalize_for_similarity(a)
+    b_norm = _normalize_for_similarity(b)
+
+    if not a_norm or not b_norm:
+        return 0.0
+
+    return SequenceMatcher(None, a_norm, b_norm).ratio()
+
+
+def _validate_explanation_not_choice_copy(question: GeneratedQuestion) -> None:
+    choices = question.choices or []
+    answer = question.answer
+    explanation = question.explanation or ""
+
+    if not choices or not explanation:
+        return
+
+    answer_index = int(answer) - 1
+
+    if answer_index < 0 or answer_index >= len(choices):
+        return
+
+    answer_choice = str(choices[answer_index])
+    expected_prefix = f"정답은 {question.answer}번입니다."
+    reason_text = explanation.replace(expected_prefix, "", 1).strip()
+
+    # 정답 선택지 전체 문장이 해설에 그대로 포함되는 경우
+    normalized_choice = _normalize_for_similarity(answer_choice)
+    normalized_reason = _normalize_for_similarity(reason_text)
+
+    if len(normalized_choice) >= 20 and normalized_choice in normalized_reason:
+        raise ValueError("해설이 정답 선택지 문장을 거의 그대로 반복하고 있습니다.")
+
+    # 문장을 조금 바꿨지만 의미상 거의 같은 경우
+    if _similarity_ratio(answer_choice, reason_text[: len(answer_choice) + 30]) >= 0.86:
+        raise ValueError("해설이 정답 선택지를 문장만 조금 바꿔 반복하고 있습니다.")
+
+def _validate_explanation_has_reasoning_depth(question: GeneratedQuestion) -> None:
+    explanation = (question.explanation or "").strip()
+    expected_prefix = f"정답은 {question.answer}번입니다."
+
+    if not explanation.startswith(expected_prefix):
+        return
+
+    reason_text = explanation.replace(expected_prefix, "", 1).strip()
+
+    # 너무 짧은 해설만 막는다.
+    # 180 이상은 현재 LLM이 자주 실패하므로 110~120 정도가 현실적이다.
+    if len(reason_text) < 110:
+        raise ValueError("해설이 너무 짧습니다. 정답 판단 근거와 오답 한계를 더 설명해야 합니다.")
+
+    # 정답 판단 근거가 아예 없는 경우만 막는다.
+    reasoning_keywords = [
+        "검증",
+        "범위",
+        "schema",
+        "스키마",
+        "비즈니스 규칙",
+        "저장",
+        "채점",
+        "검수",
+        "결과",
+        "오류",
+        "정합성",
+        "매핑",
+        "선택지",
+        "값",
     ]
 
-    false_markers = [
-        "static 메서드는 this 키워드를 사용할 수 있다",
-        "static 메서드는 인스턴스 변수에 접근할 수 있다",
-        "static 메서드는 인스턴스 메서드와 동일한 방식으로 호출",
-        "인스턴스 메서드는 클래스 이름으로 호출",
-        "인스턴스 메서드는 객체 생성 없이 호출",
-        "인스턴스 메서드는 static",
-        "더 많은 메모리",
-        "더 빠르게 실행",
+    if not any(keyword in reason_text for keyword in reasoning_keywords):
+        raise ValueError("해설에 정답 판단 근거가 부족합니다.")
+
+    # 오답 한계 설명은 다양한 표현을 허용한다.
+    wrong_limit_keywords = [
+        "나머지 선택지",
+        "다른 선택지",
+        "JSON 형태",
+        "형식",
+        "schema 검증",
+        "스키마 검증",
+        "낮은 우선순위",
+        "무시",
+        "허용",
+        "choices 개수",
+        "일부 조건",
+        "검증 기준",
+        "비즈니스 규칙",
+        "빠뜨",
+        "부족",
+        "한계",
+        "직접",
     ]
 
-    for idx, choice in enumerate(choices, start=1):
-        if idx == answer_int:
-            continue
+    if not any(keyword in reason_text for keyword in wrong_limit_keywords):
+        raise ValueError("해설에 오답 선택지의 한계 설명이 부족합니다.")
 
-        choice_text = str(choice)
+    # 정말 뭉뚱그린 해설만 막는다.
+    weak_phrases = [
+        "나머지 선택지들은 부적절합니다.",
+        "나머지 선택지들은 적절하지 않습니다.",
+        "문제를 해결하지 못합니다.",
+        "잘못된 접근입니다.",
+    ]
 
-        has_true_like = any(pattern in choice_text for pattern in true_like_patterns)
-        has_false_marker = any(marker in choice_text for marker in false_markers)
-
-        # 일반적으로 참인 설명만 단독으로 들어간 오답만 reject
-        if has_true_like and not has_false_marker:
-            return True
-
-    return False
-
-def _has_too_shallow_explanation(q: dict) -> bool:
-    """
-    해설이 정답 선택지를 반복하는 수준이거나,
-    개념 설명/오답 판단 근거가 너무 부족한 경우를 감지한다.
-    """
-    explanation = str(q.get("explanation", "") or "").strip()
-    body = str(q.get("body", "") or "")
-    competency_type = normalize_competency_type(q.get("competency_type"))
-
-    if not explanation:
-        return True
-
-    explanation_body = re.sub(
-        r"^정답은\s*\d\s*번입니다\.?\s*",
-        "",
-        explanation,
-    ).strip()
-
-    # Java static/instance 문제는 최소 설명량을 요구한다.
-    if (
-        competency_type == "java"
-        and "static" in body.lower()
-        and ("인스턴스" in body or "instance" in body.lower())
-    ):
-        required_terms = [
-            "this",
-            "인스턴스 필드",
-            "객체",
-            "클래스",
-        ]
-
-        if len(explanation_body) < 120:
-            return True
-
-        if sum(1 for term in required_terms if term in explanation_body) < 2:
-            return True
-
-        if "다른 선택지" not in explanation_body and "반면" not in explanation_body:
-            return True
-
-    return False
+    if any(phrase in reason_text for phrase in weak_phrases):
+        raise ValueError("해설이 정답/오답을 뭉뚱그려 설명하고 있습니다.")

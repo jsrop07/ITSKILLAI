@@ -1,5 +1,6 @@
 import axios from "axios";
-import type { Admin, Applicant, ApplicantCreate, Diagnosis, DiagnosisCreate, DiagnosisUpdate, Question, QuestionCreate, ExamRecord, RecordCreate, PageContent, PageContentUpdate, DashboardStats, RecentExamRecord, WeakCompetency, ExamLoginResponse, QuestionForExam, AnswerSubmit, ExamResultResponse, AnswerDetail, GenerateAIQuestionsV2Payload, GenerateAIQuestionsV2Response, } from "./types";
+
+import type { Admin, Applicant, ApplicantCreate, Diagnosis, DiagnosisCreate, DiagnosisUpdate, Question, QuestionCreate, ExamRecord, RecordCreate, PageContent, PageContentUpdate, DashboardStats, RecentExamRecord, WeakCompetency, ExamLoginResponse, QuestionForExam, AnswerSubmit, ExamResultResponse, AnswerDetail, GenerateAIQuestionsV2Payload, GenerateAIQuestionsV2Response, AIResultReportResponse, } from "./types";
 
 // ──────────────────────────────────────────────
 // Axios 인스턴스
@@ -215,6 +216,13 @@ export const recordsApi = {
 
   getAnalyticsSummary: async () => {
     const res = await api.get("/api/records/analytics/summary");
+    return res.data;
+  },
+
+  generateAIReport: async (recordId: number): Promise<AIResultReportResponse> => {
+    const res = await api.post<AIResultReportResponse>(
+      `/api/records/${recordId}/ai-report`
+    );
     return res.data;
   },
 };
