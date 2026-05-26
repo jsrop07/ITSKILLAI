@@ -1,8 +1,8 @@
-from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional, List, Any, Literal
-from datetime import datetime
-from enum import Enum
 import json
+from enum import Enum
+from datetime import datetime
+from typing import Optional, List, Any, Literal
+from pydantic import BaseModel, EmailStr, field_validator
 
 
 # ──────────────────────────────────────────────
@@ -274,6 +274,8 @@ class QuestionRead(QuestionBase):
     created_by: Optional[int] = None
     created_at: datetime
     updated_at: datetime
+    has_rag_evidence: bool = False
+    rag_evidence: Optional[dict[str, Any]] = None
 
     class Config:
         from_attributes = True
@@ -362,13 +364,38 @@ class PageContentRead(PageContentBase):
     class Config:
         from_attributes = True
 
+class ResultReportRead(BaseModel):
+    report_id: int
+    record_id: int
+    applicant_id: int
+    report_type: str
+    model_name: Optional[str] = None
+    current_analysis_json: Optional[Any] = None
+    subtopic_stats_json: Optional[Any] = None
+    history_comparison_json: Optional[Any] = None
+    wrong_answer_summary_json: Optional[Any] = None
+    report_text: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
+class AIResultReportResponse(BaseModel):
+    record_id: int
+    report_id: Optional[int] = None
+    summary_comment: str
+    subtopic_stats: Optional[Any] = None
+    history_comparison: Optional[Any] = None
+
 
 # ──────────────────────────────────────────────
 # Exam Flow Schemas (응시자)
 # ──────────────────────────────────────────────
 
 class ExamLoginRequest(BaseModel):
-    name: str
+    email: str
     login_token: str
 
 class ExamLoginResponse(BaseModel):
@@ -410,6 +437,46 @@ class QuestionForExam(BaseModel):
 
         return value
 
+class ResultSummary(BaseModel):
+    total_questions: int
+    correct_count: int
+    wrong_count: int
+    accuracy_rate: float
+    total_score: float
+    pass_score: int
+    pass_yn: bool
+
+
+class ResultStatItem(BaseModel):
+    key: str
+    label: str
+    total_count: int
+    correct_count: int
+    wrong_count: int
+    accuracy_rate: float
+    earned_score: float
+    total_score: float
+
+
+class WrongAnswerItem(BaseModel):
+    question_id: int
+    question_title: str
+    competency_type: Optional[str] = None
+    competency_label: Optional[str] = None
+    difficulty: Optional[str] = None
+    submitted_answer: Optional[Any] = None
+    correct_answer: Optional[Any] = None
+    explanation: Optional[str] = None
+
+
+class ResultAnalysisReport(BaseModel):
+    summary: ResultSummary
+    competency_stats: List[ResultStatItem] = []
+    difficulty_stats: List[ResultStatItem] = []
+    weak_competencies: List[ResultStatItem] = []
+    wrong_answers: List[WrongAnswerItem] = []
+    recommendations: List[str] = []
+
 class ExamResultResponse(BaseModel):
     record_id: int
     applicant_name: str
@@ -419,6 +486,8 @@ class ExamResultResponse(BaseModel):
     pass_yn: bool
     competency_breakdown: Optional[Any] = None
     submitted_at: Optional[datetime] = None
+    analysis_report: Optional[ResultAnalysisReport] = None
+    summary_comment: Optional[str] = None
 
 
 # ──────────────────────────────────────────────
@@ -481,3 +550,4 @@ class GenerateQuestionsFromDocumentRequest(BaseModel):
     difficulty: Literal["초급", "중급", "고급"]
     count: int = 5
     top_k: int = 5
+

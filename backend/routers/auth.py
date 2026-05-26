@@ -1,15 +1,14 @@
-from datetime import datetime, timedelta
+import os
+from models import Admin
+from database import get_db
 from jose import JWTError, jwt
+from dotenv import load_dotenv
+from sqlalchemy.orm import Session
+from schemas import Token, AdminLogin
 from passlib.context import CryptContext
+from datetime import datetime, timedelta
 from fastapi import APIRouter, Depends, HTTPException, status
 from fastapi.security import OAuth2PasswordBearer, OAuth2PasswordRequestForm
-from sqlalchemy.orm import Session
-import os
-from dotenv import load_dotenv
-
-from database import get_db
-from models import Admin
-from schemas import Token, AdminLogin
 
 load_dotenv()
 

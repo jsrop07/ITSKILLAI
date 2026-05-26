@@ -9,18 +9,18 @@ import { examApi } from "../../../lib/api";
 
 export default function TestLogin() {
   const navigate = useNavigate();
-  const [name, setName] = useState("");
+  const [email, setEmail] = useState("");
   const [token, setToken] = useState("");
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
 
   const handleLogin = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !token) return setError("이름과 토큰을 모두 입력해 주세요.");
+    if (!email || !token) return setError("이름과 토큰을 모두 입력해 주세요.");
     setError("");
     setLoading(true);
     try {
-      const res = await examApi.login(name, token);
+      const res = await examApi.login(email, token);
       sessionStorage.setItem("exam_session", JSON.stringify(res));
 
       // 이미 제출/채점 완료된 경우 → 결과 화면으로 바로 이동
@@ -52,11 +52,11 @@ export default function TestLogin() {
           <CardContent className="pt-6">
             <form onSubmit={handleLogin} className="space-y-5">
               <div className="space-y-2">
-                <Label htmlFor="login-name">이름</Label>
+                <Label htmlFor="login-name">이메일</Label>
                 <Input
                   id="login-name"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                   placeholder="홍길동"
                   required
                   className="h-11"

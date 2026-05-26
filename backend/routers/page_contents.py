@@ -1,9 +1,8 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from typing import List, Optional
-
 from database import get_db
 from models import PageContent
+from typing import List, Optional
+from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query
 from schemas import PageContentCreate, PageContentUpdate, PageContentRead
 
 router = APIRouter(prefix="/api/page-contents", tags=["page-contents"])

@@ -5,9 +5,7 @@ import { Input } from "../../components/ui/input";
 import { Label } from "../../components/ui/label";
 import { Textarea } from "../../components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
-import {
-  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
-} from "../../components/ui/select";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, } from "../../components/ui/select";
 import { ClipboardList, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
 import { applicantsApi } from "../../../lib/api";
 import type { ApplicantCreate } from "../../../lib/types";
@@ -32,7 +30,7 @@ export default function Apply() {
     setError("");
     setLoading(true);
     try {
-      await applicantsApi.create(form);
+      await applicantsApi.apply(form);
       setSubmitted(true);
     } catch (err: any) {
       setError(err.response?.data?.detail || "신청 중 오류가 발생했습니다.");
