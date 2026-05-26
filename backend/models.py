@@ -219,3 +219,22 @@ class AIDocumentChunk(Base):
     page_no = Column(Integer, nullable=True)
     vector_id = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+class ResultReport(Base):
+    __tablename__ = "result_reports"
+
+    report_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    record_id = Column(Integer, ForeignKey("records.record_id"), nullable=False, index=True)
+    applicant_id = Column(Integer, ForeignKey("applicants.applicant_id"), nullable=False, index=True)
+    report_type = Column(String(50), default="ai_result_analysis", nullable=False)
+    model_name = Column(String(100), nullable=True)
+
+    current_analysis_json = Column(Text, nullable=True)
+    subtopic_stats_json = Column(Text, nullable=True)
+    history_comparison_json = Column(Text, nullable=True)
+    wrong_answer_summary_json = Column(Text, nullable=True)
+
+    report_text = Column(Text, nullable=False)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

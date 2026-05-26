@@ -3,7 +3,7 @@ from typing import List, Optional
 from sqlalchemy.orm import Session
 from models import Record, Applicant, Diagnosis, Question
 from fastapi import APIRouter, Depends, HTTPException, Query
-from services.ai_result_report import generate_ai_result_report
+from ai.reports.report_service import (generate_result_report_for_record,get_result_report_for_record,)
 from schemas import RecordCreate, RecordUpdate, RecordRead, AIResultReportResponse
 
 router = APIRouter(prefix="/api/records", tags=["records"])
@@ -47,53 +47,51 @@ def create_record(data: RecordCreate, db: Session = Depends(get_db)):
     db.refresh(record)
     return record
 
+@router.get("/analytics/summary")
+def get_analytics_summary(db: Session = Depends(get_db)):
+    from sqlalchemy import func, text
+
+    total_records = db.query(func.count(Record.record_id)).scalar() or 0
+    graded_records = db.query(func.count(Record.record_id)).filter(
+        Record.status == "graded"
+    ).scalar() or 0
+    pass_count = db.query(func.count(Record.record_id)).filter(
+        Record.pass_yn == True
+    ).scalar() or 0
+    avg_score = db.query(func.avg(Record.total_score)).filter(
+        Record.total_score.isnot(None)
+    ).scalar()
+
+    pass_rate = (pass_count / graded_records * 100) if graded_records > 0 else 0
+
+    return {
+        "total_records": total_records,
+        "graded_records": graded_records,
+        "pass_count": pass_count,
+        "pass_rate": round(pass_rate, 1),
+        "avg_score": round(float(avg_score), 1) if avg_score else None,
+    }
+
 @router.post("/{record_id}/ai-report", response_model=AIResultReportResponse)
 def generate_record_ai_report(record_id: int, db: Session = Depends(get_db)):
-    record = db.query(Record).filter(Record.record_id == record_id).first()
-    if not record:
-        raise HTTPException(status_code=404, detail="응시 기록을 찾을 수 없습니다.")
+    try:
+        result = generate_result_report_for_record(db=db, record_id=record_id)
+        return AIResultReportResponse(**result)
+    except ValueError as e:
+        message = str(e)
+        if "찾을 수 없습니다" in message:
+            raise HTTPException(status_code=404, detail=message)
+        if "채점 완료" in message or "문항 정보" in message:
+            raise HTTPException(status_code=400, detail=message)
+        raise HTTPException(status_code=500, detail=message)
 
-    if record.status != "graded":
-        raise HTTPException(status_code=400, detail="채점 완료된 기록만 AI 리포트를 생성할 수 있습니다.")
+@router.get("/{record_id}/ai-report", response_model=AIResultReportResponse)
+def get_record_ai_report(record_id: int, db: Session = Depends(get_db)):
+    result = get_result_report_for_record(db=db, record_id=record_id)
+    if not result:
+        raise HTTPException(status_code=404, detail="생성된 AI 리포트가 없습니다.")
+    return AIResultReportResponse(**result)
 
-    diagnosis = db.query(Diagnosis).filter(
-        Diagnosis.diagnosis_id == record.diagnosis_id
-    ).first()
-
-    if not diagnosis or not diagnosis.question_idxs:
-        raise HTTPException(status_code=404, detail="시험 정보를 찾을 수 없습니다.")
-
-    q_idxs = [
-        int(x.strip())
-        for x in diagnosis.question_idxs.split(",")
-        if x.strip().isdigit()
-    ]
-
-    if not q_idxs:
-        raise HTTPException(status_code=400, detail="시험 문항 정보가 없습니다.")
-
-    questions = db.query(Question).filter(
-        Question.question_id.in_(q_idxs)
-    ).all()
-
-    summary_comment = generate_ai_result_report(
-        record=record,
-        diagnosis=diagnosis,
-        questions=questions,
-    )
-
-    if not summary_comment:
-        raise HTTPException(status_code=500, detail="AI 리포트 생성에 실패했습니다.")
-
-    record.summary_comment = summary_comment
-    db.commit()
-    db.refresh(record)
-
-    return AIResultReportResponse(
-        record_id=record.record_id,
-        summary_comment=record.summary_comment,
-    )
-    
 @router.get("/{record_id}", response_model=RecordRead)
 def get_record(record_id: int, db: Session = Depends(get_db)):
     record = db.query(Record).filter(Record.record_id == record_id).first()
@@ -189,30 +187,3 @@ def get_record_answers(record_id: int, db: Session = Depends(get_db)):
             "earned_score": float(q.score) if is_correct else 0.0,
         })
     return result
-
-
-
-@router.get("/analytics/summary")
-def get_analytics_summary(db: Session = Depends(get_db)):
-    from sqlalchemy import func, text
-
-    total_records = db.query(func.count(Record.record_id)).scalar() or 0
-    graded_records = db.query(func.count(Record.record_id)).filter(
-        Record.status == "graded"
-    ).scalar() or 0
-    pass_count = db.query(func.count(Record.record_id)).filter(
-        Record.pass_yn == True
-    ).scalar() or 0
-    avg_score = db.query(func.avg(Record.total_score)).filter(
-        Record.total_score.isnot(None)
-    ).scalar()
-
-    pass_rate = (pass_count / graded_records * 100) if graded_records > 0 else 0
-
-    return {
-        "total_records": total_records,
-        "graded_records": graded_records,
-        "pass_count": pass_count,
-        "pass_rate": round(pass_rate, 1),
-        "avg_score": round(float(avg_score), 1) if avg_score else None,
-    }

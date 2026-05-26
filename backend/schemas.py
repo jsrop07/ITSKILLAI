@@ -364,9 +364,30 @@ class PageContentRead(PageContentBase):
     class Config:
         from_attributes = True
 
+class ResultReportRead(BaseModel):
+    report_id: int
+    record_id: int
+    applicant_id: int
+    report_type: str
+    model_name: Optional[str] = None
+    current_analysis_json: Optional[Any] = None
+    subtopic_stats_json: Optional[Any] = None
+    history_comparison_json: Optional[Any] = None
+    wrong_answer_summary_json: Optional[Any] = None
+    report_text: str
+    created_at: datetime
+    updated_at: datetime
+
+    class Config:
+        from_attributes = True
+
+
 class AIResultReportResponse(BaseModel):
     record_id: int
+    report_id: Optional[int] = None
     summary_comment: str
+    subtopic_stats: Optional[Any] = None
+    history_comparison: Optional[Any] = None
 
 
 # ──────────────────────────────────────────────
@@ -529,3 +550,4 @@ class GenerateQuestionsFromDocumentRequest(BaseModel):
     difficulty: Literal["초급", "중급", "고급"]
     count: int = 5
     top_k: int = 5
+
