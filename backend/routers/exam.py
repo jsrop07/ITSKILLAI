@@ -4,9 +4,10 @@ from jose import jwt
 from database import get_db
 from datetime import datetime
 from sqlalchemy.orm import Session
-from fastapi import APIRouter, Depends, HTTPException
 from models import Record, Applicant, Diagnosis, Question
+from services.email_service import send_exam_submitted_to_admin
 from services.result_analysis import build_result_analysis_report
+from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from schemas import (ExamLoginRequest, ExamLoginResponse,QuestionForExam, ExamSubmit, ExamResultResponse,)
 
 router = APIRouter(prefix="/api/exam", tags=["exam"])
@@ -41,8 +42,8 @@ def exam_login(data: ExamLoginRequest, db: Session = Depends(get_db)):
     if not applicant:
         raise HTTPException(status_code=404, detail="응시자 정보를 찾을 수 없습니다.")
 
-    if applicant.name.strip() != data.name.strip():
-        raise HTTPException(status_code=401, detail="이름이 일치하지 않습니다.")
+    if applicant.email.strip().lower() != data.email.strip().lower():
+        raise HTTPException(status_code=401, detail="이메일이 일치하지 않습니다.")
 
     # 이미 완료된 시험이라도 로그인은 허용 (결과 조회를 위해)
     # 단, ready/in_progress가 아니면 시험 환경(test-room)으로는 못 가게 프론트에서 제어
@@ -122,7 +123,7 @@ def get_exam_questions(record_id: int, exam_token: str, db: Session = Depends(ge
 
 # ── 답안 제출
 @router.post("/submit")
-def submit_exam(data: ExamSubmit, exam_token: str, db: Session = Depends(get_db)):
+def submit_exam(data: ExamSubmit,exam_token: str,background_tasks: BackgroundTasks,db: Session = Depends(get_db),):
     verified_id = verify_exam_token(exam_token)
     if verified_id != data.record_id:
         raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
@@ -215,6 +216,22 @@ def submit_exam(data: ExamSubmit, exam_token: str, db: Session = Depends(get_db)
         applicant.status = "completed"
 
     db.commit()
+    db.refresh(record)
+
+    submitted_text = None
+    if record.submitted_at:
+        submitted_text = record.submitted_at.strftime("%Y-%m-%d %H:%M")
+
+    if applicant:
+        background_tasks.add_task(
+            send_exam_submitted_to_admin,
+            applicant_name=applicant.name,
+            applicant_email=applicant.email,
+            diagnosis_title=diagnosis.title if diagnosis else None,
+            submitted_at=submitted_text,
+            total_score=record.total_score,
+            pass_yn=record.pass_yn,
+        )
 
     return {
         "message": "제출이 완료되었습니다.",

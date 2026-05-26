@@ -142,7 +142,7 @@ export default function ApplicantDetail() {
         diagnosis_id: Number(selectedDiagnosisId),
         deadline_at: new Date(deadlineAt + "T23:59:59").toISOString(),
       });
-      alert("시험이 배정되었습니다. (실제 환경에서는 이메일을 발송합니다)");
+      alert("시험이 배정되었고 응시자에게 이메일이 발송되었습니다.");
       loadData();
     } catch (err) {
       alert("배정 실패");
@@ -151,13 +151,22 @@ export default function ApplicantDetail() {
     }
   };
 
-  const handleToggleVisible = async (checked: boolean) => {
+  const handlePublishResult = async () => {
     if (!record) return;
+
+    if (!window.confirm("응시자에게 결과를 공개하고 이메일을 발송하시겠습니까?")) {
+      return;
+    }
+
     try {
-      const updated = await recordsApi.update(record.record_id, { result_visible: checked } as any);
+      setSaving(true);
+      const updated = await recordsApi.publishResult(record.record_id);
       setRecord(updated);
-    } catch (err) {
-      console.error(err);
+      alert("결과가 공개되었고 응시자에게 이메일이 발송되었습니다.");
+    } catch (err: any) {
+      alert(err.response?.data?.detail || "결과 공개 실패");
+    } finally {
+      setSaving(false);
     }
   };
 
@@ -430,11 +439,25 @@ export default function ApplicantDetail() {
                         </p>
                       </div>
 
-                      <Switch
-                        checked={record?.result_visible ?? false}
-                        onCheckedChange={handleToggleVisible}
-                        disabled={!record}
-                      />
+                      {record?.result_visible ? (
+                        <Badge className="bg-emerald-100 text-emerald-700">
+                          결과 공개 완료
+                        </Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="bg-sky-600 hover:bg-sky-700"
+                          onClick={handlePublishResult}
+                          disabled={!record || saving || record.status !== "graded"}
+                        >
+                          {saving ? (
+                            <Loader2 className="size-4 mr-2 animate-spin" />
+                          ) : (
+                            <Send className="size-4 mr-2" />
+                          )}
+                          결과 공개 및 메일 발송
+                        </Button>
+                      )}
                     </div>
 
                     <div className="mt-4 grid grid-cols-2 gap-3">

@@ -23,10 +23,21 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    const status = err.response?.status;
+    const path = window.location.pathname;
+
+    const isApplicantPage =
+      path.startsWith("/test-login") ||
+      path.startsWith("/test-room") ||
+      path.startsWith("/test-submit") ||
+      path.startsWith("/test-result") ||
+      path.startsWith("/apply");
+
+    if (status === 401 && !isApplicantPage) {
       localStorage.removeItem("admin_token");
       window.location.href = "/login";
     }
+
     return Promise.reject(err);
   }
 );
@@ -209,6 +220,11 @@ export const recordsApi = {
     return res.data;
   },
 
+  publishResult: async (recordId: number): Promise<ExamRecord> => {
+    const res = await api.post<ExamRecord>(`/api/records/${recordId}/publish-result`);
+    return res.data;
+  },
+
   getAnswers: async (recordId: number): Promise<AnswerDetail[]> => {
     const res = await api.get<AnswerDetail[]>(`/api/records/${recordId}/answers`);
     return res.data;
@@ -254,8 +270,11 @@ export const pageContentsApi = {
 // Exam Flow (응시자 — 인증 불필요)
 // ──────────────────────────────────────────────
 export const examApi = {
-  login: async (name: string, login_token: string): Promise<ExamLoginResponse> => {
-    const res = await api.post<ExamLoginResponse>("/api/exam/login", { name, login_token });
+  login: async (email: string, login_token: string): Promise<ExamLoginResponse> => {
+    const res = await api.post<ExamLoginResponse>("/api/exam/login", {
+      email,
+      login_token,
+    });
     return res.data;
   },
   getQuestions: async (record_id: number, exam_token: string): Promise<QuestionForExam[]> => {

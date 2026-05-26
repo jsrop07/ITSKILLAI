@@ -320,6 +320,7 @@ export interface ExamLoginResponse {
   question_count: number;
   pass_score: number;
   exam_token: string;
+  status: "ready" | "in_progress" | "submitted" | "graded";
 }
 
 export interface QuestionForExam {

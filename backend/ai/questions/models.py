@@ -1,9 +1,7 @@
 from typing import Any, Literal
+from pydantic import BaseModel, Field, model_validator
 
-from pydantic import BaseModel, Field
-
-
-Difficulty = Literal["초급", "중급"]
+Difficulty = Literal["초급", "중급", "고급"]
 QuestionType = Literal["multiple_choice"]
 CompetencyType = Literal["ai"]
 
@@ -11,9 +9,15 @@ CompetencyType = Literal["ai"]
 class QuestionV2Request(BaseModel):
     topic: str = Field(..., min_length=1)
     difficulty: Difficulty
-    count: int = Field(default=5, ge=1, le=5)
+    count: int = Field(default=5, ge=1, le=10)
     question_type: QuestionType = "multiple_choice"
     competency_type: CompetencyType = "ai"
+
+    @model_validator(mode="after")
+    def validate_count_by_difficulty(self):
+        if self.difficulty != "초급" and self.count > 5:
+            raise ValueError("중급/고급 문제 생성은 최대 5개까지만 지원합니다.")
+        return self
 
 
 class QuestionFormatPlan(BaseModel):

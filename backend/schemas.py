@@ -395,7 +395,7 @@ class AIResultReportResponse(BaseModel):
 # ──────────────────────────────────────────────
 
 class ExamLoginRequest(BaseModel):
-    name: str
+    email: str
     login_token: str
 
 class ExamLoginResponse(BaseModel):

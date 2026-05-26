@@ -3,13 +3,27 @@ from database import get_db
 from models import Applicant
 from typing import List, Optional
 from sqlalchemy.orm import Session
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query,BackgroundTasks
 from schemas import ApplicantCreate, ApplicantUpdate, ApplicantRead
+from services.email_service import send_apply_notification_to_admin
 
 router = APIRouter(prefix="/api/applicants", tags=["applicants"])
 
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
+    
+def _create_new_applicant_application(data: ApplicantCreate, db: Session) -> Applicant:
+    payload = data.model_dump()
+    payload["email"] = _normalize_email(payload["email"])
+
+    applicant = Applicant(**payload)
+    applicant.status = "pending"
+
+    db.add(applicant)
+    db.commit()
+    db.refresh(applicant)
+
+    return applicant
 
 def _get_or_create_applicant_by_email(data: ApplicantCreate, db: Session) -> Applicant:
     payload = data.model_dump()
@@ -118,5 +132,21 @@ def delete_applicant(applicant_id: int, db: Session = Depends(get_db)):
 
 # 응시자 시험 신청 (공개 엔드포인트)
 @router.post("/apply", response_model=ApplicantRead)
-def apply_exam(data: ApplicantCreate, db: Session = Depends(get_db)):
-    return _get_or_create_applicant_by_email(data=data, db=db)
+def apply_exam(
+    data: ApplicantCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    applicant = _create_new_applicant_application(data=data, db=db)
+
+    background_tasks.add_task(
+        send_apply_notification_to_admin,
+        name=applicant.name,
+        email=applicant.email,
+        phone=applicant.phone,
+        target_role=applicant.target_role,
+        experience_level=applicant.experience_level,
+        tech_stack=applicant.tech_stack,
+    )
+
+    return applicant

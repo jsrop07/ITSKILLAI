@@ -595,35 +595,6 @@ AI_BEGINNER_TOPIC_PRESETS: Dict[str, Dict[str, Any]] = {
         },
         "term_role": "Pretrained model은 새로운 작업에 활용할 수 있는 사전학습된 출발점 역할을 합니다.",
     },
-    "pretrained_model": {
-        "aliases": [
-            "pretrained",
-            "pre-trained",
-            "pretrained model",
-            "pretrain",
-            "pre-training",
-            "사전학습",
-            "사전 학습",
-            "사전학습 모델",
-            "프리트레인",
-        ],
-        "normalized_topic": "Pretrained Model 기본 개념",
-        "concepts": ["pretrained model", "pre-training", "fine-tuning", "transfer learning"],
-        "definition": "Pretrained model은 대규모 데이터로 미리 학습된 모델입니다.",
-        "purpose": "새 작업에서 학습 효율을 높이고 적은 데이터로도 성능을 확보하기 위해 사용됩니다.",
-        "role": "기존에 학습한 표현을 새로운 작업의 출발점으로 제공합니다.",
-        "wrong_points": [
-            "Pretrained model은 학습되지 않은 빈 모델을 의미합니다.",
-            "Pretrained model은 외부 문서를 검색해 답변에 붙이는 RAG 방식만 의미합니다.",
-            "Pretrained model은 LLM의 temperature 값을 조정하는 설정입니다.",
-            "Pretrained model은 SQL 쿼리의 실행 순서를 정하는 명령입니다.",
-        ],
-        "compare": {
-            "target": "fine-tuning",
-            "point": "Pretrained model은 미리 학습된 모델 자체이고, fine-tuning은 그 모델을 특정 작업에 맞게 추가 학습하는 과정입니다.",
-        },
-        "term_role": "Pretrained model은 새로운 작업에 활용할 수 있는 사전학습된 출발점 역할을 합니다.",
-    },
     "tokenizer": {
         "aliases": [
             "tokenizer",
@@ -1564,6 +1535,203 @@ AI_BEGINNER_COMPARE_PRESETS: Dict[str, Dict[str, Any]] = {
         ],
     },
 }
+
+BEGINNER_BASIC_RANDOM_KEYWORDS = [
+    "ai기본",
+    "ai 기본",
+    "ai기본문제",
+    "ai 기본 문제",
+    "기본문제",
+    "기본 문제",
+    "랜덤",
+    "ai문제",
+    "ai 문제",
+    "인공지능 기본",
+    "인공지능 문제",
+]
+
+BEGINNER_COMPARE_RANDOM_KEYWORDS = [
+    "비교문제",
+    "비교 문제",
+    "비교",
+    "차이",
+    "차이점",
+]
+
+BEGINNER_INCORRECT_RANDOM_KEYWORDS = [
+    "옳지 않은",
+    "옳지않은",
+    "틀린",
+    "오답",
+    "잘못된",
+    "부적절",
+]
+
+
+def _normalize_slot_text(text: str) -> str:
+    return text.strip().lower()
+
+
+def split_beginner_topic_slots(topic: str) -> list[str]:
+    slots = [part.strip() for part in topic.split(",") if part.strip()]
+    return slots or [topic.strip()]
+
+
+def _contains_any(text: str, keywords: list[str]) -> bool:
+    compact = text.replace(" ", "")
+    return any(keyword.replace(" ", "") in compact for keyword in keywords)
+
+
+def _match_beginner_topic_key(slot_text: str) -> str | None:
+    normalized = _normalize_slot_text(slot_text)
+
+    for key, preset in AI_BEGINNER_TOPIC_PRESETS.items():
+        for alias in preset.get("aliases", []):
+            if alias.lower().replace(" ", "") in normalized.replace(" ", ""):
+                return key
+
+    topic_key = normalize_ai_beginner_topic(slot_text)
+    if topic_key != "__unknown__":
+        return topic_key
+
+    return None
+
+
+def _match_beginner_compare_key(slot_text: str) -> str | None:
+    return normalize_ai_beginner_compare(slot_text)
+
+
+def _pick_unused_key(
+    keys: list[str],
+    used_keys: set[str],
+) -> str:
+    candidates = [key for key in keys if key not in used_keys]
+    if not candidates:
+        candidates = keys[:]
+
+    selected = random.choice(candidates)
+    used_keys.add(selected)
+    return selected
+
+
+def _pick_unused_compare_key(
+    used_compare_keys: set[str],
+) -> str:
+    keys = list(AI_BEGINNER_COMPARE_PRESETS.keys())
+    return _pick_unused_key(keys, used_compare_keys)
+
+
+def _pick_unused_basic_key(
+    used_topic_keys: set[str],
+) -> str:
+    keys = list(AI_BEGINNER_TOPIC_PRESETS.keys())
+    return _pick_unused_key(keys, used_topic_keys)
+
+
+def resolve_beginner_generation_slots(
+    *,
+    topic: str,
+    count: int,
+) -> list[dict[str, str | None]]:
+    raw_slots = split_beginner_topic_slots(topic)
+
+    if len(raw_slots) == 1 and is_broad_ai_beginner_topic(topic):
+        raw_slots = ["ai기본"] * count
+
+    raw_slots = raw_slots[:count]
+
+    used_topic_keys: set[str] = set()
+    used_compare_keys: set[str] = set()
+    resolved: list[dict[str, str | None]] = []
+
+    for raw_slot in raw_slots:
+        slot_text = _normalize_slot_text(raw_slot)
+        compare_key = _match_beginner_compare_key(slot_text)
+
+        if compare_key:
+            used_compare_keys.add(compare_key)
+            resolved.append({
+                "raw_slot": raw_slot,
+                "slot_type": "compare",
+                "topic_key": None,
+                "compare_key": compare_key,
+                "question_format": "ai_concept_compare_basic",
+            })
+            continue
+
+        topic_key = _match_beginner_topic_key(slot_text)
+
+        if topic_key:
+            used_topic_keys.add(topic_key)
+
+            question_format = None
+            if _contains_any(slot_text, BEGINNER_INCORRECT_RANDOM_KEYWORDS):
+                question_format = "ai_basic_concept_find_incorrect"
+            elif _contains_any(slot_text, BEGINNER_COMPARE_RANDOM_KEYWORDS):
+                question_format = "ai_concept_compare_basic"
+
+            resolved.append({
+                "raw_slot": raw_slot,
+                "slot_type": "topic",
+                "topic_key": topic_key,
+                "compare_key": None,
+                "question_format": question_format,
+            })
+            continue
+
+        if _contains_any(slot_text, BEGINNER_INCORRECT_RANDOM_KEYWORDS):
+            topic_key = _pick_unused_basic_key(used_topic_keys)
+            resolved.append({
+                "raw_slot": raw_slot,
+                "slot_type": "topic",
+                "topic_key": topic_key,
+                "compare_key": None,
+                "question_format": "ai_basic_concept_find_incorrect",
+            })
+            continue
+
+        if _contains_any(slot_text, BEGINNER_COMPARE_RANDOM_KEYWORDS):
+            compare_key = _pick_unused_compare_key(used_compare_keys)
+            resolved.append({
+                "raw_slot": raw_slot,
+                "slot_type": "compare",
+                "topic_key": None,
+                "compare_key": compare_key,
+                "question_format": "ai_concept_compare_basic",
+            })
+            continue
+
+        if _contains_any(slot_text, BEGINNER_BASIC_RANDOM_KEYWORDS):
+            topic_key = _pick_unused_basic_key(used_topic_keys)
+            resolved.append({
+                "raw_slot": raw_slot,
+                "slot_type": "topic",
+                "topic_key": topic_key,
+                "compare_key": None,
+                "question_format": None,
+            })
+            continue
+
+        topic_key = _pick_unused_basic_key(used_topic_keys)
+        resolved.append({
+            "raw_slot": raw_slot,
+            "slot_type": "topic",
+            "topic_key": topic_key,
+            "compare_key": None,
+            "question_format": None,
+        })
+
+    while len(resolved) < count:
+        topic_key = _pick_unused_basic_key(used_topic_keys)
+        resolved.append({
+            "raw_slot": "ai기본",
+            "slot_type": "topic",
+            "topic_key": topic_key,
+            "compare_key": None,
+            "question_format": None,
+        })
+
+    return resolved
 
 RAG_INTERMEDIATE_VARIANTS: Dict[str, List[Dict[str, Any]]] = {
     "ai_scenario_best_action": [
@@ -3180,49 +3348,8 @@ def normalize_ai_beginner_topic(topic: str) -> str:
     return "__unknown__"
 
 def is_broad_ai_beginner_topic(topic: str) -> bool:
-    text = topic.strip().lower().replace(" ", "")
-
-    broad_keywords = [
-        "ai관련",
-        "ai문제",
-        "ai면접",
-        "ai기초",
-        "ai기본",
-        "ai기본문제",
-        "인공지능문제",
-        "인공지능기초",
-        "인공지능기본문제",
-        "면접기초",
-    ]
-
-    return any(keyword in text for keyword in broad_keywords)
-    
-def select_beginner_topic_for_index(
-    *,
-    topic: str,
-    index: int,
-) -> str:
-    text = topic.strip().lower().replace(" ", "")
-
-    broad_keywords = [
-        "ai관련",
-        "ai문제",
-        "ai면접",
-        "ai기초",
-        "ai기본",
-        "ai기본문제",
-        "인공지능문제",
-        "인공지능기초",
-        "인공지능기본",
-        "인공지능기본문제",
-        "면접기초",
-    ]
-
-    if any(keyword in text for keyword in broad_keywords):
-        topic_index = (index - 1) % len(AI_BEGINNER_TOPIC_KEYS)
-        return AI_BEGINNER_TOPIC_KEYS[topic_index]
-
-    return topic
+    text = topic.strip().lower()
+    return _contains_any(text, BEGINNER_BASIC_RANDOM_KEYWORDS)
 
 def _build_ai_beginner_evidence(
     *,
@@ -3316,6 +3443,97 @@ def _build_ai_beginner_evidence(
         log_or_metric,
         body_context,
         normalized_topic,
+    )
+
+def _build_ai_beginner_compare_evidence_by_key(
+    *,
+    compare_key: str,
+) -> tuple[str, list[str], list[str], list[str], str | None, dict | None, str | None]:
+    preset = AI_BEGINNER_COMPARE_PRESETS[compare_key]
+
+    concept_a = preset.get("concept_a", "개념 A")
+    concept_b = preset.get("concept_b", "개념 B")
+
+    correct_points = [
+        *preset["correct_points"],
+        f"{concept_a}와 {concept_b}는 목적과 사용 방식이 서로 다릅니다.",
+    ]
+
+    wrong_points = [
+        *preset["wrong_points"],
+        f"{concept_a}와 {concept_b}는 목적과 사용 방식이 완전히 같습니다.",
+        f"{concept_a}와 {concept_b}의 역할을 서로 반대로 설명합니다.",
+    ]
+
+    return (
+        preset["normalized_topic"],
+        preset["concepts"],
+        correct_points,
+        wrong_points,
+        None,
+        None,
+        None,
+    )
+
+
+def build_beginner_evidence_pack_from_slot(
+    *,
+    slot: dict[str, str | None],
+    difficulty: str,
+    plan: QuestionFormatPlan,
+) -> EvidencePack:
+    if difficulty != "초급":
+        raise ValueError("slot 기반 evidence는 초급에서만 사용할 수 있습니다.")
+
+    raw_slot = slot.get("raw_slot") or ""
+    slot_type = slot.get("slot_type")
+
+    if slot_type == "compare":
+        compare_key = slot.get("compare_key")
+        if not compare_key:
+            raise ValueError(f"compare slot에 compare_key가 없습니다: {slot}")
+
+        (
+            normalized_topic,
+            concepts,
+            correct_points,
+            wrong_points,
+            scenario,
+            log_or_metric,
+            body_context,
+        ) = _build_ai_beginner_compare_evidence_by_key(compare_key=compare_key)
+
+    else:
+        topic_key = slot.get("topic_key")
+        if not topic_key:
+            raise ValueError(f"topic slot에 topic_key가 없습니다: {slot}")
+
+        (
+            correct_points,
+            wrong_points,
+            concepts,
+            scenario,
+            log_or_metric,
+            body_context,
+            normalized_topic,
+        ) = _build_ai_beginner_evidence(
+            topic_key=topic_key,
+            question_format=plan.question_format,
+        )
+
+    return EvidencePack(
+        topic=raw_slot,
+        normalized_topic=normalized_topic,
+        difficulty=difficulty,
+        question_format=plan.question_format,
+        answer_style=plan.answer_style,
+        focus=plan.focus,
+        concepts=concepts,
+        correct_points=correct_points,
+        wrong_points=wrong_points,
+        scenario=scenario,
+        log_or_metric=log_or_metric,
+        body_context=body_context,
     )
 
 def build_evidence_pack(

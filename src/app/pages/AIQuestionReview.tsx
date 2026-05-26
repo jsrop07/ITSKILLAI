@@ -168,7 +168,6 @@ export default function AIQuestionReview() {
         review_status: "approved",
       } as any);
 
-      alert("문제가 승인되었습니다.");
       setReviewNote("");
       await loadQuestions();
     } catch (error) {
@@ -287,45 +286,82 @@ export default function AIQuestionReview() {
             <>
               <Card className="border-slate-200">
                 <CardHeader className="border-b border-slate-200">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="w-full">
-                      <CardTitle className="text-lg">
+                  <div className="w-full">
+                    <div className="flex items-center justify-between gap-4">
+                      <CardTitle className="text-lg flex-1 min-w-0">
                         {selectedQuestion.title}
                       </CardTitle>
 
-                      <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <Badge variant="secondary" className={typeColor[selectedQuestion.question_type ?? ""] || "bg-slate-100 text-slate-700"}>
-                            {QUESTION_TYPE_LABELS[selectedQuestion.question_type ?? ""] || selectedQuestion.question_type}
-                          </Badge>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <Button
+                          className="bg-green-600 hover:bg-green-700"
+                          onClick={handleApprove}
+                          disabled={saving}
+                        >
+                          {saving ? (
+                            <Loader2 className="size-4 mr-2 animate-spin" />
+                          ) : (
+                            <CheckCircle2 className="size-4 mr-2" />
+                          )}
+                          승인
+                        </Button>
 
-                          <Badge
-                            variant="secondary"
-                            className={
-                              difficultyColor[selectedQuestion.difficulty ?? ""] ||
-                              "bg-slate-100 text-slate-700"
-                            }
-                          >
-                            {selectedQuestion.difficulty}
-                          </Badge>
-
-                          <Badge variant="secondary" className="bg-sky-100 text-sky-700">
-                            {getCompetencyLabel(selectedQuestion.competency_type) || "미분류"}
-                          </Badge>
-
-                          <Badge variant="secondary" className="bg-slate-100 text-slate-700">
-                            {selectedQuestion.score}점
-                          </Badge>
-
-                          <Badge variant="outline" className={`${getGenerationBadgeClass(selectedQuestion.ai_generation_type)} font-medium border`}>
-                            {getGenerationLabel(selectedQuestion)}
-                          </Badge>
-                        </div>
-
-                        <span className="text-sm text-slate-600 font-medium shrink-0">
-                          {formatDate(selectedQuestion.created_at)}
-                        </span>
+                        <Button
+                          variant="outline"
+                          className="text-red-600 border-red-200 hover:bg-red-50"
+                          onClick={handleReject}
+                          disabled={saving}
+                        >
+                          <XCircle className="size-4 mr-2" />
+                          반려
+                        </Button>
                       </div>
+                    </div>
+
+                    <div className="flex items-center justify-between mt-2 flex-wrap gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge
+                          variant="secondary"
+                          className={
+                            typeColor[selectedQuestion.question_type ?? ""] ||
+                            "bg-slate-100 text-slate-700"
+                          }
+                        >
+                          {QUESTION_TYPE_LABELS[selectedQuestion.question_type ?? ""] ||
+                            selectedQuestion.question_type}
+                        </Badge>
+
+                        <Badge
+                          variant="secondary"
+                          className={
+                            difficultyColor[selectedQuestion.difficulty ?? ""] ||
+                            "bg-slate-100 text-slate-700"
+                          }
+                        >
+                          {selectedQuestion.difficulty}
+                        </Badge>
+
+                        <Badge variant="secondary" className="bg-sky-100 text-sky-700">
+                          {getCompetencyLabel(selectedQuestion.competency_type) || "미분류"}
+                        </Badge>
+
+                        <Badge variant="secondary" className="bg-slate-100 text-slate-700">
+                          {selectedQuestion.score}점
+                        </Badge>
+
+                        <Badge
+                          variant="outline"
+                          className={`${getGenerationBadgeClass(
+                            selectedQuestion.ai_generation_type
+                          )} font-medium border`}
+                        >
+                          {getGenerationLabel(selectedQuestion)}
+                        </Badge>
+                      </div>
+
+                      <span className="text-sm text-slate-600 font-medium shrink-0">
+                        {formatDate(selectedQuestion.created_at)}
+                      </span>
                     </div>
                   </div>
                 </CardHeader>
@@ -474,49 +510,6 @@ export default function AIQuestionReview() {
                       </div>
                     </div>
                   )}
-                </CardContent>
-              </Card>
-
-              <Card className="border-slate-200">
-                <CardHeader className="border-b border-slate-200">
-                  <CardTitle className="text-lg">검토 의견</CardTitle>
-                  <CardDescription>
-                    승인 또는 반려 전에 필요한 메모를 남길 수 있습니다.
-                  </CardDescription>
-                </CardHeader>
-
-                <CardContent className="pt-4 space-y-4">
-                  <Textarea
-                    placeholder="검토 의견을 입력하세요."
-                    value={reviewNote}
-                    onChange={(e) => setReviewNote(e.target.value)}
-                    rows={4}
-                  />
-
-                  <div className="flex items-center gap-3">
-                    <Button
-                      className="bg-green-600 hover:bg-green-700"
-                      onClick={handleApprove}
-                      disabled={saving}
-                    >
-                      {saving ? (
-                        <Loader2 className="size-4 mr-2 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="size-4 mr-2" />
-                      )}
-                      승인
-                    </Button>
-
-                    <Button
-                      variant="outline"
-                      className="text-red-600 border-red-200 hover:bg-red-50"
-                      onClick={handleReject}
-                      disabled={saving}
-                    >
-                      <XCircle className="size-4 mr-2" />
-                      반려
-                    </Button>
-                  </div>
                 </CardContent>
               </Card>
             </>

@@ -229,16 +229,51 @@ def _reorder_formats_by_preferred(
 
     return preferred_items + remaining_items
 
+def _find_format_item(
+    *,
+    source: list[dict],
+    question_format: str,
+) -> dict:
+    for item in source:
+        if item["question_format"] == question_format:
+            return item
+
+    raise ValueError(f"지원하지 않는 question_format입니다: {question_format}")
 
 def select_question_formats(
     *,
     difficulty: str,
     count: int,
     topic: str = "",
+    beginner_slots: list[dict[str, str | None]] | None = None,
 ) -> list[QuestionFormatPlan]:
     if difficulty == "초급":
-        source = AI_BEGINNER_FORMATS
-        preferred_format = _infer_preferred_beginner_format_from_topic(topic)
+        if difficulty == "초급" and beginner_slots:
+            plans: list[QuestionFormatPlan] = []
+
+            fallback_formats = AI_BEGINNER_FORMATS
+
+            for index, slot in enumerate(beginner_slots[:count], start=1):
+                forced_format = slot.get("question_format")
+
+                if forced_format:
+                    item = _find_format_item(
+                        source=AI_BEGINNER_FORMATS,
+                        question_format=forced_format,
+                    )
+                else:
+                    item = fallback_formats[(index - 1) % len(fallback_formats)]
+
+                plans.append(
+                    _build_plan(
+                        index=index,
+                        item=item,
+                    )
+                )
+
+            return plans
+            source = AI_BEGINNER_FORMATS
+            preferred_format = _infer_preferred_beginner_format_from_topic(topic)
     elif difficulty == "중급":
         source = AI_INTERMEDIATE_FORMATS
         preferred_format = _infer_preferred_intermediate_format_from_topic(topic)
@@ -250,7 +285,10 @@ def select_question_formats(
         preferred_format=preferred_format,
     )
 
-    selected = ordered_source[:count]
+    selected = [
+        ordered_source[i % len(ordered_source)]
+        for i in range(count)
+    ]
 
     return [
         _build_plan(

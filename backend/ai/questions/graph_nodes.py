@@ -69,9 +69,8 @@ def route_node(state: QuestionGenerationState) -> QuestionGenerationState:
 
     정책:
     - competency_type != "ai" → ValueError (현재 V2는 AI만 지원)
-    - difficulty == "고급" → ValueError (V2 고급 template 이관 전)
     - generation_source == "rag" → question_v2_rag
-    - 그 외 (초급/중급) → question_v2
+    - 그 외 (초급/중급/고급) → question_v2
     """
     difficulty = state.get("difficulty")
     normalized_competency_type = state.get("normalized_competency_type")
@@ -83,11 +82,6 @@ def route_node(state: QuestionGenerationState) -> QuestionGenerationState:
             f"요청된 역량: {normalized_competency_type}"
         )
 
-    if difficulty == "고급":
-        raise ValueError(
-            "AI 고급 문제는 현재 V2 통합 준비 중입니다. "
-            "기존 고급 template을 V2 evidence 구조로 이관한 뒤 지원됩니다."
-        )
 
     if generation_source == "rag":
         generation_mode = "question_v2_rag"

@@ -65,7 +65,7 @@ class Admin(Base):
     __tablename__ = "admins"
 
     admin_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     name = Column(String(100), nullable=False)
     role = Column(Enum(AdminRole), default=AdminRole.admin, nullable=False)

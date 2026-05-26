@@ -4,15 +4,42 @@ from typing import Any
 
 from sqlalchemy.orm import Session
 
-from models import Record, Diagnosis, Question
+from models import Record, Diagnosis, Question, Applicant
 from ai.reports.evidence_builder import build_report_evidence
 
 
 def get_previous_graded_record(db: Session, current_record: Record) -> Record | None:
+    """
+    현재 record의 바로 이전 graded record를 찾는다.
+
+    주의:
+    - applicants.email UNIQUE를 제거했기 때문에 같은 사람이 재신청하면 applicant_id가 달라질 수 있다.
+    - 따라서 이전 기록 비교는 applicant_id가 아니라 같은 email을 가진 applicant들의 record 기준으로 조회한다.
+    """
+    current_applicant = db.query(Applicant).filter(
+        Applicant.applicant_id == current_record.applicant_id
+    ).first()
+
+    if not current_applicant or not current_applicant.email:
+        return None
+
+    normalized_email = current_applicant.email.strip().lower()
+
+    same_email_applicant_ids = [
+        applicant_id
+        for (applicant_id,) in db.query(Applicant.applicant_id)
+        .filter(Applicant.email == normalized_email)
+        .all()
+    ]
+
+    if not same_email_applicant_ids:
+        return None
+
     query = db.query(Record).filter(
-        Record.applicant_id == current_record.applicant_id,
+        Record.applicant_id.in_(same_email_applicant_ids),
         Record.record_id != current_record.record_id,
         Record.status == "graded",
+        Record.submitted_at.isnot(None),
     )
 
     if current_record.submitted_at:

@@ -2,10 +2,11 @@ from database import get_db
 from typing import List, Optional
 from sqlalchemy.orm import Session
 from models import Record, Applicant, Diagnosis, Question
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, BackgroundTasks
 from ai.reports.report_service import (generate_result_report_for_record,get_result_report_for_record,)
 from schemas import RecordCreate, RecordUpdate, RecordRead, AIResultReportResponse
-
+from services.email_service import (send_exam_assignment_to_applicant,send_result_published_to_applicant,
+)
 router = APIRouter(prefix="/api/records", tags=["records"])
 
 
@@ -29,22 +30,53 @@ def list_records(
 
 
 @router.post("", response_model=RecordRead)
-def create_record(data: RecordCreate, db: Session = Depends(get_db)):
+def create_record(
+    data: RecordCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
     import secrets
+
+    applicant = db.query(Applicant).filter(
+        Applicant.applicant_id == data.applicant_id
+    ).first()
+
+    if not applicant:
+        raise HTTPException(status_code=404, detail="응시자를 찾을 수 없습니다.")
+
+    diagnosis = db.query(Diagnosis).filter(
+        Diagnosis.diagnosis_id == data.diagnosis_id
+    ).first()
+
+    if not diagnosis:
+        raise HTTPException(status_code=404, detail="시험지를 찾을 수 없습니다.")
+
     token = secrets.token_urlsafe(16)
+
     record = Record(
         applicant_id=data.applicant_id,
         diagnosis_id=data.diagnosis_id,
         login_token=token,
         deadline_at=data.deadline_at,
     )
+
     db.add(record)
-    # Update applicant status to ready
-    applicant = db.query(Applicant).filter(Applicant.applicant_id == data.applicant_id).first()
-    if applicant:
-        applicant.status = "ready"
+
+    applicant.status = "ready"
+
     db.commit()
     db.refresh(record)
+
+    if record.deadline_at:
+        background_tasks.add_task(
+            send_exam_assignment_to_applicant,
+            applicant_name=applicant.name,
+            applicant_email=applicant.email,
+            diagnosis_title=diagnosis.title,
+            login_token=record.login_token,
+            deadline_at=record.deadline_at,
+        )
+
     return record
 
 @router.get("/analytics/summary")
@@ -71,6 +103,56 @@ def get_analytics_summary(db: Session = Depends(get_db)):
         "pass_rate": round(pass_rate, 1),
         "avg_score": round(float(avg_score), 1) if avg_score else None,
     }
+
+@router.post("/{record_id}/publish-result", response_model=RecordRead)
+def publish_result(
+    record_id: int,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    record = db.query(Record).filter(
+        Record.record_id == record_id
+    ).first()
+
+    if not record:
+        raise HTTPException(status_code=404, detail="응시 기록을 찾을 수 없습니다.")
+
+    if record.status != "graded":
+        raise HTTPException(
+            status_code=400,
+            detail="채점 완료된 응시 기록만 결과를 공개할 수 있습니다.",
+        )
+
+    applicant = db.query(Applicant).filter(
+        Applicant.applicant_id == record.applicant_id
+    ).first()
+
+    if not applicant:
+        raise HTTPException(status_code=404, detail="응시자를 찾을 수 없습니다.")
+
+    diagnosis = db.query(Diagnosis).filter(
+        Diagnosis.diagnosis_id == record.diagnosis_id
+    ).first()
+
+    already_visible = bool(record.result_visible)
+
+    record.result_visible = True
+
+    db.commit()
+    db.refresh(record)
+
+    if not already_visible:
+        background_tasks.add_task(
+            send_result_published_to_applicant,
+            applicant_name=applicant.name,
+            applicant_email=applicant.email,
+            diagnosis_title=diagnosis.title if diagnosis else None,
+            total_score=record.total_score,
+            pass_yn=record.pass_yn,
+            record_id=record.record_id,
+        )
+
+    return record
 
 @router.post("/{record_id}/ai-report", response_model=AIResultReportResponse)
 def generate_record_ai_report(record_id: int, db: Session = Depends(get_db)):
