@@ -1,13 +1,58 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from typing import List, Optional
 
 from database import get_db
 from models import Applicant
+from typing import List, Optional
+from sqlalchemy.orm import Session
+from fastapi import APIRouter, Depends, HTTPException, Query,BackgroundTasks
 from schemas import ApplicantCreate, ApplicantUpdate, ApplicantRead
+from services.email_service import send_apply_notification_to_admin
 
 router = APIRouter(prefix="/api/applicants", tags=["applicants"])
 
+def _normalize_email(email: str) -> str:
+    return email.strip().lower()
+    
+def _create_new_applicant_application(data: ApplicantCreate, db: Session) -> Applicant:
+    payload = data.model_dump()
+    payload["email"] = _normalize_email(payload["email"])
+
+    applicant = Applicant(**payload)
+    applicant.status = "pending"
+
+    db.add(applicant)
+    db.commit()
+    db.refresh(applicant)
+
+    return applicant
+
+def _get_or_create_applicant_by_email(data: ApplicantCreate, db: Session) -> Applicant:
+    payload = data.model_dump()
+    normalized_email = _normalize_email(payload["email"])
+
+    existing = db.query(Applicant).filter(
+        Applicant.email == normalized_email
+    ).first()
+
+    if existing:
+        # 같은 이메일이면 새 applicant를 만들지 않고 기존 응시자를 재사용한다.
+        # 단, 사용자가 다시 입력한 최신 정보는 반영한다.
+        existing.name = payload.get("name") or existing.name
+        existing.email = normalized_email
+        existing.phone = payload.get("phone")
+        existing.target_role = payload.get("target_role")
+        existing.experience_level = payload.get("experience_level")
+        existing.tech_stack = payload.get("tech_stack")
+
+        db.commit()
+        db.refresh(existing)
+        return existing
+
+    payload["email"] = normalized_email
+    applicant = Applicant(**payload)
+    db.add(applicant)
+    db.commit()
+    db.refresh(applicant)
+    return applicant
 
 @router.get("", response_model=List[ApplicantRead])
 def list_applicants(
@@ -46,11 +91,7 @@ def list_applicants(
 
 @router.post("", response_model=ApplicantRead)
 def create_applicant(data: ApplicantCreate, db: Session = Depends(get_db)):
-    applicant = Applicant(**data.model_dump())
-    db.add(applicant)
-    db.commit()
-    db.refresh(applicant)
-    return applicant
+    return _get_or_create_applicant_by_email(data=data, db=db)
 
 
 @router.get("/{applicant_id}", response_model=ApplicantRead)
@@ -91,9 +132,21 @@ def delete_applicant(applicant_id: int, db: Session = Depends(get_db)):
 
 # 응시자 시험 신청 (공개 엔드포인트)
 @router.post("/apply", response_model=ApplicantRead)
-def apply_exam(data: ApplicantCreate, db: Session = Depends(get_db)):
-    applicant = Applicant(**data.model_dump())
-    db.add(applicant)
-    db.commit()
-    db.refresh(applicant)
+def apply_exam(
+    data: ApplicantCreate,
+    background_tasks: BackgroundTasks,
+    db: Session = Depends(get_db),
+):
+    applicant = _create_new_applicant_application(data=data, db=db)
+
+    background_tasks.add_task(
+        send_apply_notification_to_admin,
+        name=applicant.name,
+        email=applicant.email,
+        phone=applicant.phone,
+        target_role=applicant.target_role,
+        experience_level=applicant.experience_level,
+        tech_stack=applicant.tech_stack,
+    )
+
     return applicant

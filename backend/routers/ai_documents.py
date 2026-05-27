@@ -2,19 +2,19 @@ import os
 import shutil
 from typing import List, Optional
 
-from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
 from sqlalchemy.orm import Session
 
 from database import get_db
-from models import AIDocument, AIDocumentChunk, Admin
 from schemas import AIDocumentRead
 from routers.auth import get_current_admin
 from schemas import AIDocumentSearchRequest
+from models import AIDocument, AIDocumentChunk, Admin
 from ai.rag.document_loader import load_text_from_file
 from ai.rag.text_splitter import split_text_into_chunks
 from ai.rag.document_service import embed_document_chunks
 from ai.rag.document_service import search_document_chunks
-from ai.services.competency_config import normalize_competency_type, get_competency_label
+from ai.core.config import normalize_competency_type, get_competency_label
+from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
 
 router = APIRouter(prefix="/api/ai/documents", tags=["AI Documents"])
 

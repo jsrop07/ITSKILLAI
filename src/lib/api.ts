@@ -1,26 +1,6 @@
 import axios from "axios";
-import type {
-  Admin,
-  Applicant,
-  ApplicantCreate,
-  Diagnosis,
-  DiagnosisCreate,
-  DiagnosisUpdate,
-  Question,
-  QuestionCreate,
-  ExamRecord,
-  RecordCreate,
-  PageContent,
-  PageContentUpdate,
-  DashboardStats,
-  RecentExamRecord,
-  WeakCompetency,
-  ExamLoginResponse,
-  QuestionForExam,
-  AnswerSubmit,
-  ExamResultResponse,
-  AnswerDetail,
-} from "./types";
+
+import type { Admin, Applicant, ApplicantCreate, Diagnosis, DiagnosisCreate, DiagnosisUpdate, Question, QuestionCreate, ExamRecord, RecordCreate, PageContent, PageContentUpdate, DashboardStats, RecentExamRecord, WeakCompetency, ExamLoginResponse, QuestionForExam, AnswerSubmit, ExamResultResponse, AnswerDetail, GenerateAIQuestionsV2Payload, GenerateAIQuestionsV2Response, AIResultReportResponse, } from "./types";
 
 // ──────────────────────────────────────────────
 // Axios 인스턴스
@@ -43,10 +23,21 @@ api.interceptors.request.use((config) => {
 api.interceptors.response.use(
   (res) => res,
   (err) => {
-    if (err.response?.status === 401) {
+    const status = err.response?.status;
+    const path = window.location.pathname;
+
+    const isApplicantPage =
+      path.startsWith("/test-login") ||
+      path.startsWith("/test-room") ||
+      path.startsWith("/test-submit") ||
+      path.startsWith("/test-result") ||
+      path.startsWith("/apply");
+
+    if (status === 401 && !isApplicantPage) {
       localStorage.removeItem("admin_token");
       window.location.href = "/login";
     }
+
     return Promise.reject(err);
   }
 );
@@ -229,6 +220,11 @@ export const recordsApi = {
     return res.data;
   },
 
+  publishResult: async (recordId: number): Promise<ExamRecord> => {
+    const res = await api.post<ExamRecord>(`/api/records/${recordId}/publish-result`);
+    return res.data;
+  },
+
   getAnswers: async (recordId: number): Promise<AnswerDetail[]> => {
     const res = await api.get<AnswerDetail[]>(`/api/records/${recordId}/answers`);
     return res.data;
@@ -236,6 +232,13 @@ export const recordsApi = {
 
   getAnalyticsSummary: async () => {
     const res = await api.get("/api/records/analytics/summary");
+    return res.data;
+  },
+
+  generateAIReport: async (recordId: number): Promise<AIResultReportResponse> => {
+    const res = await api.post<AIResultReportResponse>(
+      `/api/records/${recordId}/ai-report`
+    );
     return res.data;
   },
 };
@@ -267,8 +270,11 @@ export const pageContentsApi = {
 // Exam Flow (응시자 — 인증 불필요)
 // ──────────────────────────────────────────────
 export const examApi = {
-  login: async (name: string, login_token: string): Promise<ExamLoginResponse> => {
-    const res = await api.post<ExamLoginResponse>("/api/exam/login", { name, login_token });
+  login: async (email: string, login_token: string): Promise<ExamLoginResponse> => {
+    const res = await api.post<ExamLoginResponse>("/api/exam/login", {
+      email,
+      login_token,
+    });
     return res.data;
   },
   getQuestions: async (record_id: number, exam_token: string): Promise<QuestionForExam[]> => {
@@ -424,6 +430,16 @@ export const aiDocumentApi = {
 export const aiQuestionApi = {
   generateGeneral: async (payload: GenerateAIQuestionsPayload) => {
     const res = await api.post("/api/ai/generate-questions", payload);
+    return res.data;
+  },
+
+  generateV2: async (
+    payload: GenerateAIQuestionsV2Payload
+  ): Promise<GenerateAIQuestionsV2Response> => {
+    const res = await api.post<GenerateAIQuestionsV2Response>(
+      "/api/ai/v2/generate-questions",
+      payload
+    );
     return res.data;
   },
 

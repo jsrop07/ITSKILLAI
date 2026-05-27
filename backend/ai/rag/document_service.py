@@ -3,9 +3,8 @@
 import time
 import logging
 from sqlalchemy import text
-from ai.embedding_service import create_embedding
-from ai.vector_store import search_similar_chunks
-from ai.vector_store import add_chunk_to_vector_store
+from ai.rag.embedding_service import create_embedding
+from ai.rag.vector_store import (search_similar_chunks, add_chunk_to_vector_store)
 
 logger = logging.getLogger("uvicorn.info")
 
@@ -636,3 +635,124 @@ def build_context_from_search_results(
         )
 
     return "\n\n".join(context_parts)
+
+def _build_content_preview(content: str, max_length: int = 300) -> str:
+    if not content:
+        return ""
+
+    text_value = str(content)
+
+    # RAG chunk 앞에 붙인 내부 메타 header 제거
+    lines = []
+    for line in text_value.splitlines():
+        stripped = line.strip()
+
+        if stripped.startswith("[역량유형:"):
+            continue
+        if stripped.startswith("[문서제목:"):
+            continue
+        if stripped.startswith("[출처유형:"):
+            continue
+
+        lines.append(stripped)
+
+    preview = " ".join(line for line in lines if line)
+    preview = preview.replace("\\n", " ")
+    preview = " ".join(preview.split())
+
+    return preview[:max_length]
+    
+def build_context_and_evidence_from_search_results(
+    db,
+    query: str,
+    top_k: int = 5,
+    category: str | None = None,
+    search_mode: str = "hybrid",
+) -> dict:
+    search_data = search_document_chunks(
+        db=db,
+        query=query,
+        top_k=top_k,
+        category=category,
+        search_mode=search_mode,
+    )
+
+    results = search_data.get("results", [])
+
+    if not results:
+        raise ValueError("관련 문서 내용을 찾을 수 없습니다.")
+
+    filtered_results = [
+        item for item in results
+        if _is_valid_context_item(item, search_mode)
+    ]
+
+    logger.info(
+        "RAG Context [Filter]: "
+        f"before={len(results)}, "
+        f"after={len(filtered_results)}, "
+        f"search_mode={search_mode}, "
+        f"category={category}"
+    )
+
+    if not filtered_results:
+        raise ValueError("관련 문서 내용의 검색 점수가 너무 낮습니다.")
+
+    context_parts = []
+    evidence_documents = []
+
+    for idx, item in enumerate(filtered_results, start=1):
+        content = item.get("content", "")
+        metadata = item.get("metadata", {})
+
+        file_name = metadata.get("file_name", "unknown")
+        chunk_id = metadata.get("chunk_id")
+        chunk_index = metadata.get("chunk_index", "")
+        title = metadata.get("title", "")
+        category_value = metadata.get("category", "")
+        source_type = metadata.get("source_type", "")
+
+        vector_score = item.get("vector_score")
+        keyword_score = item.get("keyword_score")
+        hybrid_score = item.get("hybrid_score")
+        rrf_score = item.get("rrf_score")
+        vector_rank = item.get("vector_rank")
+        keyword_rank = item.get("keyword_rank")
+        search_source = item.get("search_source")
+
+        context_parts.append(
+            f"[문서 {idx} | title={title} | category={category_value} | "
+            f"file={file_name} | chunk={chunk_index} | source={search_source} | "
+            f"vector_score={vector_score} | keyword_score={keyword_score} | hybrid_score={hybrid_score}]\n"
+            f"{content}"
+        )
+
+        content_preview = _build_content_preview(content)
+
+        evidence_documents.append({
+            "title": title,
+            "file_name": file_name,
+            "category": category_value,
+            "source_type": source_type,
+            "chunk_id": chunk_id,
+            "chunk_index": chunk_index,
+            "search_source": search_source,
+            "vector_score": vector_score,
+            "keyword_score": keyword_score,
+            "hybrid_score": hybrid_score,
+            "rrf_score": rrf_score,
+            "vector_rank": vector_rank,
+            "keyword_rank": keyword_rank,
+            "content_preview": content_preview,
+        })
+
+    return {
+        "context": "\n\n".join(context_parts),
+        "evidence": {
+            "search_query": query,
+            "search_mode": search_mode,
+            "top_k": top_k,
+            "category": category,
+            "documents": evidence_documents,
+        },
+    }

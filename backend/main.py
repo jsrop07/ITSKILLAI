@@ -1,8 +1,6 @@
 from fastapi import FastAPI
-from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
-import models  # noqa: F401 — ensures all models are registered
-
+from fastapi.middleware.cors import CORSMiddleware
 # Routers
 from routers import auth, dashboard, applicants, diagnoses, questions, records, exam, page_contents, ai_questions, ai_documents
 

@@ -1,11 +1,7 @@
-# backend/ai/services/topic_validator.py
+# backend/ai/questions/topic_validator.py
 
 from fastapi import HTTPException
-from ai.services.competency_config import (
-    SUPPORTED_COMPETENCIES,
-    COMPETENCY_KEYWORDS,
-    normalize_competency_type,
-)
+from ai.core.config import ( SUPPORTED_COMPETENCIES, COMPETENCY_KEYWORDS, normalize_competency_type,)
 
 # competency_config 기반으로 COMPETENCY_TOPIC_RULES 동적 생성 (신규 8개 기준)
 COMPETENCY_TOPIC_RULES = {

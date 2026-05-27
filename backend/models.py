@@ -1,11 +1,9 @@
-from sqlalchemy import (
-    Column, Integer, String, Text, Boolean, DateTime, Float,
-    ForeignKey, Enum, JSON
-)
-from sqlalchemy.orm import relationship
-from sqlalchemy.sql import func
+import json
 import enum
 from database import Base
+from sqlalchemy.sql import func
+from sqlalchemy.orm import relationship
+from sqlalchemy import ( Column, Integer, String, Text, Boolean, DateTime, Float, ForeignKey, Enum, JSON)
 
 
 # ──────────────────────────────────────────────
@@ -67,7 +65,7 @@ class Admin(Base):
     __tablename__ = "admins"
 
     admin_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
-    email = Column(String(255), unique=True, nullable=False, index=True)
+    email = Column(String(255), nullable=False, index=True)
     password_hash = Column(String(255), nullable=False)
     name = Column(String(100), nullable=False)
     role = Column(Enum(AdminRole), default=AdminRole.admin, nullable=False)
@@ -127,18 +125,33 @@ class Question(Base):
     question_type = Column(Enum(QuestionType), default=QuestionType.multiple_choice, nullable=False)
     title = Column(String(500), nullable=False)
     body = Column(Text, nullable=True)
-    choices_json = Column(JSON, nullable=True)    # list of choice strings
-    answer_json = Column(JSON, nullable=True)     # correct answer(s)
+    choices_json = Column(JSON, nullable=True)
+    answer_json = Column(JSON, nullable=True)
     explanation = Column(Text, nullable=True)
     difficulty = Column(String(50), nullable=True)
     competency_type = Column(String(100), nullable=True)
     competency_tags_json = Column(JSON, nullable=True)
     score = Column(Integer, default=1, nullable=False)
     review_status = Column(Enum(ReviewStatus), default=ReviewStatus.pending, nullable=False)
-    ai_generation_type = Column(String(50), nullable=True) # "general", "rag", "manual"
+    ai_generation_type = Column(String(50), nullable=True)
+    rag_evidence_json = Column(Text, nullable=True)
     created_by = Column(Integer, ForeignKey("admins.admin_id"), nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
+
+    @property
+    def has_rag_evidence(self):
+        return bool(self.rag_evidence_json)
+
+    @property
+    def rag_evidence(self):
+        if not self.rag_evidence_json:
+            return None
+
+        try:
+            return json.loads(self.rag_evidence_json)
+        except Exception:
+            return None
 
 
 class Record(Base):
@@ -206,3 +219,22 @@ class AIDocumentChunk(Base):
     page_no = Column(Integer, nullable=True)
     vector_id = Column(String(255), nullable=True)
     created_at = Column(DateTime, server_default=func.now())
+
+class ResultReport(Base):
+    __tablename__ = "result_reports"
+
+    report_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    record_id = Column(Integer, ForeignKey("records.record_id"), nullable=False, index=True)
+    applicant_id = Column(Integer, ForeignKey("applicants.applicant_id"), nullable=False, index=True)
+    report_type = Column(String(50), default="ai_result_analysis", nullable=False)
+    model_name = Column(String(100), nullable=True)
+
+    current_analysis_json = Column(Text, nullable=True)
+    subtopic_stats_json = Column(Text, nullable=True)
+    history_comparison_json = Column(Text, nullable=True)
+    wrong_answer_summary_json = Column(Text, nullable=True)
+
+    report_text = Column(Text, nullable=False)
+
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
+    updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)

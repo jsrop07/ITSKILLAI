@@ -1,13 +1,10 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
-from sqlalchemy.orm import Session
-from typing import List, Optional
-
 from database import get_db
-from models import Diagnosis, Question, Admin
-from schemas import (
-    DiagnosisCreate, DiagnosisUpdate, DiagnosisRead,
-)
+from typing import List, Optional
+from sqlalchemy.orm import Session
 from routers.auth import get_current_admin
+from models import Diagnosis, Question, Admin
+from fastapi import APIRouter, Depends, HTTPException, Query
+from schemas import (DiagnosisCreate, DiagnosisUpdate, DiagnosisRead,)
 
 router = APIRouter(prefix="/api/diagnoses", tags=["diagnoses"])
 

@@ -1,20 +1,18 @@
-import re
 import json
-from fastapi import APIRouter, Depends, HTTPException
-from pydantic import BaseModel,Field
-from sqlalchemy.orm import Session
-
-from database import get_db
-from models import Question
-from ai.services.topic_validator import validate_topic_for_competency
-from ai.services.question_generator import (
-    generate_questions,
-    generate_questions_from_context
-)
-from ai.rag.document_service import build_context_from_search_results
-from ai.services.competency_config import normalize_competency_type, COMPETENCY_KEYWORDS
 from typing import Literal
-from ai.graph.question_generation_graph import run_question_generation_graph
+from database import get_db
+from sqlalchemy.orm import Session
+from pydantic import BaseModel,Field
+from fastapi import APIRouter, Depends, HTTPException
+from ai.questions.graph_runner import run_question_generation_graph
+from ai.questions.topic_validator import validate_topic_for_competency
+from ai.core.config import normalize_competency_type, COMPETENCY_KEYWORDS
+from models import Question
+
+# 새로운 파일
+from ai.questions.models import QuestionV2Request
+from ai.questions.service import generate_ai_questions_v2
+
 
 router = APIRouter(prefix="/api/ai", tags=["AI Questions"])
 
@@ -36,122 +34,6 @@ class AIQuestionGenerateFromDocumentRequest(BaseModel):
     search_query: str | None = None
     search_mode: Literal["vector", "keyword", "hybrid"] = "hybrid"
 
-def save_generated_questions(
-    generated_questions,
-    db: Session,
-    topic: str,
-    difficulty: str,
-    score: int,
-    question_type: str = "multiple_choice",
-    competency_type: str | None = None,
-    ai_generation_type: str | None = None,
-):
-    saved_questions = []
-
-    db_question_type = "essay" if question_type == "coding" else question_type
-
-    for q in generated_questions:
-        choices = q.get("choices", [])
-        if not isinstance(choices, list):
-            choices = []
-
-        normalized_choices = []
-        for choice in choices:
-            if isinstance(choice, dict):
-                normalized_choices.append(choice.get("text") or choice.get("answer") or "")
-            else:
-                normalized_choices.append(str(choice))
-
-        answer = q.get("answer", "")
-        explanation = q.get("explanation", "")
-
-        if question_type == "multiple_choice":
-            try:
-                answer = int(answer)
-            except Exception:
-                continue
-
-            # 객관식 정답은 1~5 기준
-            if answer < 1 or answer > 5:
-                continue
-
-            # 해설에 "정답은 N번"이 있는데 answer와 다르면 저장하지 않음
-            explanation_match = re.search(
-                r"(?:정답은|정답\s*:|답은)\s*(\d)\s*번|(\d)\s*번이\s*정답",
-                str(explanation)
-            )
-
-            if explanation_match:
-                explanation_answer = explanation_match.group(1) or explanation_match.group(2)
-
-                try:
-                    explanation_answer = int(explanation_answer)
-                except Exception:
-                    explanation_answer = None
-
-                if explanation_answer is not None and explanation_answer != answer:
-                    continue
-
-            answer_json = str(answer)
-
-        else:
-            # 서술형/코드작성형은 문자열 답안
-            normalized_choices = []
-            answer_json = str(answer or "")
-
-        tags = q.get("competency_tags", [topic])
-
-        if isinstance(tags, str):
-            tags = [tags]
-
-        if not isinstance(tags, list):
-            tags = [topic]
-
-        normalized_tags = []
-        for tag in tags:
-            if isinstance(tag, dict):
-                normalized_tags.extend([str(v) for v in tag.values()])
-            else:
-                normalized_tags.append(str(tag))
-
-        question = Question(
-            source_type="ai",
-            question_type=db_question_type,
-            title=q.get("title", ""),
-            body=q.get("body", ""),
-            choices_json=json.dumps(normalized_choices, ensure_ascii=False),
-            answer_json=answer_json,
-            explanation=explanation,
-            difficulty=q.get("difficulty", difficulty),
-            competency_type=competency_type or topic,
-            competency_tags_json=json.dumps(normalized_tags, ensure_ascii=False),
-            score=q.get("score", score),
-            review_status="pending",
-            ai_generation_type=ai_generation_type,
-            created_by=None
-        )
-
-        db.add(question)
-        db.flush()
-
-        saved_questions.append({
-            "id": question.question_id,
-            "title": question.title,
-            "body": question.body,
-            "choices": normalized_choices,
-            "answer": answer_json,
-            "explanation": question.explanation,
-            "difficulty": question.difficulty,
-            "competency_type": question.competency_type,
-            "competency_tags": normalized_tags,
-            "score": question.score,
-            "review_status": question.review_status,
-            "ai_generation_type": question.ai_generation_type,
-            "created_at": question.created_at.isoformat() if question.created_at else None
-        })
-
-    return saved_questions
-
 @router.post("/generate-questions")
 def generate_ai_questions(
     request: AIQuestionGenerateRequest,
@@ -168,69 +50,13 @@ def generate_ai_questions(
 
         score = get_score_by_difficulty(request.difficulty)
 
-        generated_questions = generate_questions(
-            topic=request.topic,
-            difficulty=request.difficulty,
-            count=request.count,
-            score=score,
-            question_type=request.question_type,
-            competency_type=normalized_competency,
-        )
-        
-        generated_questions = generated_questions[:request.count]
-
-        saved_questions = save_generated_questions(
-            generated_questions=generated_questions,
-            db=db,
-            topic=request.topic,
-            difficulty=request.difficulty,
-            score=score,
-            question_type=request.question_type,
-            competency_type=normalized_competency,
-            ai_generation_type="general",
-        )
-
-        db.commit()
-
-        return {
-            "message": "AI 문제가 생성되었습니다.",
-            "count": len(saved_questions),
-            "questions": saved_questions
-        }
-
-    except HTTPException:
-        db.rollback()
-        raise
-
-    except ValueError as e:
-        db.rollback()
-        raise HTTPException(status_code=400, detail=str(e))
-
-    except Exception as e:
-        db.rollback()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@router.post("/generate-questions-graph")
-def generate_ai_questions_graph(
-    request: AIQuestionGenerateRequest,
-    db: Session = Depends(get_db)
-):
-    """
-    LangGraph 기반 일반 AI 문제 생성 테스트 endpoint.
-
-    기존 /generate-questions는 유지하고,
-    이 endpoint에서만 LangGraph 흐름을 검증한다.
-    """
-    try:
-        score = get_score_by_difficulty(request.difficulty)
-
         initial_state = {
             "topic": request.topic,
             "difficulty": request.difficulty,
             "count": request.count,
             "score": score,
             "question_type": request.question_type,
-            "competency_type": request.competency_type,
+            "competency_type": normalized_competency,
             "retry_count": 0,
             "max_retries": 1,
             "db": db,
@@ -243,12 +69,11 @@ def generate_ai_questions_graph(
         db.commit()
 
         return {
-            "message": "LangGraph 기반 AI 문제가 생성되었습니다.",
-            "source": "general_graph",
+            "message": "AI 문제가 생성되었습니다.",
+            "source": "langgraph_question_v2",
             "count": len(saved_questions),
-            "questions": saved_questions,
+            "questions": saved_questions
         }
-
     except HTTPException:
         db.rollback()
         raise
@@ -267,66 +92,42 @@ def generate_ai_questions_from_document(
     db: Session = Depends(get_db)
 ):
     try:
-        # 역량 유형 정규화
         normalized_competency = normalize_competency_type(request.competency_type)
-
-        validate_topic_for_competency(
-            competency_type=normalized_competency,
-            topic=request.topic,
-        )
 
         score = get_score_by_difficulty(request.difficulty)
 
-        rag_query = request.search_query or build_enhanced_rag_query(
-            topic=request.topic,
-            competency_type=normalized_competency,
+        search_query = request.search_query or build_enhanced_rag_query(
+            request.topic,
+            normalized_competency,
         )
 
-        context = build_context_from_search_results(
-            db=db,
-            query=rag_query,
-            top_k=request.top_k,
-            category=normalized_competency,
-            search_mode=request.search_mode,
-        )
+        initial_state = {
+            "generation_source": "rag",
+            "topic": request.topic,
+            "difficulty": request.difficulty,
+            "count": request.count,
+            "score": score,
+            "question_type": request.question_type,
+            "competency_type": normalized_competency,
+            "search_query": search_query,
+            "search_mode": request.search_mode,
+            "top_k": request.top_k,
+            "retry_count": 0,
+            "max_retries": 1,
+            "db": db,
+        }
 
-        if not context or not context.strip():
-            raise HTTPException(
-                status_code=400,
-                detail="검색된 문서 내용이 없습니다. 문서 업로드 후 인덱싱을 먼저 실행해주세요."
-            )
+        result = run_question_generation_graph(initial_state)
 
-        generated_questions = generate_questions_from_context(
-            topic=request.topic,
-            context=context,
-            difficulty=request.difficulty,
-            count=request.count,
-            score=score,
-            question_type=request.question_type,
-            # role=request.role,
-            competency_type=normalized_competency,
-        )
-        
-        generated_questions = generated_questions[:request.count]
-        
-        saved_questions = save_generated_questions(
-            generated_questions=generated_questions,
-            db=db,
-            topic=request.topic,
-            difficulty=request.difficulty,
-            score=score,
-            question_type=request.question_type,
-            competency_type=normalized_competency,
-            ai_generation_type="rag",
-        )
+        saved_questions = result.get("saved_questions", [])
 
         db.commit()
 
         return {
             "message": "문서 기반 AI 문제가 생성되었습니다.",
-            "source": "rag",
+            "source": "langgraph_question_v2_rag",
             "count": len(saved_questions),
-            "questions": saved_questions
+            "questions": saved_questions,
         }
 
     except HTTPException:
@@ -359,3 +160,86 @@ def build_enhanced_rag_query(topic: str, competency_type: str | None = None) -> 
     extra_keywords = COMPETENCY_KEYWORDS.get(normalized_type or "", [])[:5]
 
     return " ".join([base_query] + extra_keywords)
+
+
+@router.post("/v2/generate-questions")
+def generate_ai_questions_v2_api(
+    request: QuestionV2Request,
+    db: Session = Depends(get_db),
+):
+    try:
+        questions = generate_ai_questions_v2(request)
+
+        score = get_score_by_difficulty(request.difficulty)
+        saved_questions = []
+
+        for question in questions:
+            choices = question.choices or []
+
+            if len(choices) != 5:
+                continue
+
+            answer = int(question.answer)
+
+            if answer < 1 or answer > 5:
+                continue
+
+            db_question = Question(
+                source_type="ai",
+                question_type=request.question_type,
+                title=question.title,
+                body=question.body,
+                choices_json=json.dumps(choices, ensure_ascii=False),
+                answer_json=str(answer),
+                explanation=question.explanation,
+                difficulty=request.difficulty,
+                competency_type=request.competency_type,
+                competency_tags_json=json.dumps(
+                    [request.topic, question.question_format or ""],
+                    ensure_ascii=False,
+                ),
+                score=score,
+                review_status="pending",
+                ai_generation_type="ai_question_v2",
+                created_by=None,
+            )
+
+            db.add(db_question)
+            db.flush()
+
+            saved_questions.append({
+                "id": db_question.question_id,
+                "title": db_question.title,
+                "body": db_question.body,
+                "choices": choices,
+                "answer": str(answer),
+                "explanation": db_question.explanation,
+                "difficulty": db_question.difficulty,
+                "competency_type": db_question.competency_type,
+                "competency_tags": [request.topic, question.question_format or ""],
+                "score": db_question.score,
+                "review_status": db_question.review_status,
+                "ai_generation_type": db_question.ai_generation_type,
+                "created_at": db_question.created_at.isoformat() if db_question.created_at else None,
+            })
+
+        if not saved_questions:
+            raise ValueError("AI V2 문제가 생성되었지만 저장 가능한 문제가 없습니다.")
+
+        db.commit()
+
+        return {
+            "message": "AI V2 문제가 생성되었습니다.",
+            "source": "ai_question_v2",
+            "count": len(saved_questions),
+            "questions": saved_questions,
+        }
+
+    except ValueError as e:
+        db.rollback()
+        raise HTTPException(status_code=400, detail=str(e))
+
+    except Exception as e:
+        db.rollback()
+        raise HTTPException(status_code=500, detail=str(e))
+
