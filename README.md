@@ -1,13 +1,11 @@
+# AI-IT Skill (AI 기반 IT 실무 역량진단 문제은행 플랫폼)
+
 <div align="center">
-  <h1>AI-IT Skill<br />AI 기반 IT 실무 역량진단 문제은행 플랫폼</h1>
-  <div align="center" style="margin: 16px 0 20px 0">
-    <img src="docs/images/logo.png" width="400" alt="AI-IT Skill Logo">
-  </div>
-  <b>AI-Powered IT Competency Diagnosis & Question Bank System</b>
-  <p>설계서 기반 AI 문항 생성 · LIKE 기반 Hybrid RAG MVP · Human-in-the-loop 검수 워크플로우 · 실무 시나리오 기반 IT 역량진단</p>
+  <img src="docs/images/logo.png" width="400" alt="AI-IT Skill Logo">
+  <p><b>LangGraph 기반 문제 생성 파이프라인 · RRF Hybrid RAG · Human-in-the-loop 검수 워크플로우 · AI 종합 진단 리포트</b></p>
 </div>
 
-<br />
+---
 
 ## 목차
 
@@ -15,1115 +13,307 @@
 * [2. 개발 배경과 문제 정의](#2-개발-배경과-문제-정의)
 * [3. 핵심 기능](#3-핵심-기능)
 * [4. 기술 스택](#4-기술-스택)
-* [5. 전체 시스템 아키텍처](#5-전체-시스템-아키텍처)
-* [6. 화면 흐름도](#6-화면-흐름도)
+* [5. 시스템 아키텍처](#5-시스템-아키텍처)
+* [6. 전체 서비스 흐름](#6-전체-서비스-흐름)
 * [7. AI 문제 생성 파이프라인](#7-ai-문제-생성-파이프라인)
-* [8. 설계서/템플릿 기반 문제 생성 구조](#8-설계서템플릿-기반-문제-생성-구조)
-* [9. 문서 기반 RAG 문제 생성 구조](#9-문서-기반-rag-문제-생성-구조)
-* [10. Hybrid RAG MVP 구현](#10-hybrid-rag-mvp-구현)
-* [11. 데이터 구조 및 ERD](#11-데이터-구조-및-erd)
-* [12. 주요 화면](#12-주요-화면)
-* [13. 트러블슈팅](#13-트러블슈팅)
-* [14. 현재 구현 범위와 한계](#14-현재-구현-범위와-한계)
-* [15. 향후 고도화 계획](#15-향후-고도화-계획)
-* [16. 실행 방법](#16-실행-방법)
-* [17. 핵심 성과](#17-핵심-성과)
+* [8. 문서 기반 Hybrid RAG](#8-문서-기반-hybrid-rag)
+* [9. AI 결과 분석 리포트](#9-ai-결과-분석-리포트)
+* [10. 데이터베이스 구조](#10-데이터베이스-구조)
+* [11. 주요 화면](#11-주요-화면)
+* [12. 트러블슈팅](#12-트러블슈팅)
+* [13. 현재 구현 범위와 향후 계획](#13-현재-구현-범위와-향후-계획)
+* [14. 실행 방법](#14-실행-방법)
 
 ---
 
 ## 1. 프로젝트 개요
 
-AI-IT Skill은 기업 또는 교육기관에서 사용할 수 있는 IT 실무 역량진단 문제은행 플랫폼입니다.
+**AI-IT Skill**은 기업 및 교육기관에서 IT 역량진단 문항을 효율적으로 출제하고 응시자의 역량을 다각도로 분석하기 위한 문제은행 플랫폼입니다.
 
-단순히 문제를 등록하고 응시 결과를 확인하는 CRUD형 문제은행이 아니라, 관리자가 AI를 활용해 IT 역량별 문제를 생성하고, 생성된 문제를 검수한 뒤 실제 진단에 사용할 수 있도록 설계한 시스템입니다.
-
-특히 본 프로젝트는 다음 두 가지 문제 생성 방식을 함께 제공합니다.
-
-| 생성 방식               | 설명                                              | 주요 목적          |
-| ------------------- | ----------------------------------------------- | -------------- |
-| 설계서/템플릿 기반 AI 문제 생성 | 사전에 정의된 문제 형식과 고급 문제 템플릿을 기반으로 LLM이 선택지와 해설을 생성 | 고급 문제 품질 안정화   |
-| 문서 기반 RAG 문제 생성     | 업로드한 문서를 검색하고, 검색된 chunk를 context로 사용해 문제 생성    | 문서 근거 기반 문제 생성 |
-
-생성된 문제는 바로 확정되지 않고 `pending` 상태로 저장되며, 관리자가 검수 후 승인해야 문제은행에 반영됩니다. 이를 통해 AI 생성 결과를 사람의 검수 흐름과 결합하는 Human-in-the-loop 구조를 구성했습니다.
+생성형 AI(GPT-4o-mini) 기반의 단순 자유 출제가 유발하는 문항 품질 편차를 제어하기 위해 **LangGraph 상태 에이전트 파이프라인**과 **정량 규칙 기반 Validator**를 구축하였습니다. 또한, 사내 기술 규격이나 PDF 문서를 기반으로 출제 정확성을 확보할 수 있는 **ChromaDB + MariaDB FULLTEXT 기반 RRF Hybrid RAG** 구조를 구현했으며, 응시 결과의 오답 정밀 분석과 동일 이메일 매핑 기반 누적 이력 비교가 가능한 **AI 종합 진단 리포트 엔진**을 통합 제공합니다.
 
 ---
 
 ## 2. 개발 배경과 문제 정의
 
-### 2.1 왜 이 프로젝트를 만들었는가
+### 2.1 개발 배경
+IT 역량진단 문제은행은 문항의 난이도 균형, 실무 맥락 반영, 정답 근거의 정합성이 중요합니다. 그러나 관리자가 모든 실무 시나리오(SQL 실행 계획, RAG 검색 품질, LLM 구조화 출력 등)를 직접 작성하는 방식은 시간 소모가 크며 기술 흐름을 신속히 반영하기 어렵습니다.
 
-IT 역량진단 문제은행은 단순히 문제 수가 많다고 좋은 시스템이 아닙니다. 실제 역량을 평가하려면 문제의 난이도, 실무 맥락, 정답 근거, 오답 품질이 모두 중요합니다.
+### 2.2 초기 LLM 자유 생성 방식의 한계와 극복
+초기에는 GPT-4o-mini에 주제, 난이도 등 파라미터만 전달해 문제를 자유 생성했으나 다음과 같은 평가 신뢰도 저하 문제가 반복되었습니다.
+* **정답 힌트 노출**: "무조건", "필요 없음" 등 오답 소거가 쉬운 단어가 오답지에 빈번하게 삽입됨.
+* **정답 선택지 길이 편향**: 정답 선택지에만 부연 설명과 예외 조건이 구체적으로 작성되어 정답지만 비정상적으로 길어짐.
+* **해설 복사 붙여넣기**: 정답 선택지의 텍스트를 그대로 어미만 바꾸어 해설란을 채우는 현상 발생.
+* **어조 및 종결 어미 혼재**: 문항체(평서문)와 존댓말이 문제 본문 및 선택지 내에 일관성 없이 혼용됨.
 
-하지만 관리자가 모든 문제를 직접 작성하는 방식에는 한계가 있습니다.
-
-* 역량별 문제를 수작업으로 작성하는 데 시간이 많이 걸림
-* 고급 문제일수록 실무 상황과 제약 조건을 설계하기 어려움
-* SQL 실행 계획, RAG 검색 품질, LLM 구조화 출력, Agent workflow 같은 최신 기술 주제를 지속적으로 반영하기 어려움
-* 문제 수가 늘어날수록 난이도와 품질을 일관되게 유지하기 어려움
-* AI를 그대로 사용하면 정답/해설 불일치, 쉬운 오답, 근거 부족 문제가 발생할 수 있음
-
-따라서 본 프로젝트는 단순한 문제은행을 넘어, AI 문제 생성과 관리자 검수 흐름을 결합한 IT 역량진단 플랫폼을 목표로 개발했습니다.
-
-### 2.2 초기 LLM 자유 생성 방식의 한계
-
-초기에는 GPT-4o-mini에 다음과 같은 정보만 전달해 문제를 생성했습니다.
-
-| 입력값             | 예시              |
-| --------------- | --------------- |
-| topic           | RAG 검색 품질       |
-| difficulty      | 고급              |
-| count           | 5               |
-| competency_type | ai              |
-| question_type   | multiple_choice |
-
-하지만 단순 자유 생성 방식에서는 다음 문제가 반복적으로 발생했습니다.
-
-| 문제          | 실제 발생한 현상                                                |
-| ----------- | -------------------------------------------------------- |
-| 고급 문제 품질 부족 | 고급 문제인데 단순 정의형 또는 일반론 문제로 생성됨                            |
-| 선택지 품질 저하   | “무조건 증가시킨다”, “필요 없다”, “모든 컬럼에 인덱스를 추가한다”처럼 쉽게 제거되는 오답 생성 |
-| 정답 위치 편향    | 정답이 1번 또는 2번에 몰림                                         |
-| 정답/해설 불일치   | answer 값과 explanation의 정답 번호가 다름                         |
-| 근거 부족       | AI/RAG 문제인데 query, top_k, chunk, similarity 같은 검색 근거가 없음 |
-| 역량별 형식 불일치  | SQL 문제인데 SQL 쿼리나 실행 계획 없이 일반론으로 생성됨                      |
-| 문체 불일치      | 문제 본문과 선택지는 문항체여야 하는데 존댓말과 반말이 섞임                        |
-
-이 문제를 해결하기 위해 단순히 프롬프트를 길게 만드는 방식이 아니라, 문제 생성 구조 자체를 단계적으로 개선했습니다.
+본 프로젝트는 단순 프롬프트 튜닝을 넘어, 문제 상황과 평가 의도를 사전 설계서(Blueprint)로 제어하고 생성 결과를 정적/정량 규칙으로 검증하는 **다층 검증 에이전트 시스템**으로 구조화하여 이를 해결했습니다.
 
 ---
 
 ## 3. 핵심 기능
 
-### 3.1 관리자 기반 문제은행 관리
-
-관리자는 문제를 생성, 검토, 승인, 반려, 수정할 수 있습니다.
-
-주요 기능은 다음과 같습니다.
-
-* 전체 문제 목록 조회
-* 문제 상세 확인
-* 문제 생성 방식 확인
-* 생성일시 확인
-* 검수 상태 관리
-* 문제 승인/반려
-* 진단에 사용할 문제 관리
-
-### 3.2 AI 문제 생성
-
-관리자는 역량 유형, 난이도, 문제 수, 문제 유형을 선택해 AI 문제를 생성할 수 있습니다.
-
-지원하는 주요 역량 유형은 다음과 같습니다.
-
-| 역량 유형                    | 설명                                 |
-| ------------------------ | ---------------------------------- |
-| software_engineering     | 요구사항, 설계, 테스트, 품질, 유지보수            |
-| java                     | Java 문법, 객체지향, 컬렉션, 예외 처리          |
-| python                   | Python 문법, 자료형, 예외 처리, 코드 실행 결과    |
-| c_language               | 포인터, 배열, 문자열, 동적 메모리               |
-| sql                      | SELECT, JOIN, GROUP BY, 인덱스, 실행 계획 |
-| data_structure_algorithm | 자료구조, 알고리즘, 시간복잡도                  |
-| security                 | 인증, 인가, 취약점, 보안 설계                 |
-| ai                       | LLM, RAG, 임베딩, 평가 지표, 검색 품질        |
-
-### 3.3 설계서/템플릿 기반 고급 문제 생성
-
-AI 또는 SQL 고급 문제는 LLM 자유 생성에만 의존하지 않고, 사전에 정의된 템플릿과 문제 의도 정보를 사용합니다.
-
-핵심 구조는 다음과 같습니다.
-
-* `question_templates.py`가 문제의 body와 평가 상황을 제공
-* `answer_intent`로 정답 선택지의 핵심 의도 정의
-* `distractor_intents`로 오답 선택지의 방향 정의
-* LLM은 title/body를 새로 만드는 것이 아니라 choices와 explanation을 생성
-* validator가 선택지 품질과 정답 정합성을 검증
-* 실패 시 retry 또는 fallback choices 사용
-
-이 구조를 통해 LLM의 자유도를 줄이고, 고급 문제의 실무 맥락과 평가 포인트를 안정적으로 유지했습니다.
-
-### 3.4 문서 기반 RAG 문제 생성
-
-관리자는 PDF 또는 Markdown 문서를 업로드하고, 해당 문서를 기반으로 문제를 생성할 수 있습니다.
-
-문서 기반 문제 생성 흐름은 다음과 같습니다.
-
-1. 문서 업로드
-2. 텍스트 추출
-3. 노이즈 제거
-4. chunk 분리
-5. 임베딩 생성
-6. ChromaDB 저장
-7. 검색 query 기반 Hybrid RAG 검색
-8. 검색 context 구성
-9. GPT-4o-mini 문제 생성
-10. validator 검증
-11. pending 저장
-12. 관리자 검수
-
-문서 기반 RAG 생성은 설계서 기반 문제보다 문제 형식의 안정성은 낮을 수 있지만, 업로드된 문서 근거를 활용해 문제를 생성한다는 장점이 있습니다.
-
-### 3.5 Hybrid RAG MVP
-
-기존 Vector RAG는 의미적으로 유사한 문서를 찾는 데는 유리하지만, 정확히 일치해야 하는 기술 키워드를 놓칠 수 있습니다.
-
-예를 들어 다음과 같은 키워드는 의미 유사도보다 정확 매칭이 중요합니다.
-
-* EXPLAIN
-* filesort
-* top_k
-* metadata_filter
-* reranker
-* vector_score
-* keyword_score
-* hybrid_score
-
-이를 보완하기 위해 현재 프로젝트에서는 ChromaDB vector search와 MariaDB LIKE 기반 keyword search를 결합한 Hybrid RAG MVP를 구현했습니다.
-
-정확한 표현은 다음과 같습니다.
-
-| 구분             | 현재 상태                           |
-| -------------- | ------------------------------- |
-| Vector Search  | ChromaDB 기반 구현                  |
-| Keyword Search | MariaDB LIKE 기반 구현              |
-| Hybrid Score   | vector_score와 keyword_score 가중합 |
-| BM25           | 미구현, 향후 계획                      |
-| FULLTEXT       | 미구현, 향후 계획                      |
-| Reranker       | 미구현, 향후 계획                      |
-| LangGraph      | 미구현, 향후 계획                      |
-
-현재 구현은 BM25나 reranker까지 적용한 완성형 Hybrid Search가 아니라, LIKE 기반 keyword search를 결합한 Hybrid RAG MVP입니다.
-
-### 3.6 관리자 검수 흐름
-
-AI가 생성한 문제는 바로 서비스에 반영되지 않고 `pending` 상태로 저장됩니다.
-
-관리자는 AI 문제 검토 화면에서 문제를 확인한 뒤 다음 작업을 수행할 수 있습니다.
-
-* 승인
-* 반려
-* 수정
-* 문제 관리 화면에서 확인
-
-이를 통해 AI 생성 결과를 그대로 신뢰하지 않고, 최종 품질 판단은 관리자가 수행하는 Human-in-the-loop 구조를 적용했습니다.
-
-### 3.7 생성 방식 및 생성일시 표시
-
-생성된 문제가 어떤 방식으로 만들어졌는지 화면에서 확인할 수 있도록 개선했습니다.
-
-| 표시값       | 의미                       |
-| --------- | ------------------------ |
-| 설계서 기반    | 일반 AI 생성 또는 템플릿 기반 생성    |
-| 문서 기반 RAG | 업로드 문서 검색 context 기반 생성  |
-| 수동/기존     | 기존 등록 문제 또는 생성 방식이 없는 문제 |
-
-AI 문제 검토, AI 문제 생성 결과, 문제 관리 화면에서 생성 방식과 생성일시를 확인할 수 있습니다.
+* **AI 문제 생성 파이프라인**: 템플릿/설계서 기반 생성 및 문서 기반 RAG 생성을 지원하며, LangGraph 에이전트로 생성의 각 흐름을 관리합니다.
+* **품질 검증 Validator**: 정답 힌트 정적 검사, 선택지 간 길이 격차 비교, 해설 복사-붙여넣기 탐지(SequenceMatcher 86% 이상 기각), 질문 어조 정제 등을 자동 수행합니다.
+* **Hybrid RAG 검색 및 출처 보존**: 의미 유사도 검색(Dense Vector)과 키워드 검색(MariaDB MATCH...AGAINST 전문 검색) 결과를 Reciprocal Rank Fusion(RRF) 알고리즘으로 병합하여 컨텍스트를 구성하고, 출제 시 참조한 chunk 메타데이터를 DB에 보관합니다.
+* **Human-in-the-loop 검수 흐름**: AI가 생성한 모든 문제는 `pending` 상태로 우선 저장되며, 관리자가 승인(`approved`)해야 평가 문제은행 풀에 반영됩니다.
+* **AI 종합 진단 리포트**: 제출된 응시 기록의 오답을 subtopic 분류기로 분석(RAG, LLM, ModelOps 등)하고 이메일 연계 기반 직전 진단 결과와 비교하여 영역별 성취도(Delta) 및 만성 취약 부문을 마크다운 리포트로 자동 생성합니다.
 
 ---
 
 ## 4. 기술 스택
 
-| 영역             | 기술                                                  |
-| -------------- | --------------------------------------------------- |
-| Frontend       | React, TypeScript, Vite                             |
-| Backend        | FastAPI, Python, SQLAlchemy, Pydantic               |
-| Database       | MariaDB                                             |
-| Vector DB      | ChromaDB                                            |
-| LLM            | OpenAI GPT-4o-mini                                  |
-| Embedding      | OpenAI text-embedding-3-small                       |
-| RAG Search     | ChromaDB Vector Search, MariaDB LIKE Keyword Search |
-| Admin Workflow | pending / approved / rejected 검수 흐름                 |
-| API Test       | Swagger                                             |
+* **Frontend**: React, TypeScript, Vite
+* **Backend**: FastAPI, Python, SQLAlchemy, Pydantic, LangGraph
+* **Database**: MariaDB (정형 데이터 관리 및 MATCH AGAINST FULLTEXT 전문 검색)
+* **Vector DB**: ChromaDB (임베딩 및 코사인 유사도 검색)
+* **AI Engine**: OpenAI API (GPT-4o-mini, text-embedding-3-small)
 
 ---
 
-## 5. 전체 시스템 아키텍처
-
-본 시스템은 관리자 화면, FastAPI 백엔드, AI 문제 생성 서비스, RAG 검색 서비스, MariaDB, ChromaDB, OpenAI API로 구성됩니다.
-
-### 5.1 아키텍처 이미지
+## 5. 시스템 아키텍처
 
 ![System Architecture](docs/images/system-architecture.png)
 
-이미지 설명:
-
-* React 기반 관리자 화면에서 문제 생성/검토/문서 관리 요청
-* FastAPI가 문제 생성 요청을 처리
-* 설계서 기반 생성은 question_templates.py와 question_choice_generator.py를 사용
-* 문서 기반 생성은 Hybrid RAG 검색 후 GPT-4o-mini로 문제 생성
-* 생성된 문제는 questions 테이블에 pending 상태로 저장
-* 관리자는 검토 후 approved 또는 rejected 처리
-
-### 5.2 핵심 구성 요소
-
-| 구성 요소                         | 역할                                               |
-| ----------------------------- | ------------------------------------------------ |
-| Frontend                      | 관리자 대시보드, AI 문제 생성, 문제 검토, 문제 관리, RAG 문서 관리      |
-| FastAPI Router                | 프론트 요청을 받아 서비스 계층으로 전달                           |
-| Question Generator            | 문제 생성 흐름 제어                                      |
-| Question Templates            | 고급 문제 body, answer_intent, distractor_intents 제공 |
-| Question Choice Generator     | LLM을 사용해 choices와 explanation 생성                 |
-| Question Validator            | 문제 구조, 정답, 해설, 선택지 품질 검증                         |
-| RAG Document Service          | 문서 업로드, chunk 저장, 검색 context 구성                  |
-| Vector Store Service          | ChromaDB 기반 vector search                        |
-| Keyword Search                | MariaDB LIKE 기반 keyword search                   |
-| MariaDB                       | 문제, 문서, chunk, 진단, 응시 기록 저장                      |
-| ChromaDB                      | 문서 chunk embedding 저장                            |
-| OpenAI GPT-4o-mini            | 문제 생성 및 해설 생성                                    |
-| OpenAI text-embedding-3-small | 문서 및 query embedding 생성                          |
+* React 대시보드에서 문제 생성, 검수, RAG 문서 제어 및 결과 조회 요청을 수행합니다.
+* FastAPI 백엔드는 문제 생성 시 LangGraph 엔진을 기동하며, RAG 요청 시 ChromaDB(벡터)와 MariaDB(전문 검색)에 동시 질의합니다.
+* 생성된 결과물은 Validator 검증 성공 시 questions 테이블에 `pending`으로 기록되어 관리자의 검수를 대기합니다.
 
 ---
 
-## 6. 화면 흐름도
+## 6. 전체 서비스 흐름
 
-관리자와 응시자의 화면 흐름은 분리되어 있습니다.
+### 6.1 관리자 흐름
+1. AI 문제 생성 및 유형(일반/RAG) 선택
+2. 생성된 pending 문제 조회, 승인/반려/수정 처리
+3. 승인된 문항들로 시험지(Diagnosis) 편성 및 만료 기한 설정 배정
+4. 응시자 정보 등록 후 응시 고유 토큰 이메일 발송
+5. 제출된 기록 확인 및 AI 진단 리포트 발행 후 결과 공개(이메일 알림 연계)
 
-### 6.1 화면 흐름도 이미지
+### 6.2 RAG 문서 관리 흐름
+1. PDF/MD 문서 업로드
+2. 텍스트 정제(text_cleaner) 및 의미/구조 단위 청킹(text_splitter)
+3. MariaDB 청크 저장 및 ChromaDB 임베딩 동시 적재
+4. Vector/Keyword/Hybrid 모드별 검색 테스트 및 문제 컨텍스트 피딩
 
-![Screen Flow](docs/images/screen-flow.svg)
-
-### 6.2 관리자 흐름
-
-1. 로그인
-2. 관리자 대시보드 접근
-3. AI 문제 생성
-4. 설계서 기반 또는 문서 기반 RAG 생성 선택
-5. 생성된 문제 pending 저장
-6. AI 문제 검토
-7. 승인/반려/수정
-8. 문제 관리 화면 반영
-9. 진단 구성
-10. 응시자에게 진단 배정
-
-### 6.3 RAG 문서 관리 흐름
-
-1. RAG 문서 관리 화면 접근
-2. PDF 또는 Markdown 문서 업로드
-3. 텍스트 추출 및 전처리
-4. chunk 분리
-5. embedding 생성
-6. MariaDB와 ChromaDB 저장
-7. vector / keyword / hybrid 검색 테스트
-8. 문서 기반 문제 생성
-
-### 6.4 응시자 흐름
-
-1. 응시자 로그인 또는 진단 접근
-2. 배정된 진단 선택
-3. 문제 풀이
-4. 답안 제출
-5. 결과 저장
-6. 관리자가 응시 기록 확인
+### 6.3 응시자 흐름
+1. 메일로 수신한 고유 토큰으로 로그인 및 대기화면 진입
+2. 배정된 제한시간 내 객관식 답안 작성 및 시험지 최종 제출
+3. 관리자의 결과 공개 처리 후 대시보드에서 합격 여부, 점수, 오답지 해설 및 AI 리포트 확인
 
 ---
 
-## 7. AI 문제 생성 파이프라인
+## 7. AI 문제 생성 파이프라인 (LangGraph & Validator)
 
-### 7.1 전체 흐름
+### 7.1 LangGraph 워크플로우 설계
+문제 생성 라이프사이클을 단위 프로세스로 쪼개고, 결합도가 낮은 노드들로 구성된 `StateGraph`를 기동하여 생성 안정성을 확보했습니다.
 
-AI 문제 생성은 단순히 LLM에게 모든 문제를 자유롭게 작성시키는 방식이 아닙니다.
+```
+[START] ──> normalize ──> topic_validation ──> route
+                                                 │
+                                                 ├──> [question_v2] ──────────┐
+                                                 │                            │
+                                                 └──> [question_v2_rag] ──> retrieval
+                                                                              │
+                                                                              ▼
+[END] <── save <── validation <── question_generation <───────────────────────┘
+```
 
-현재 문제 생성은 다음 흐름으로 구성됩니다.
+* **`normalize`**: 입력받은 역량 유형 정규화
+* **`topic_validation`**: 설정된 세부 주제와 정규화 도메인의 매핑 연관성 판정
+* **`route`**: RAG 모드 여부에 따른 RAG retrieval 노드 진입 조건부 분기
+* **`retrieval`**: RRF Hybrid Search를 통한 context 및 증적(Evidence) 조립
+* **`question_generation`**: 설계서 프롬프트와 컨텍스트 기반 GPT-4o-mini 문항 작성
+* **`validation`**: `validator.py`를 거쳐 일련의 문항 품질 정량 규칙 통과 심사
+* **`save`**: 정답 셔플링 후 questions 테이블에 pending 상태 적재
 
-1. 사용자 입력 수신
-2. competency_type 정규화
-3. 난이도와 역량에 따라 생성 경로 선택
-4. 설계서 또는 템플릿 기반 문제 구조 구성
-5. GPT-4o-mini를 통한 choices/explanation 생성
-6. validator 검증
-7. 정답 위치 재배치
-8. 해설 정리
-9. questions 테이블 pending 저장
-10. 관리자 검수
+### 7.2 검증 규칙 명세 (`validator.py`)
+LLM 생성 시 발생하는 일관성 이탈 문제를 통제하기 위해 다음 규칙들을 런타임에 강제합니다.
 
-### 7.2 생성 방식 구분
-
-| 생성 방식        | 사용 조건        | 특징                                        |
-| ------------ | ------------ | ----------------------------------------- |
-| 설계서 기반 생성    | 일반 AI 문제 생성  | 문제 형식과 평가 포인트를 먼저 설계                      |
-| 템플릿 기반 고급 생성 | AI/SQL 고급 문제 | body는 템플릿 고정, LLM은 choices/explanation 생성 |
-| 문서 기반 RAG 생성 | 문서 검색 기반 문제  | 검색 context를 기반으로 문제 생성                    |
-
-### 7.3 설계서 기반 생성이 필요한 이유
-
-초기 자유 생성에서는 LLM이 문제를 그럴듯하게 작성하더라도 실제 평가 품질이 불안정했습니다.
-
-예를 들어 “RAG 검색 품질”이라는 주제를 주면, LLM은 다음처럼 일반적인 문제를 만들 수 있습니다.
-
-* RAG의 장점은 무엇인가?
-* 검색 품질을 높이는 방법은 무엇인가?
-* 벡터 검색이 중요한 이유는 무엇인가?
-
-이런 문제는 고급 역량진단 문제로는 부족합니다.
-
-따라서 먼저 다음 항목을 정의하는 방식으로 바꿨습니다.
-
-| 설계 항목                | 설명                        |
-| -------------------- | ------------------------- |
-| question_format      | 문제 형식                     |
-| target_concept       | 평가할 핵심 개념                 |
-| scenario             | 실무 상황                     |
-| constraints          | 문제 조건                     |
-| evidence_type        | 필요한 근거 유형                 |
-| evidence_detail      | body에 포함되어야 할 코드/쿼리/검색 로그 |
-| answer_decision_rule | 정답 판단 기준                  |
-| distractor_strategy  | 오답 구성 방향                  |
-
-이렇게 하면 LLM이 자유롭게 문제를 만드는 것이 아니라, 설계된 평가 구조 안에서 문제를 생성하게 됩니다.
+* **선택지 길이 균형 (`_validate_answer_length_not_obvious`)**: 정답지가 오답지 평균 길이의 1.8배를 초과하거나 35자 이상 차이 날 경우, 정답지가 정답 단서를 흘리고 있는 것으로 판단하여 탈락시킵니다.
+* **정답 힌트 정적 검사 (`_validate_no_answer_leak_patterns`)**: 오답지에 극단적 명제나 명백한 배제어(`ANSWER_LEAK_PATTERNS` 45종)가 침투하는 것을 차단합니다.
+* **해설 복사 방지 (`_validate_explanation_not_choice_copy`)**: 정답지 원문과 해설 텍스트 간 `difflib.SequenceMatcher` 유사도가 **86% 이상** 일치하는 복사 어미 변형 문항을 기각합니다.
+* **어조 통일 (`_validate_body_polite_question`)**: 문제 본문은 격식체 질문형(`"~습니까?"`)으로 통제하고, 평서문 어미 혼용을 검출합니다.
 
 ---
 
-## 8. 설계서/템플릿 기반 문제 생성 구조
+## 8. 문서 기반 Hybrid RAG
 
-### 8.1 템플릿 기반 생성이란?
+의미 유사도 기반의 Dense Vector 검색이 기술 고유명사나 특정 커맨드를 완전 매칭하지 못하는 한계를 보완하기 위해, MariaDB MATCH AGAINST BOOLEAN 전문 검색과 ChromaDB 임베딩 검색을 결합한 하이브리드 엔진을 설계했습니다.
 
-AI와 SQL 고급 문제는 자유 생성보다 더 강한 제어가 필요했습니다.
+```
+[업로드 문서] ──> [Text Cleaner] ──> [Text Splitter] ──> [ChromaDB Vector]
+                                                        └──> [MariaDB FULLTEXT]
+                                                                     │ (병렬 쿼리)
+[RAG 문제 생성] <── [증적 JSON 보존] <── [RRF 병합 정렬] <───────────┘
+```
 
-따라서 `question_templates.py`에 고급 문제의 기본 body와 평가 상황을 코드로 정의했습니다.
-
-템플릿은 다음 정보를 포함합니다.
-
-| 필드                 | 역할                      |
-| ------------------ | ----------------------- |
-| title              | 문제 제목                   |
-| body               | 문제 본문, 실무 상황, 로그, 제약 조건 |
-| choices            | fallback 선택지            |
-| answer             | fallback 정답             |
-| explanation        | fallback 해설             |
-| template_format    | 문제 유형                   |
-| answer_intent      | 정답 선택지가 만족해야 하는 핵심 의도   |
-| distractor_intents | 오답 선택지의 방향              |
-| competency_tags    | 문제 태그                   |
-
-### 8.2 LLM이 바꾸는 부분과 바꾸지 않는 부분
-
-템플릿 기반 생성에서 LLM이 문제 전체를 마음대로 작성하지 않습니다.
-
-| 항목                 | 생성 주체          | 설명                                         |
-| ------------------ | -------------- | ------------------------------------------ |
-| title              | 코드             | template_format에 따라 제목 variant 선택          |
-| body               | 템플릿            | 문제 상황과 로그는 고정                              |
-| choices            | LLM            | answer_intent와 distractor_intents를 바탕으로 생성 |
-| answer             | LLM 생성 후 검증/보정 | 정답 위치는 이후 재배치 가능                           |
-| explanation        | LLM 생성 후 재정리   | 정답 번호와 문체 정리                               |
-| template_format    | 코드             | 문제 다양성 확보                                  |
-| answer_intent      | 템플릿            | 정답 방향 제어                                   |
-| distractor_intents | 템플릿            | 오답 방향 제어                                   |
-
-즉, LLM은 출제자 전체 역할이 아니라, 이미 구성된 문제 body에 맞는 선택지와 해설을 작성하는 역할을 수행합니다.
-
-### 8.3 예시: RAG 검색 품질 고급 문제
-
-요청값:
-
-| 항목              | 값         |
-| --------------- | --------- |
-| topic           | RAG 검색 품질 |
-| difficulty      | 고급        |
-| competency_type | ai        |
-| count           | 5         |
-
-선택된 template_format 예시:
-
-| template_format             | 평가 포인트                                 |
-| --------------------------- | -------------------------------------- |
-| hybrid_search_choice        | vector search 한계와 keyword search 결합 판단 |
-| context_filtering           | 검색 chunk를 LLM context로 넘기기 전 근거 적합성 판단 |
-| query_rewrite_failure       | query rewrite가 과도하게 일반화되는 문제           |
-| retrieval_quality_diagnosis | category가 다른 chunk가 검색 결과에 섞이는 문제      |
-| chunking_issue              | chunk_size, overlap, 의미 단위 분할 문제       |
-
-이 방식으로 같은 “RAG 검색 품질” 주제 안에서도 서로 다른 평가 포인트를 가진 문제를 생성할 수 있습니다.
-
-### 8.4 answer_intent와 distractor_intents
-
-예를 들어 `hybrid_search_choice` 문제의 answer_intent가 다음과 같다고 가정합니다.
-
-`combine_vector_keyword_and_metadata_filter`
-
-이 경우 정답 선택지는 다음 내용을 포함해야 합니다.
-
-* vector search
-* keyword search
-* metadata_filter
-* 검색 결과 결합 또는 hybrid search
-
-반면 distractor_intents는 다음과 같은 오답 방향을 만듭니다.
-
-| distractor_intent                   | 오답 방향                              |
-| ----------------------------------- | ---------------------------------- |
-| increase_vector_top_k_only          | top_k만 늘리는 선택지                     |
-| replace_embedding_model_only        | embedding 모델 교체만 고려하는 선택지          |
-| reranker_only_without_candidate_fix | 후보군 문제를 해결하지 않고 reranker만 적용하는 선택지 |
-| simplify_query_for_latency_only     | 검색 속도만 보고 query를 단순화하는 선택지         |
-
-이 구조를 통해 정답과 오답의 방향을 LLM에게 명확히 전달하고, validator가 정답 선택지의 핵심 키워드 누락 여부를 검사할 수 있습니다.
-
-### 8.5 실패 처리
-
-LLM이 선택지를 생성했지만 검증을 통과하지 못하면 다음 흐름으로 처리합니다.
-
-1. choices/explanation 생성
-2. answer_intent 기준 검증
-3. 실패 시 retry
-4. retry도 실패하면 템플릿 fallback choices/explanation 사용
-5. validate_questions 최종 검증
-6. pending 저장
-
-이 구조 덕분에 일부 선택지 생성이 실패해도 전체 문제 생성 요청이 실패하지 않도록 안정성을 높였습니다.
+1. **텍스트 전처리 (`text_cleaner.py`)**: NCS 교재 특성상 출제와 무관한 줄("교수학습방법", "수행 Tip", "안전 유의사항")이 포함된 상용구 라인을 제거해 컨텍스트 오염을 최소화합니다.
+2. **의미 단락 청킹 (`text_splitter.py`)**: 문단 구조를 유지하기 위해 제목(#) 및 수행준거 매핑 마크다운을 결합하고, 700자 크기에 120자 중첩을 적용해 텍스트를 나눕니다.
+3. **RRF 병합 및 랭킹**: 두 스토리지의 스코어 편차를 극복하기 위해 `rrf_score = 1 / (60 + Rank)` 가중치 앙상블을 적용하여 최적의 Top K 컨텍스트를 도출합니다.
+4. **RAG 증적 보존 (RAG Evidence)**: 출제 단계에서 쿼리, 검색 모드, top_k 정보와 매칭된 chunk의 ID, 순위, 프리뷰, score 정보를 `rag_evidence_json`에 영구 기록하여, 문제 검수 화면에서 원문 출처를 역추적할 수 있게 설계했습니다.
 
 ---
 
-## 9. 문서 기반 RAG 문제 생성 구조
+## 9. AI 결과 분석 리포트
 
-### 9.1 문서 기반 생성 목적
+진단 제출 후 자동 채점이 완료되면, AI 분석 엔진(`report_service.py`)이 기동하여 응시자의 장오답 경향을 정교하게 해부한 마크다운 분석서를 자동 발급합니다.
 
-문서 기반 RAG 문제 생성은 업로드한 문서의 내용을 근거로 문제를 생성하기 위한 기능입니다.
-
-이 방식은 설계서 기반 문제보다 문제 형태는 덜 안정적일 수 있지만, 다음 목적에 유용합니다.
-
-* 특정 문서 기반 문제 생성
-* 사내 기술 문서 기반 진단 문제 생성
-* NCS 문서 기반 문제 생성
-* 공식 문서나 기준 문서에 근거한 문제 생성
-* LLM 일반 지식이 아닌 검색 context 기반 생성
-
-### 9.2 문서 인덱싱 흐름
-
-문서 인덱싱은 다음 순서로 동작합니다.
-
-1. 관리자가 문서 업로드
-2. PDF 또는 Markdown 텍스트 추출
-3. 불필요한 노이즈 제거
-4. 의미 단위 chunk 분리
-5. chunk에 metadata 추가
-6. OpenAI text-embedding-3-small로 embedding 생성
-7. chunk 원문과 metadata는 MariaDB에 저장
-8. embedding은 ChromaDB에 저장
-
-### 9.3 chunk metadata
-
-각 chunk에는 검색 품질을 높이기 위해 metadata를 함께 저장합니다.
-
-| metadata       | 설명            |
-| -------------- | ------------- |
-| document_title | 문서 제목         |
-| source_type    | 문서 출처 유형      |
-| category       | 역량 유형         |
-| chunk_index    | 문서 내 chunk 순서 |
-
-검색 시 category filter를 사용해 현재 생성하려는 역량과 관련된 문서만 검색할 수 있습니다.
-
-### 9.4 문서 기반 문제 생성 흐름
-
-1. 관리자가 topic, difficulty, top_k, competency_type, search_query 입력
-2. backend가 Hybrid RAG 검색 수행
-3. vector search와 keyword search 결과 병합
-4. hybrid_score 기준 상위 chunk 선택
-5. context 구성
-6. GPT-4o-mini에 context 전달
-7. 문제 생성
-8. validator 검증
-9. 정답 위치 재배치
-10. questions 테이블 pending 저장
+* **세부 기술 영역 자동 분류 (`subtopic_classifier.py`)**: 각 문항의 메타 데이터와 텍스트 키워드를 분석하여 오답 문항을 `RAG / LLM / ModelOps / ML / DL / AI 기본` 영역으로 자동 분류 및 구조화합니다.
+* **누적 이력 비교 (`history_analyzer.py`)**: 응시자 이메일을 기반으로 직전 완료된 기록을 조회합니다. 두 진단 결과 간의 전체 점수 및 세부 영역별 점수 격차(Delta)를 연산하여 **"성장 영역, 만성 취약 부문, 신규 약점 영역"**을 가려내어 종합 코멘트를 생성합니다.
 
 ---
 
-## 10. Hybrid RAG MVP 구현
-
-### 10.1 기존 Vector RAG 구조
-
-초기 RAG 구조는 다음과 같았습니다.
-
-1. 문서 업로드
-2. chunk 분리
-3. embedding 생성
-4. ChromaDB 저장
-5. query embedding 생성
-6. vector similarity 기반 검색
-7. context 구성
-8. 문제 생성
-
-Vector Search는 의미적으로 유사한 문서를 찾는 데 유리하지만, 정확 키워드 검색에는 한계가 있습니다.
-
-### 10.2 Vector RAG의 한계
-
-실제 테스트에서 다음 문제가 발생했습니다.
-
-| 문제            | 설명                                                       |
-| ------------- | -------------------------------------------------------- |
-| 정확 키워드 누락     | EXPLAIN, filesort, metadata_filter 같은 키워드가 검색에서 누락될 수 있음 |
-| category 불일치  | 검색 의도와 다른 category의 chunk가 섞일 수 있음                       |
-| similarity 한계 | similarity가 높아도 실제 문제 생성 근거로는 부적절할 수 있음                  |
-| chunk 노이즈     | PDF 안내 문구, 수행 tip, 장비, 안전유의사항 등이 검색될 수 있음                |
-
-### 10.3 LIKE 기반 Keyword Search 결합
-
-이를 보완하기 위해 MariaDB LIKE 기반 keyword search를 추가했습니다.
-
-현재 Hybrid RAG MVP는 다음 두 검색 결과를 결합합니다.
-
-| 검색 방식                       | 역할                   |
-| --------------------------- | -------------------- |
-| ChromaDB Vector Search      | 의미적으로 유사한 chunk 검색   |
-| MariaDB LIKE Keyword Search | 정확 키워드가 포함된 chunk 검색 |
-
-### 10.4 Hybrid Score 계산
-
-검색 결과는 chunk_id 기준으로 병합하고, 다음 점수를 계산합니다.
-
-| 점수            | 설명                               |
-| ------------- | -------------------------------- |
-| vector_score  | vector search 유사도 기반 점수          |
-| keyword_score | keyword search 매칭 기반 점수          |
-| hybrid_score  | vector_score와 keyword_score의 가중합 |
-
-현재 MVP에서는 다음 가중치를 사용합니다.
-
-hybrid_score = vector_score × 0.7 + keyword_score × 0.3
-
-### 10.5 검색 모드
-
-문서 검색 테스트에서는 다음 모드를 지원합니다.
-
-| search_mode | 설명                                |
-| ----------- | --------------------------------- |
-| vector      | ChromaDB vector search만 사용        |
-| keyword     | MariaDB LIKE keyword search만 사용   |
-| hybrid      | vector search와 keyword search를 결합 |
-
-### 10.6 현재 구현의 정확한 범위
-
-현재 구현은 “LIKE 기반 keyword search를 결합한 Hybrid RAG MVP”입니다.
-
-아직 구현되지 않은 것:
-
-* BM25
-* MariaDB FULLTEXT 기반 ranking
-* reranker
-* LangGraph workflow
-* fine-tuning
-* QLoRA
-* vLLM 자체 서빙
-
-이 기능들은 향후 고도화 계획으로 분리했습니다.
-
----
-
-## 11. 데이터 구조 및 ERD
-
-### 11.1 ERD 이미지
+## 10. 데이터베이스 구조
 
 ![ERD](docs/images/erd.png)
 
-본 ERD는 실제 서비스 흐름을 설명하기 위한 주요 테이블 중심의 개념 ERD입니다. 일부 관계는 실제 Foreign Key가 아니라 애플리케이션 레벨에서 관리될 수 있습니다.
-
-### 11.2 핵심 테이블
-
-| 테이블                | 역할                                |
-| ------------------ | --------------------------------- |
-| questions          | 문제 본문, 선택지, 정답, 해설, 난이도, 검수 상태 저장 |
-| ai_documents       | 업로드 문서 메타데이터 저장                   |
-| ai_document_chunks | 문서 chunk 원문과 metadata 저장          |
-| applicants         | 응시자 정보 저장                         |
-| diagnoses          | 진단 시험 정보 저장                       |
-| records            | 응시 결과 저장                          |
-| record_answers     | 응시자별 문제 답안 저장                     |
-
-### 11.3 questions 테이블 주요 필드
-
-| 필드                 | 설명                            |
-| ------------------ | ----------------------------- |
-| id                 | 문제 ID                         |
-| title              | 문제 제목                         |
-| body               | 문제 본문                         |
-| choices            | 객관식 선택지                       |
-| answer             | 정답                            |
-| explanation        | 해설                            |
-| difficulty         | 난이도                           |
-| score              | 배점                            |
-| competency_type    | 역량 유형                         |
-| source_type        | 문제 출처                         |
-| ai_generation_type | 설계서 기반 / 문서 기반 RAG 구분         |
-| review_status      | pending / approved / rejected |
-| created_at         | 생성일시                          |
-| updated_at         | 수정일시                          |
-
-### 11.4 AI 문서 관련 테이블
-
-| 테이블                 | 주요 역할                                           |
-| ------------------- | ----------------------------------------------- |
-| ai_documents        | 문서 제목, 출처, category, 파일 경로 저장                   |
-| ai_document_chunks  | chunk 내용, chunk_index, category, document_id 저장 |
-| ChromaDB collection | chunk embedding 저장 및 vector search 수행           |
+### 핵심 테이블 명세
+* **`questions`**: 진단 문항 테이블
+  * `source_type`: 'manual', 'ai'
+  * `review_status`: 'pending', 'approved', 'rejected'
+  * `ai_generation_type`: 'ai_question_v2' (일반 에이전트 생성), 'ai_question_v2_rag' (RAG 에이전트 생성)
+  * `rag_evidence_json`: RAG 검색 시 사용된 출처 정보 일체 보관
+* **`result_reports`**: AI 결과 보고서 테이블
+  * `subtopic_stats_json`: 도메인 세부 영역별 오답률 분석 스탯
+  * `history_comparison_json`: 직전 시험 이력 연계 비교 정보
+  * `report_text`: OpenAI 기반으로 작성된 맞춤형 분석 마크다운 텍스트
+* **`ai_documents` / `ai_document_chunks`**: RAG 문서 메타 및 파싱 청크 테이블
 
 ---
 
-## 12. 주요 화면
-관리자 화면과 응시자 화면 기준입니다.
+## 11. 주요 화면
 
-### 12.1 관리자 대시보드
-
+### 11.1 관리자 대시보드
 ![Admin Dashboard](docs/images/admin-dashboard.png)
+전체 진단, 문항 통계, 응시자 현황 및 AI 검수 현황을 대시보드에서 조회할 수 있습니다.
 
-관리자는 전체 진단, 문제, 응시자, 검수 현황을 확인할 수 있습니다.
-
-### 12.2 AI 문제 생성 화면
-
-
+### 11.2 AI 문제 생성 화면
 ![AI Question Generation](docs/images/ai-question-generation.png)
+역량 도메인, 난이도, 문제 수, 문제 유형을 선택하여 실시간으로 AI 문제 생성을 요청할 수 있습니다.
 
-역량 유형, 난이도, 문제 수, 문제 유형을 선택해 AI 문제를 생성할 수 있습니다.
+### 11.3 AI 문제 검토 화면
+![AI Question Review 1](docs/images/ai-question-review1.png)
+![AI Question Review 2](docs/images/ai-question-review2.png)
+생성된 pending 상태의 문제를 확인하고 승인, 반려, 수정할 수 있으며 생성에 쓰인 RAG 증적도 추적할 수 있습니다.
 
-### 12.3 AI 문제 검토 화면
-
-![AI Question Review](docs/images/ai-question-review1.png)
-![AI Question Review](docs/images/ai-question-review2.png)
-
-AI가 생성한 pending 문제를 확인하고 승인, 반려, 수정할 수 있습니다. 생성 방식과 생성일시도 함께 표시됩니다.
-
-### 12.4 문제 관리 화면
-
+### 11.4 문제 관리 화면
 ![Question Management](docs/images/question-management.png)
+승인 완료된 기술 문항과 수동 등록된 문항을 통합 조회하고 필터링합니다.
 
-기본 및 필터링을 통해 승인된 문제와 기존 문제를 조회하고 수동으로 문제를 추가하고 관리할 수 있습니다.
+### 11.5 RAG 문서 관리 화면
+![RAG Document Management 1](docs/images/rag-document-management1.png)
+문서를 업로드하고 텍스트 임베딩을 진행하며, chunk 파싱 결과를 조회합니다.
 
-### 12.5 RAG 문서 관리 화면
-
-![RAG Document Management](docs/images/rag-document-management1.png)
-문서를 업로드하고, chunk 검색 테스트를 수행할 수 있습니다.
-
-### 12.6 Hybrid RAG 검색 테스트 화면
-
+### 11.6 Hybrid RAG 검색 테스트 화면
 ![Hybrid RAG Search](docs/images/rag-document-management2.png)
+Vector, Keyword, Hybrid 모드별 검색을 직접 수행하고 각각의 스코어 및 병합 결과를 테스트합니다.
 
-vector, keyword, hybrid 검색 모드를 선택하고 vector_score, keyword_score, hybrid_score를 확인할 수 있습니다.
-
-### 12.7 응시자 신청 화면
-
+### 11.7 응시자 신청 화면
 ![Applicant Apply](docs/images/applicant-apply.png)
+응시자는 본인의 이름, 이메일, 기술 스택 등을 작성하여 진단을 신청할 수 있습니다.
 
-응시자는 신청화면에서 기본적인 정보를 입력한 후에 진단 신청을 할 수 있습니다.
-
-### 12.8 응시자 진단 시험 대기화면
-
-
+### 11.8 응시자 진단 시험 대기화면
 ![Applicant Waiting Room](docs/images/applicant-test.png)
+시험 유의사항과 제한시간 정보를 조회하고 시험 룸에 입장합니다.
 
-
-### 12.9 응시자 진단 시험 화면
-
+### 11.9 응시자 진단 시험 화면
 ![Applicant Test](docs/images/applicant-test2.png)
+제한시간 카운트다운을 제공하며, 답안을 마킹하고 임시 저장할 수 있습니다.
 
-### 12.10 응시자 시험 종료 화면
-
+### 11.10 응시자 시험 종료 화면
 ![Applicant End](docs/images/applicant-end.png)
+시험 최종 제출 처리를 완료하고 로그아웃합니다.
 
-### 12.11 관리자 및 응시자 결과 확인 화면
-
-![Applicant Result](docs/images/admin-applicant-detail1.png)
-![Applicant Result](docs/images/admin-applicant-detail2.png)
-
----
-
-## 13. 트러블슈팅
-
-### 13.1 LLM 자유 생성 문제 품질 불안정
-
-문제:
-초기에는 GPT-4o-mini에 topic, difficulty, count만 전달해 문제를 생성했습니다. 하지만 고급 문제에서도 단순 정의형 문제가 생성되거나, 실무 상황과 제약 조건이 부족한 문제가 반복되었습니다.
-
-원인:
-LLM 자유 생성 방식은 문제 형식, 평가 포인트, evidence, 오답 방향을 안정적으로 제어하기 어렵습니다.
-
-해결:
-설계서 기반 문제 생성과 템플릿 기반 고급 문제 생성을 도입했습니다. 특히 AI/SQL 고급 문제는 문제 body를 템플릿으로 고정하고, LLM은 choices와 explanation을 생성하도록 역할을 제한했습니다.
-
-결과:
-RAG 검색 품질 주제에서 hybrid_search_choice, context_filtering, query_rewrite_failure, retrieval_quality_diagnosis, chunking_issue처럼 서로 다른 평가 포인트의 고급 문제를 생성할 수 있게 되었습니다.
+### 11.11 관리자 및 응시자 결과 확인 화면
+![Applicant Result 1](docs/images/admin-applicant-detail1.png)
+![Applicant Result 2](docs/images/admin-applicant-detail2.png)
+응시자 결과 대시보드와 더불어, **AI 종합 진단 리포트 모달** 및 문항별 정오답 상세 마킹 지표를 확인할 수 있습니다.
 
 ---
 
-### 13.2 정답 번호 1번 편향
+## 12. 트러블슈팅
 
-문제:
-LLM이 생성한 객관식 문제에서 정답이 1번에 몰리는 현상이 발생했습니다.
+### 12.1 정답 선택지 길이 불균형으로 인한 힌트 노출 오류
+* **문제 상황**: 출제된 객관식 문제에서 정답 선택지에만 구체적인 정보와 예외 조건 등 풍부한 묘사가 포함되어, 정답지가 타 선택지보다 길어져 평가 변별력이 훼손됨.
+* **원인**: LLM은 정답 문항을 묘사할 때 오답 선택지를 지어낼 때보다 풍부한 기술적 사실 근거를 동반해 문장을 확장하려는 특성(Bias)이 존재함.
+* **해결 방법**: `validator.py` 내부 검증 단계에서 정답 선택지의 길이를 오답지들의 평균 글자 수와 정량적으로 대조하는 `_validate_answer_length_not_obvious` 함수를 추가함. 비율이 **1.8배**를 초과하고 글자 수가 **35자** 이상 격차를 보일 경우 예외를 내고 재시도하도록 조치함.
+* **관련 파일**: `backend/ai/questions/validator.py`, `backend/ai/questions/service.py`
 
-원인:
-LLM은 프롬프트의 JSON 예시나 일반적인 패턴을 따라 정답을 앞쪽 선택지에 배치하는 경향이 있습니다.
+### 12.2 의미 기반 벡터 검색 시 정확 키워드 누락 문제
+* **문제 상황**: RAG 기반 문제 생성 시 `explain`, `filesort`, `vllm` 등 기술 고유 명사가 Dense Vector Search에서 누락되어 문제 출제 컨텍스트에 엉뚱한 정보가 결합하는 오류 발생.
+* **원인**: 고밀도 임베딩 유사도 점수는 문장의 의미 유사도를 우선하므로, 고유 명사나 커맨드 형태의 예약어 등 완전 일치 매칭 강도가 취약함.
+* **해결 방법**: MariaDB `FULLTEXT INDEX`를 구축하고 `MATCH AGAINST` 전문 검색을 추가로 탑재함. 두 검색 엔진의 랭크 편향을 상쇄하고 적합도를 보장하기 위해 **RRF(Reciprocal Rank Fusion)** 알고리즘을 활용하여 랭킹 결합한 Top K 문단 조각을 조립함.
+* **관련 파일**: `backend/ai/rag/document_service.py`, `backend/ai/rag/vector_store.py`
 
-해결:
-검증 통과 후 `_rebalance_answer_positions()`를 통해 choices 순서를 재배치하고, answer 번호를 함께 수정했습니다.
-
-결과:
-정답 위치가 1~5번 사이에 분산되도록 개선했습니다.
-
----
-
-### 13.3 choices 재배치 후 explanation 불일치
-
-문제:
-선택지 순서를 재배치하면 explanation의 “정답은 N번입니다.” 문장이나 “1번은”, “2번은” 같은 오답 설명이 깨지는 문제가 발생했습니다.
-
-원인:
-기존 explanation이 선택지 번호 기준으로 오답을 설명하고 있었기 때문입니다.
-
-해결:
-정답 번호를 새 answer 값으로 치환하고, 번호 기반 오답 설명을 제거했습니다. 필요한 경우 `_repair_multiple_choice_explanations()`로 explanation만 다시 생성했습니다.
-
-결과:
-정답 번호와 explanation 첫 문장이 일치하고, 오답 설명도 번호가 아니라 선택지의 핵심 조치 기준으로 설명되도록 개선했습니다.
+### 12.3 PDF 파싱 청크 내의 무효 교육용 가이드라인 개입 오류
+* **문제 상황**: 국가직무능력표준(NCS)이나 공식 교재 PDF 문서를 임베딩할 때 "안전 유의사항", "평가지", "교수학습방법" 등 문제 출제와 직접 관련이 없는 교육 안내용 텍스트 청크가 RAG 검색 상위에 빈번하게 노출됨.
+* **원인**: PDF 교재 특유의 목차 구조 및 가이드 서식이 단어 분포상 고유 기술 용어와 엮여 높은 임베딩 유사도로 오검출됨.
+* **해결 방법**: 파싱 단에서 불필요한 고정 키워드 행을 일체 거르는 `text_cleaner.py` 가공 필터를 추가함. 더불어 검색 런타임 중에도 `_is_noise_context` 함수를 배치하여 안내성 단어가 밀집되고 정보성 단어 비중이 낮을 경우 컨텍스트에서 최종 배제시킴.
+* **관련 파일**: `backend/ai/rag/text_cleaner.py`, `backend/ai/rag/document_service.py`
 
 ---
 
-### 13.4 고급 문제 선택지 품질 저하
+## 13. 현재 구현 범위와 향후 계획
 
-문제:
-고급 문제인데 다음과 같은 쉬운 오답이 생성되었습니다.
+### 13.1 현재 구현된 내용
+* LangGraph 기반 상태 에이전트 문제 생성 파이프라인
+* ChromaDB Vector Search + MariaDB MATCH AGAINST FULLTEXT 및 RRF 기반 Hybrid Search
+* 선택지 편향, 정답 힌트 누출, 해설 복사-붙여넣기를 방지하는 정량 규칙 Validator
+* RAG 생성 이력 및 원문 출처(chunk ID, Score 등) 증적 영구 보관 구조
+* 6대 기술 분야 subtopic 자동 분류 및 누적 이력 비교 종합 마크다운 보고서 생성 엔진
+* Human-in-the-loop 검수 관리자 대시보드 웹 어플리케이션 및 응시자 평가 연동 시스템
 
-* top_k를 무조건 증가시킨다
-* 모든 컬럼에 인덱스를 추가한다
-* keyword search는 필요 없다
-* filesort는 항상 오류다
-* 인덱스는 필요 없다
-
-원인:
-LLM이 오답을 만들 때 정답과 쉽게 구분되는 단정적 표현을 사용하는 경향이 있었습니다.
-
-해결:
-다음 검증과 규칙을 추가했습니다.
-
-* 선택지 최소 길이 기준
-* 극단 표현 금지
-* 정답 선택지만 과도하게 길어지는 패턴 감지
-* answer_intent 기반 정답 키워드 검증
-* distractor_intents 기반 오답 방향 제어
-
-결과:
-오답도 실무자가 실제로 고려할 수 있는 대안처럼 보이되, 현재 문제의 핵심 조건을 해결하지 못하는 방향으로 개선했습니다.
+### 13.2 한계 및 향후 로드맵
+* **문제 유형 제한성 (부분 구현)**: 백엔드 V2 파이프라인 내부 검증 로직은 현재 객관식(`multiple_choice`)만 최종 처리하도록 되어 있습니다. 향후 주관식 서술형 및 코딩 작성형 문제 생성 로직과 채점 프레임워크를 고도화할 예정입니다.
+* **Reranker 미도입 (향후 계획)**: 하이브리드 검색 컨텍스트의 순위를 한 번 더 정밀하게 다듬기 위해, Cross-Encoder 기반의 Reranker 모델 연동을 구상하고 있습니다.
+* **Approved 데이터 기반 Fine-tuning (향후 계획)**: 관리자 검수를 마친 `approved` 문제 데이터를 수집/가공하여 오픈소스 LLM(Llama 등)을 파인튜닝하고 사내 서버에 자체 서빙(vLLM)하는 파이프라인 구축을 검토 중입니다.
+* **서술형 AI 채점 (향후 계획)**: 주관식 서술형 문항의 자동 채점 신뢰도 확보를 위한 프롬프트 가이드라인 설계 및 AI 채점 모듈을 준비 중입니다.
 
 ---
 
-### 13.5 AI/RAG 고급 문제의 evidence 부족
-
-문제:
-AI/RAG 문제인데 query, top_k, chunk, similarity, metadata_filter 같은 검색 근거가 포함되지 않는 문제가 생성되었습니다.
-
-원인:
-LLM이 RAG 검색 품질 문제를 일반론적으로 요약하면서 실제 검색 로그를 body에 반영하지 않았습니다.
-
-해결:
-AI/RAG 고급 문제에는 다음 evidence를 요구하도록 검증 기준을 강화했습니다.
-
-* query
-* top_k
-* chunk
-* similarity
-* vector_score
-* keyword_score
-* hybrid_score
-* metadata_filter
-* vector search
-* keyword search
-* hybrid search
-* context filtering
-
-결과:
-검색 근거가 부족한 문제는 validator에서 제외되도록 개선했습니다.
-
----
-
-### 13.6 PDF Chunk 품질 문제
-
-문제:
-NCS PDF 문서를 그대로 RAG에 넣었을 때 교수학습방법, 수행 tip, 장비, 안전유의사항 같은 문제 생성과 관련 낮은 내용이 검색되었습니다.
-
-원인:
-PDF 원문에는 문제 생성에 직접 필요하지 않은 안내성 문구가 많고, 단순 글자 수 기준 chunking은 의미 단위를 깨뜨릴 수 있습니다.
-
-해결:
-PDF 전처리와 chunk 분리 방식을 개선했습니다.
-
-* 불필요한 안내성 문구 제거
-* 페이지 번호 및 짧은 노이즈 제거
-* 문단/제목/수행준거 단위 유지
-* chunk_size와 overlap 조정
-* category metadata prefix 추가
-
-결과:
-검색 결과에서 문제 생성에 더 직접적으로 사용할 수 있는 chunk가 상위에 노출되도록 개선했습니다.
-
----
-
-### 13.7 Vector Search만 사용했을 때 정확 키워드 누락
-
-문제:
-Vector Search는 의미적으로 유사한 chunk를 찾지만, EXPLAIN, filesort, metadata_filter, reranker 같은 정확 키워드를 놓치는 경우가 있었습니다.
-
-원인:
-Dense vector search는 의미 유사도 기반이므로 정확 문자열 매칭이 중요한 기술 키워드 검색에는 한계가 있습니다.
-
-해결:
-MariaDB LIKE 기반 keyword search를 추가하고, ChromaDB vector search 결과와 병합했습니다.
-
-결과:
-vector_score와 keyword_score를 결합한 hybrid_score 기준으로 검색 결과를 정렬할 수 있게 되었습니다.
-
----
-
-### 13.8 일반 생성과 문서 기반 생성 구분 문제
-
-문제:
-AI 문제 검토 화면과 문제 관리 화면에서 생성된 문제가 설계서 기반인지 문서 기반 RAG인지 구분하기 어려웠습니다.
-
-원인:
-생성 방식 정보가 화면에 표시되지 않았습니다.
-
-해결:
-문제 저장 시 생성 방식 정보를 함께 저장하고, 프론트에서 다음과 같이 표시했습니다.
-
-| 값              | 표시        |
-| -------------- | --------- |
-| general        | 설계서 기반    |
-| rag            | 문서 기반 RAG |
-| null 또는 manual | 수동/기존     |
-
-결과:
-AI 문제 생성, AI 문제 검토, 문제 관리 화면에서 생성 방식과 생성일시를 확인할 수 있게 되었습니다.
-
----
-
-### 13.9 문체 불일치 문제
-
-문제:
-문제 본문과 선택지는 시험 문항체여야 하는데, 일부 문제에서 존댓말과 반말이 섞였습니다.
-
-예시:
-
-* 어떤 접근 방식을 선택해야 할까요?
-* 검색 품질을 개선해야 합니다.
-* 정답은 1번입니다.
-
-원하는 기준:
-
-| 항목          | 문체      |
-| ----------- | ------- |
-| body        | 시험 문항체  |
-| choices     | 시험 선택지체 |
-| explanation | 존댓말     |
-
-해결:
-프롬프트에 문체 규칙을 추가하고, body/choices 후처리 함수를 적용했습니다.
-
-결과:
-body와 choices는 “무엇인가?”, “판단한다”, “적용한다” 형태로 정리하고, explanation은 “정답은 N번입니다.”로 시작하는 존댓말 문체를 유지하도록 개선했습니다.
-
----
-
-## 14. 현재 구현 범위와 한계
-
-### 14.1 현재 구현된 것
-
-| 기능                              | 구현 여부 |
-| ------------------------------- | ----- |
-| 관리자 문제은행 관리                     | 구현    |
-| 응시자/진단/기록 관리                    | 구현    |
-| GPT-4o-mini 기반 AI 문제 생성         | 구현    |
-| 설계서 기반 문제 생성                    | 구현    |
-| 템플릿 기반 AI/SQL 고급 문제 생성          | 구현    |
-| choices/explanation LLM 생성      | 구현    |
-| validator 기반 문제 검증              | 구현    |
-| 정답 위치 재배치                       | 구현    |
-| 해설 번호 보정                        | 구현    |
-| 문서 업로드                          | 구현    |
-| PDF/Markdown 텍스트 처리             | 구현    |
-| OpenAI embedding                | 구현    |
-| ChromaDB vector search          | 구현    |
-| MariaDB LIKE keyword search     | 구현    |
-| Hybrid RAG MVP                  | 구현    |
-| category metadata filter        | 구현    |
-| vector / keyword / hybrid 검색 모드 | 구현    |
-| 생성 방식 표시                        | 구현    |
-| 생성일시 표시                         | 구현    |
-| 관리자 pending 검수 흐름               | 구현    |
-
-### 14.2 현재 한계
-
-| 한계              | 설명                                    |
-| --------------- | ------------------------------------- |
-| 문서 기반 RAG 문제 품질 | 설계서 기반 문제보다 body와 choices 품질이 낮을 수 있음 |
-| Keyword Search  | BM25가 아니라 MariaDB LIKE 기반 MVP         |
-| Reranker        | 실제 reranker 모델 미적용                    |
-| LangGraph       | 생성-검증-수정 workflow는 아직 미적용             |
-| Fine-tuning     | approved 문제 기반 학습은 아직 미구현             |
-| QLoRA/vLLM      | 자체 모델 튜닝 및 서빙은 검토 단계                  |
-| AI 채점           | 서술형/코드작성형 자동 채점은 향후 계획                |
-| 역량 분석 리포트       | 응시자별 AI 분석 리포트는 향후 계획                 |
-
----
-
-## 15. 향후 고도화 계획
-
-### 15.1 FULLTEXT/BM25 기반 Keyword Search 고도화
-
-현재 keyword search는 MariaDB LIKE 기반입니다. 향후에는 MariaDB FULLTEXT 또는 BM25 기반 랭킹을 도입해 keyword_score 품질을 개선할 계획입니다.
-
-### 15.2 Reranker 적용
-
-Hybrid Search 이후 cross-encoder 또는 LLM 기반 reranker를 적용해 chunk 순위를 재정렬할 계획입니다.
-
-고려할 지표:
-
-* Recall@K
-* MRR
-* 검색 정확도
-* p95 latency
-* 운영 비용
-
-### 15.3 LangGraph 기반 Workflow
-
-현재는 함수 기반 생성/검증 흐름으로 구성되어 있습니다. 향후에는 LangGraph를 사용해 생성-검증-수정-저장 흐름을 명시적인 graph로 구성할 계획입니다.
-
-예상 workflow:
-
-* input_node
-* query_rewrite_node
-* retrieval_node
-* context_filter_node
-* question_generation_node
-* json_validation_node
-* quality_review_node
-* repair_node
-* save_node
-* human_review_node
-
-### 15.4 Approved 문제 기반 Fine-tuning Dataset 구축
-
-관리자 검수를 통과한 approved 문제만 학습 데이터 후보로 사용합니다.
-
-구성 계획:
-
-* approved 문제 export
-* answer/explanation 정합성 검증
-* competency_type 정규화
-* quality_score 기반 필터링
-* JSONL 변환
-* train/validation/test 분리
-
-### 15.5 Fine-tuning / QLoRA 실험
-
-먼저 OpenAI fine-tuning을 실험하고, 충분한 데이터가 쌓인 뒤 QLoRA 기반 오픈소스 모델 튜닝을 검토할 계획입니다.
-
-### 15.6 vLLM 자체 서빙 검토
-
-자체 모델을 운영할 경우 다음 기준을 비교할 예정입니다.
-
-* 품질 통과율
-* p95 latency
-* 월 추론 비용
-* GPU 운영 부담
-* 장애 대응 난이도
-* canary 배포 가능성
-
-### 15.7 AI 채점 및 역량 분석 리포트
-
-향후 서술형과 코드작성형 문제에 대해 AI 채점을 적용하고, 응시자의 역량별 약점 분석 리포트를 자동 생성하는 기능을 추가할 계획입니다.
-
----
-
-## 16. 실행 방법
-
-### 16.1 Backend 실행
-
+## 14. 실행 방법
+
+### 14.1 환경 변수 설정
+`backend/.env` 파일을 아래의 설정을 참고하여 생성합니다.
+
+```env
+DATABASE_URL=mysql+pymysql://mariadb_user:password@localhost:3306/itskilldb
+OPENAI_API_KEY=your-openai-api-key-here
+OPENAI_MODEL=gpt-4o-mini
+CHROMA_DB_PATH=./chroma_db
+CHROMA_COLLECTION_NAME=ai_question_documents
 ```
+
+### 14.2 DB 구축 및 시딩
+최초 실행 시 데이터베이스 스키마를 구성하고 기본 마스터 데이터와 진단 문항을 로드합니다.
+
+```bash
 cd backend
+# Python 가상환경 생성 및 활성화
 python -m venv itskill_venv
 itskill_venv\Scripts\activate
+
+# 가상환경 내 의존성 패키지 설치
 pip install -r requirements.txt
-uvicorn main:app --host 0.0.0.0 --port 8001 --reload
+
+# DB 초기 구축 및 마스터/더미 데이터 로드
+python recreate_db.py
+python seed.py
 ```
 
-macOS 또는 Linux 환경에서는 가상환경 활성화 명령어를 다음처럼 사용합니다.
-
+### 14.3 백엔드 uvicorn 구동
+```bash
+# uvicorn API 서버 구동 (8000번 포트 활성화)
+uvicorn main:app --host 0.0.0.0 --port 8000 --reload
 ```
-source itskill_venv/bin/activate
-```
 
-### 16.2 Frontend 실행
+### 14.4 프론트엔드 구동
+루트 디렉토리로 이동하여 로컬 개발 서버를 기동합니다.
 
-프로젝트 구조에 따라 frontend 또는 root 디렉토리에서 실행합니다.
-
-```
+```bash
+# npm 패키지 설치
 npm install
+
+# Vite 개발 서버 구동 (5173번 포트 활성화)
 npm run dev
 ```
-
-### 16.3 환경 변수
-
-실제 API Key는 README에 작성하지 않습니다.
-
-예시:
-
-```
-OPENAI_API_KEY=
-DATABASE_URL=
-CHROMA_DB_PATH=
-CHROMA_COLLECTION=
-FRONTEND_URL=
-```
-
-### 16.4 DB 설정
-
-MariaDB를 실행한 뒤 프로젝트의 SQLAlchemy 설정 또는 환경 변수에 맞게 DB 연결 정보를 설정합니다.
-
-예시:
-
-```
-DATABASE_URL=mysql+pymysql://user:password@localhost:3306/DB_NAME
-```
-
----
-
-## 17. 핵심 성과
-
-### 17.1 단순 LLM 사용이 아닌 구조적 문제 생성
-
-본 프로젝트는 단순히 “LLM에게 문제를 만들어달라”고 요청하는 방식에서 출발했지만, 실제 테스트 과정에서 고급 문제 품질 부족, 정답 위치 편향, 오답 품질 저하, 해설 불일치 문제가 반복적으로 발생했습니다.
-
-이를 해결하기 위해 다음 구조를 도입했습니다.
-
-* 설계서 기반 생성
-* 템플릿 기반 고급 문제 생성
-* answer_intent / distractor_intents
-* validator 기반 검증
-* 정답 위치 재배치
-* 해설 재생성
-* 관리자 검수 흐름
-
-이를 통해 LLM의 자유도를 줄이고, 코드 레벨에서 문제 품질을 통제하는 구조를 만들었습니다.
-
-### 17.2 Hybrid RAG MVP 직접 구현
-
-문서 기반 문제 생성을 위해 ChromaDB vector search를 적용했고, 정확 키워드 검색 한계를 보완하기 위해 MariaDB LIKE 기반 keyword search를 결합했습니다.
-
-현재 구현은 BM25나 reranker 기반 완성형 검색 시스템은 아니지만, 다음 흐름을 구현했습니다.
-
-* vector search
-* keyword search
-* metadata filter
-* score merge
-* hybrid_score 계산
-* context 구성
-* 문서 기반 문제 생성
-
-### 17.3 Human-in-the-loop 검수 구조
-
-AI가 생성한 문제는 바로 확정되지 않고 pending 상태로 저장됩니다. 관리자가 직접 검수하고 approved 처리해야 실제 문제은행에 반영됩니다.
-
-이 구조는 AI 생성 결과의 불확실성을 서비스 흐름 안에서 관리하기 위한 장치입니다.
-
-### 17.4 실무형 IT 역량진단 문제 생성
-
-SQL 실행 계획, RAG 검색 품질, LLM 구조화 출력, Agent workflow, ModelOps 등 실무와 연결된 고급 문제를 생성할 수 있도록 문제 형식과 템플릿을 구성했습니다.
-
-### 17.5 현재 프로젝트의 핵심 메시지
-
-AI-IT Skill은 단순 문제은행이 아니라, AI 생성 결과를 구조화하고 검증하며, 문서 기반 근거 검색과 관리자 검수 흐름을 결합한 IT 역량진단 플랫폼입니다.
