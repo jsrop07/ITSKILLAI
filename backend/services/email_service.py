@@ -82,7 +82,7 @@ def send_exam_assignment_to_applicant(
         ("시 험 명", diagnosis_title or "-"),
         ("응시마감일", deadline_text),
         ("아 이 디", applicant_email),
-        ("비밀번호", login_token),
+        ("로그인토큰", login_token),
     ])
 
     html = f"""

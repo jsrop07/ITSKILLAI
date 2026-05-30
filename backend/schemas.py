@@ -310,6 +310,8 @@ class RecordRead(BaseModel):
     started_at: Optional[datetime] = None
     deadline_at: Optional[datetime] = None
     submitted_at: Optional[datetime] = None
+    violation_count: int = 0
+    violation_log_json: Optional[Any] = None
     total_score: Optional[float] = None
     pass_yn: Optional[bool] = None
     competency_breakdown_json: Optional[Any] = None
@@ -331,6 +333,13 @@ class ExamSubmit(BaseModel):
     record_id: int
     answers: List[AnswerSubmit]
 
+class ExamProgressSave(BaseModel):
+    record_id: int
+    answers: List[AnswerSubmit]
+
+class ExamViolationReport(BaseModel):
+    record_id: int
+    reason: str
 
 # ──────────────────────────────────────────────
 # PageContent Schemas
@@ -405,8 +414,21 @@ class ExamLoginResponse(BaseModel):
     duration_minutes: int
     question_count: int
     pass_score: int
-    exam_token: str  # 시험 진행용 임시 토큰
+    exam_token: str
     status: str
+    started_at: Optional[datetime] = None
+    server_now: datetime
+    remaining_seconds: int
+    violation_count: int = 0
+
+class ExamStatusResponse(BaseModel):
+    record_id: int
+    status: str
+    started_at: Optional[datetime] = None
+    server_now: datetime
+    remaining_seconds: int
+    duration_minutes: int
+    violation_count: int = 0
 
 class QuestionForExam(BaseModel):
     question_id: int
@@ -416,6 +438,8 @@ class QuestionForExam(BaseModel):
     body: Optional[str] = None
     choices_json: Optional[List[Any]] = None
     score: int
+    saved_answer_json: Optional[Any] = None
+    saved_answer_text: Optional[str] = None
 
     @field_validator("choices_json", mode="before")
     @classmethod
