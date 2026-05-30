@@ -1,6 +1,6 @@
 import axios from "axios";
 
-import type { Admin, Applicant, ApplicantCreate, Diagnosis, DiagnosisCreate, DiagnosisUpdate, Question, QuestionCreate, ExamRecord, RecordCreate, PageContent, PageContentUpdate, DashboardStats, RecentExamRecord, WeakCompetency, ExamLoginResponse, QuestionForExam, AnswerSubmit, ExamResultResponse, AnswerDetail, GenerateAIQuestionsV2Payload, GenerateAIQuestionsV2Response, AIResultReportResponse, } from "./types";
+import type { Admin, Applicant, ApplicantCreate, Diagnosis, DiagnosisCreate, DiagnosisUpdate, Question, QuestionCreate, ExamRecord, RecordCreate, PageContent, PageContentUpdate, DashboardStats, RecentExamRecord, WeakCompetency, ExamLoginResponse, QuestionForExam, AnswerSubmit, ExamResultResponse, AnswerDetail, GenerateAIQuestionsV2Payload, GenerateAIQuestionsV2Response, AIResultReportResponse, ExamStatusResponse, } from "./types";
 
 // ──────────────────────────────────────────────
 // Axios 인스턴스
@@ -283,6 +283,42 @@ export const examApi = {
     });
     return res.data;
   },
+  getStatus: async (
+    record_id: number,
+    exam_token: string
+  ): Promise<ExamStatusResponse> => {
+    const res = await api.get<ExamStatusResponse>(`/api/exam/status/${record_id}`, {
+      params: { exam_token },
+    });
+    return res.data;
+  },
+
+  saveProgress: async (
+    record_id: number,
+    answers: AnswerSubmit[],
+    exam_token: string
+  ) => {
+    const res = await api.post(
+      "/api/exam/save-progress",
+      { record_id, answers },
+      { params: { exam_token } }
+    );
+    return res.data;
+  },
+
+  reportViolation: async (
+    record_id: number,
+    reason: string,
+    exam_token: string
+  ): Promise<{ message: string; violation_count: number; disqualified?: boolean }> => {
+    const res = await api.post(
+      "/api/exam/violation",
+      { record_id, reason },
+      { params: { exam_token } }
+    );
+    return res.data;
+  },
+
   submit: async (
     record_id: number,
     answers: AnswerSubmit[],
