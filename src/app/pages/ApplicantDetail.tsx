@@ -39,6 +39,25 @@ export default function ApplicantDetail() {
   const [selectedDiagnosisId, setSelectedDiagnosisId] = useState<string>("");
   const [deadlineAt, setDeadlineAt] = useState<string>("");
 
+  const formatKST = (value?: string | null) => {
+    if (!value) return "-";
+
+    const hasTimezone =
+      value.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(value);
+
+    const utcValue = hasTimezone ? value : `${value}Z`;
+
+    return new Date(utcValue).toLocaleString("ko-KR", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
   const loadData = async () => {
     if (!id) return;
     try {
@@ -189,6 +208,55 @@ export default function ApplicantDetail() {
     }
   };
 
+  const getViolationReasonLabel = (reason?: string) => {
+    switch (reason) {
+      case "window_blur":
+        return "시험 창 포커스 이탈";
+      case "visibility_hidden":
+        return "다른 탭 또는 화면으로 이동";
+      case "page_hidden":
+        return "시험 화면 숨김";
+      case "fullscreen_exit":
+        return "전체화면 해제";
+      case "page_closed":
+        return "시험 창 닫기 또는 새로고침";
+      default:
+        return reason || "알 수 없는 화면 이탈";
+    }
+  };
+
+  const parseViolationLogs = (value: any) => {
+    if (!value) return [];
+
+    if (Array.isArray(value)) return value;
+
+    if (typeof value === "string") {
+      try {
+        const parsed = JSON.parse(value);
+        return Array.isArray(parsed) ? parsed : [];
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
+  };
+
+  const violationLogs = parseViolationLogs(record?.violation_log_json);
+
+  const violationReasonText = (() => {
+    if (violationLogs.length === 0) return "-";
+
+    const counts = violationLogs.reduce((acc: Record<string, number>, log: any) => {
+      const label = getViolationReasonLabel(log.reason);
+      acc[label] = (acc[label] || 0) + 1;
+      return acc;
+    }, {});
+
+    return Object.entries(counts)
+      .map(([label, count]) => `${label} ${count}회`)
+      .join(", ");
+  })();
   if (loading) {
     return (
       <div className="p-8 flex items-center justify-center h-96">
@@ -464,9 +532,7 @@ export default function ApplicantDetail() {
                       <div className="rounded-lg bg-white px-3 py-2">
                         <p className="text-[11px] text-slate-500">제출일시</p>
                         <p className="mt-1 text-xs font-medium text-slate-900">
-                          {record?.submitted_at
-                            ? new Date(record.submitted_at).toLocaleString("ko-KR")
-                            : "-"}
+                          {formatKST(record?.submitted_at)}
                         </p>
                       </div>
 
@@ -474,6 +540,31 @@ export default function ApplicantDetail() {
                         <p className="text-[11px] text-slate-500">응시 상태</p>
                         <p className="mt-1 text-xs font-medium text-slate-900">
                           {record?.status || "-"}
+                        </p>
+                      </div>
+
+                      <div className="col-span-2 rounded-lg bg-white px-3 py-2">
+                        <div className="flex items-center justify-between gap-3">
+                          <p className="text-[11px] text-slate-500">화면 이탈 기록</p>
+                          {(record?.violation_count ?? 0) >= 3 ? (
+                            <Badge className="bg-rose-100 text-rose-700">
+                              부정행위 불합격
+                            </Badge>
+                          ) : (record?.violation_count ?? 0) > 0 ? (
+                            <Badge className="bg-amber-100 text-amber-700">
+                              주의
+                            </Badge>
+                          ) : (
+                            <Badge className="bg-slate-100 text-slate-600">
+                              없음
+                            </Badge>
+                          )}
+                        </div>
+
+                        <p className="mt-1 text-xs font-medium text-slate-900">
+                          위반 횟수: {record?.violation_count ?? 0}회
+                          <span className="mx-2 text-slate-300">|</span>
+                          사유: {violationReasonText}
                         </p>
                       </div>
                     </div>

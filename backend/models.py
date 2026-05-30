@@ -166,6 +166,8 @@ class Record(Base):
     deadline_at = Column(DateTime, nullable=True)
     started_at = Column(DateTime, nullable=True)
     submitted_at = Column(DateTime, nullable=True)
+    violation_count = Column(Integer, default=0, nullable=False)
+    violation_log_json = Column(Text, nullable=True)
     total_score = Column(Float, nullable=True)
     pass_yn = Column(Boolean, nullable=True)
     competency_breakdown_json = Column(JSON, nullable=True)

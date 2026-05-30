@@ -246,6 +246,8 @@ export interface ExamRecord {
   competency_breakdown_json?: Record<string, number>;
   summary_comment?: string | null;
   result_visible: boolean;
+  violation_count?: number;
+  violation_log_json?: any;
   created_at: string;
   updated_at: string;
 }
@@ -321,6 +323,20 @@ export interface ExamLoginResponse {
   pass_score: number;
   exam_token: string;
   status: "ready" | "in_progress" | "submitted" | "graded";
+  started_at?: string | null;
+  server_now: string;
+  remaining_seconds: number;
+  violation_count: number;
+}
+
+export interface ExamStatusResponse {
+  record_id: number;
+  status: "ready" | "in_progress" | "submitted" | "graded";
+  started_at?: string | null;
+  server_now: string;
+  remaining_seconds: number;
+  duration_minutes: number;
+  violation_count: number;
 }
 
 export interface QuestionForExam {
@@ -331,6 +347,8 @@ export interface QuestionForExam {
   body?: string;
   choices_json?: string[];
   score: number;
+  saved_answer_json?: any | null;
+  saved_answer_text?: string | null;
 }
 
 export interface AnswerSubmit {

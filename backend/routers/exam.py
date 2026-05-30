@@ -1,14 +1,15 @@
 import os
+import json
 import secrets
 from jose import jwt
 from database import get_db
-from datetime import datetime
 from sqlalchemy.orm import Session
+from datetime import datetime, timedelta
 from models import Record, Applicant, Diagnosis, Question
 from services.email_service import send_exam_submitted_to_admin
 from services.result_analysis import build_result_analysis_report
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
-from schemas import (ExamLoginRequest, ExamLoginResponse,QuestionForExam, ExamSubmit, ExamResultResponse,)
+from schemas import (ExamLoginRequest,ExamLoginResponse,QuestionForExam,ExamSubmit,ExamResultResponse,ExamProgressSave,ExamStatusResponse,ExamViolationReport,)
 
 router = APIRouter(prefix="/api/exam", tags=["exam"])
 
@@ -30,6 +31,56 @@ def verify_exam_token(token: str) -> int:
     except Exception:
         raise HTTPException(status_code=401, detail="유효하지 않은 시험 토큰입니다.")
 
+def parse_question_idxs(question_idxs: str | None) -> list[int]:
+    if not question_idxs:
+        return []
+
+    return [
+        int(idx.strip())
+        for idx in question_idxs.split(",")
+        if idx.strip().isdigit()
+    ]
+
+def calculate_remaining_seconds(record: Record, diagnosis: Diagnosis) -> tuple[datetime, int]:
+    now = datetime.utcnow()
+
+    if not record.started_at:
+        return now, diagnosis.duration_minutes * 60
+
+    end_at = record.started_at + timedelta(minutes=diagnosis.duration_minutes)
+    remaining_seconds = max(0, int((end_at - now).total_seconds()))
+    return now, remaining_seconds
+
+
+def is_exam_expired(record: Record, diagnosis: Diagnosis) -> bool:
+    if not record.started_at:
+        return False
+
+    end_at = record.started_at + timedelta(minutes=diagnosis.duration_minutes)
+    return datetime.utcnow() >= end_at
+
+
+def build_answer_data_array(
+    q_idxs: list[int],
+    answers: list,
+    existing_answer_data: str | None = None,
+) -> list[str]:
+    existing_values = str(existing_answer_data or "").split(",") if existing_answer_data else []
+
+    answer_data_array = []
+    for i, _q_id in enumerate(q_idxs):
+        if i < len(existing_values):
+            answer_data_array.append(existing_values[i].strip())
+        else:
+            answer_data_array.append("")
+
+    for ans in answers:
+        ans_val = str(ans.answer_json) if ans.answer_json is not None else ""
+        if ans.question_id in q_idxs:
+            idx = q_idxs.index(ans.question_id)
+            answer_data_array[idx] = ans_val
+
+    return answer_data_array
 
 # ── 응시자 로그인 (이름 + login_token)
 @router.post("/login", response_model=ExamLoginResponse)
@@ -58,20 +109,58 @@ def exam_login(data: ExamLoginRequest, db: Session = Depends(get_db)):
     diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == record.diagnosis_id).first()
     if not diagnosis:
         raise HTTPException(status_code=404, detail="시험 정보를 찾을 수 없습니다.")
-
+    
+    auto_grade_if_expired(db, record, diagnosis)
+    db.refresh(record)
+    
     exam_token = create_exam_token(record.record_id)
+
+    question_idxs = parse_question_idxs(diagnosis.question_idxs)
+    server_now, remaining_seconds = calculate_remaining_seconds(record, diagnosis)
 
     return ExamLoginResponse(
         record_id=record.record_id,
         applicant_name=applicant.name,
         diagnosis_title=diagnosis.title,
         duration_minutes=diagnosis.duration_minutes,
-        question_count=diagnosis.question_count,
+        question_count=len(question_idxs),
         pass_score=diagnosis.pass_score,
         exam_token=exam_token,
-        status=record.status
+        status=record.status,
+        started_at=record.started_at,
+        server_now=server_now,
+        remaining_seconds=remaining_seconds,
+        violation_count=record.violation_count or 0,
     )
 
+@router.get("/status/{record_id}", response_model=ExamStatusResponse)
+def get_exam_status(record_id: int, exam_token: str, db: Session = Depends(get_db)):
+    verified_id = verify_exam_token(exam_token)
+    if verified_id != record_id:
+        raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
+
+    record = db.query(Record).filter(Record.record_id == record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="응시 기록을 찾을 수 없습니다.")
+
+    diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == record.diagnosis_id).first()
+    if not diagnosis:
+        raise HTTPException(status_code=404, detail="시험 정보를 찾을 수 없습니다.")
+
+    auto_grade_if_expired(db, record, diagnosis)
+    db.refresh(record)
+
+    server_now, remaining_seconds = calculate_remaining_seconds(record, diagnosis)
+
+    return ExamStatusResponse(
+        record_id=record.record_id,
+        status=record.status,
+        started_at=record.started_at,
+        server_now=server_now,
+        remaining_seconds=remaining_seconds,
+        duration_minutes=diagnosis.duration_minutes,
+        violation_count=record.violation_count or 0,
+    )
 
 # ── 시험 문제 목록 조회
 @router.get("/questions/{record_id}", response_model=list[QuestionForExam])
@@ -84,6 +173,10 @@ def get_exam_questions(record_id: int, exam_token: str, db: Session = Depends(ge
     if not record:
         raise HTTPException(status_code=404, detail="응시 기록을 찾을 수 없습니다.")
 
+    diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == record.diagnosis_id).first()
+    if not diagnosis or not diagnosis.question_idxs:
+        return []
+
     # 시험 시작 처리
     if record.status == "ready":
         record.status = "in_progress"
@@ -94,11 +187,13 @@ def get_exam_questions(record_id: int, exam_token: str, db: Session = Depends(ge
             applicant.status = "in_progress"
         db.commit()
 
-    diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == record.diagnosis_id).first()
-    if not diagnosis or not diagnosis.question_idxs:
+    expired = auto_grade_if_expired(db, record, diagnosis)
+    if expired:
         return []
 
-    idxs = [int(idx.strip()) for idx in diagnosis.question_idxs.split(",") if idx.strip().isdigit()]
+    idxs = parse_question_idxs(diagnosis.question_idxs)
+    saved_answers = str(record.answer_data or "").split(",") if record.answer_data else []
+
     if not idxs:
         return []
 
@@ -109,6 +204,20 @@ def get_exam_questions(record_id: int, exam_token: str, db: Session = Depends(ge
     for i, q_id in enumerate(idxs):
         if q_id in q_map:
             q = q_map[q_id]
+            saved_value = saved_answers[i].strip() if i < len(saved_answers) else ""
+
+            saved_answer_json = None
+            saved_answer_text = None
+
+            if saved_value:
+                if q.question_type == "multiple_choice":
+                    try:
+                        saved_answer_json = int(saved_value)
+                    except ValueError:
+                        saved_answer_json = saved_value
+                else:
+                    saved_answer_text = saved_value
+
             result.append(QuestionForExam(
                 question_id=q.question_id,
                 order_no=i + 1,
@@ -117,9 +226,249 @@ def get_exam_questions(record_id: int, exam_token: str, db: Session = Depends(ge
                 body=q.body,
                 choices_json=q.choices_json,
                 score=q.score,
+                saved_answer_json=saved_answer_json,
+                saved_answer_text=saved_answer_text,
             ))
     return result
 
+@router.post("/save-progress")
+def save_exam_progress(
+    data: ExamProgressSave,
+    exam_token: str,
+    db: Session = Depends(get_db),
+):
+    verified_id = verify_exam_token(exam_token)
+    if verified_id != data.record_id:
+        raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
+
+    record = db.query(Record).filter(Record.record_id == data.record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="응시 기록을 찾을 수 없습니다.")
+
+    if record.status in ("submitted", "graded"):
+        raise HTTPException(status_code=400, detail="이미 제출된 시험입니다.")
+
+    diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == record.diagnosis_id).first()
+    if not diagnosis or not diagnosis.question_idxs:
+        return {"message": "저장할 문제가 없습니다."}
+
+    if auto_grade_if_expired(db, record, diagnosis):
+        return {"message": "시험 시간이 만료되어 자동 제출되었습니다.", "expired": True}
+
+    q_idxs = parse_question_idxs(diagnosis.question_idxs)
+    answer_data_array = build_answer_data_array(
+        q_idxs=q_idxs,
+        answers=data.answers,
+        existing_answer_data=record.answer_data,
+    )
+
+    record.answer_data = ",".join(answer_data_array)
+
+    if record.status == "ready":
+        record.status = "in_progress"
+        record.started_at = datetime.utcnow()
+
+    db.commit()
+
+    return {"message": "답안이 임시 저장되었습니다.", "expired": False}
+
+def grade_record_from_answers(
+    db: Session,
+    record: Record,
+    diagnosis: Diagnosis,
+    answers: list,
+):
+    q_idxs = parse_question_idxs(diagnosis.question_idxs)
+    all_questions_map = {}
+
+    if q_idxs:
+        all_questions = db.query(Question).filter(Question.question_id.in_(q_idxs)).all()
+        all_questions_map = {q.question_id: q for q in all_questions}
+
+    answer_data_array = build_answer_data_array(
+        q_idxs=q_idxs,
+        answers=answers,
+        existing_answer_data=record.answer_data,
+    )
+
+    total_possible = 0.0
+    total_earned = 0.0
+    competency_scores: dict = {}
+
+    for q_id in q_idxs:
+        question = all_questions_map.get(q_id)
+        if not question:
+            continue
+
+        total_possible += float(question.score)
+
+        idx = q_idxs.index(q_id)
+        ans_val = answer_data_array[idx] if idx < len(answer_data_array) else ""
+
+        is_correct = False
+        earned = 0.0
+
+        if question.question_type == "multiple_choice" and question.answer_json is not None:
+            correct = str(question.answer_json)
+            submitted = ans_val
+            is_correct = (correct == submitted) if submitted else False
+            earned = float(question.score) if is_correct else 0.0
+            total_earned += earned
+
+        comp = question.competency_type or "기타"
+        if comp not in competency_scores:
+            competency_scores[comp] = {"earned": 0, "total": 0}
+
+        competency_scores[comp]["earned"] += earned
+        competency_scores[comp]["total"] += question.score
+
+    competency_breakdown = {
+        comp: round(v["earned"] / v["total"] * 100, 1) if v["total"] > 0 else 0
+        for comp, v in competency_scores.items()
+    }
+
+    final_normalized_score = (
+        round((total_earned / total_possible) * 100, 1)
+        if total_possible > 0
+        else 0.0
+    )
+
+    pass_score = diagnosis.pass_score if diagnosis else 70
+    pass_yn = final_normalized_score >= pass_score
+
+    record.status = "graded"
+    record.submitted_at = datetime.utcnow()
+    record.total_score = final_normalized_score
+    record.pass_yn = pass_yn
+    record.competency_breakdown_json = competency_breakdown
+    record.answer_data = ",".join(answer_data_array)
+
+    applicant = db.query(Applicant).filter(Applicant.applicant_id == record.applicant_id).first()
+    if applicant:
+        applicant.status = "completed"
+
+    return {
+        "total_score": final_normalized_score,
+        "pass_yn": pass_yn,
+        "applicant": applicant,
+    }
+
+def fail_record_for_violation(db: Session, record: Record, diagnosis: Diagnosis):
+    q_idxs = parse_question_idxs(diagnosis.question_idxs)
+
+    # 모든 답안 초기화
+    empty_answer_data = [""] * len(q_idxs)
+
+    # 역량별 점수도 0점으로 구성
+    competency_scores: dict = {}
+
+    if q_idxs:
+        questions = db.query(Question).filter(Question.question_id.in_(q_idxs)).all()
+        for q in questions:
+            comp = q.competency_type or "기타"
+            if comp not in competency_scores:
+                competency_scores[comp] = {"earned": 0, "total": 0}
+            competency_scores[comp]["total"] += q.score
+
+    competency_breakdown = {
+        comp: 0
+        for comp in competency_scores.keys()
+    }
+
+    record.status = "graded"
+    record.submitted_at = datetime.utcnow()
+    record.total_score = 0.0
+    record.pass_yn = False
+    record.competency_breakdown_json = competency_breakdown
+    record.answer_data = ",".join(empty_answer_data)
+
+    applicant = db.query(Applicant).filter(Applicant.applicant_id == record.applicant_id).first()
+    if applicant:
+        applicant.status = "completed"
+
+    return {
+        "total_score": 0.0,
+        "pass_yn": False,
+        "applicant": applicant,
+    }
+
+def auto_grade_if_expired(db: Session, record: Record, diagnosis: Diagnosis) -> bool:
+    if record.status not in ("in_progress", "ready"):
+        return False
+
+    if not is_exam_expired(record, diagnosis):
+        return False
+
+    grade_record_from_answers(
+        db=db,
+        record=record,
+        diagnosis=diagnosis,
+        answers=[],
+    )
+    db.commit()
+    return True
+
+@router.post("/violation")
+def report_exam_violation(
+    data: ExamViolationReport,
+    exam_token: str,
+    db: Session = Depends(get_db),
+):
+    verified_id = verify_exam_token(exam_token)
+    if verified_id != data.record_id:
+        raise HTTPException(status_code=403, detail="접근 권한이 없습니다.")
+
+    record = db.query(Record).filter(Record.record_id == data.record_id).first()
+    if not record:
+        raise HTTPException(status_code=404, detail="응시 기록을 찾을 수 없습니다.")
+
+    if record.status in ("submitted", "graded"):
+        return {
+            "message": "이미 제출된 시험입니다.",
+            "violation_count": record.violation_count or 0,
+        }
+
+    logs = []
+    if record.violation_log_json:
+        try:
+            logs = json.loads(record.violation_log_json)
+        except Exception:
+            logs = []
+
+    logs.append({
+        "reason": data.reason,
+        "created_at": datetime.utcnow().isoformat(),
+    })
+
+    record.violation_count = (record.violation_count or 0) + 1
+    record.violation_log_json = json.dumps(logs, ensure_ascii=False)
+
+    disqualified = False
+
+    if record.violation_count >= 3:
+        diagnosis = db.query(Diagnosis).filter(
+            Diagnosis.diagnosis_id == record.diagnosis_id
+        ).first()
+
+        if diagnosis:
+            fail_record_for_violation(db, record, diagnosis)
+            disqualified = True
+
+    db.commit()
+    db.refresh(record)
+
+    if disqualified:
+        return {
+            "message": "화면 이탈 3회 이상으로 불합격 처리되었습니다.",
+            "violation_count": record.violation_count,
+            "disqualified": True,
+        }
+
+    return {
+        "message": "화면 이탈이 기록되었습니다.",
+        "violation_count": record.violation_count,
+        "disqualified": False,
+    }
 
 # ── 답안 제출
 @router.post("/submit")
@@ -136,87 +485,20 @@ def submit_exam(data: ExamSubmit,exam_token: str,background_tasks: BackgroundTas
         raise HTTPException(status_code=400, detail="이미 제출된 시험입니다.")
 
     diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == record.diagnosis_id).first()
-    
-    # 해당 시험의 모든 문제 수집하여 만점(total_possible) 계산
-    total_possible = 0.0
-    q_idxs = []
-    all_questions_map = {}
-    if diagnosis and diagnosis.question_idxs:
-        q_idxs = [int(idx.strip()) for idx in diagnosis.question_idxs.split(",") if idx.strip().isdigit()]
-        if q_idxs:
-            all_questions = db.query(Question).filter(Question.question_id.in_(q_idxs)).all()
-            all_questions_map = {q.question_id: q for q in all_questions}
-            for q in all_questions:
-                total_possible += q.score
+    if not diagnosis:
+        raise HTTPException(status_code=404, detail="시험 정보를 찾을 수 없습니다.")
 
-    total_earned = 0.0
-    competency_scores: dict = {}
-
-    # 응시자 답변을 question_id별로 딕셔너리로 먼저 정리
-    answers_by_qid = {}
-    for ans in data.answers:
-        ans_val = str(ans.answer_json) if ans.answer_json is not None else ""
-        answers_by_qid[ans.question_id] = ans_val
-
-    # ★ question_idxs 순서대로 answer_data 배열 구성 → 조회 시 인덱스 매핑 보장
-    answer_data_array = []
-    for q_id in q_idxs:
-        question = all_questions_map.get(q_id)
-        if not question:
-            answer_data_array.append("")
-            continue
-
-        ans_val = answers_by_qid.get(q_id, "")
-        answer_data_array.append(ans_val)
-
-        is_correct = False
-        earned = 0.0
-
-        # 객관식 자동 채점
-        if question.question_type == "multiple_choice" and question.answer_json is not None:
-            correct = str(question.answer_json)
-            submitted = ans_val
-            is_correct = (correct == submitted) if submitted else False
-            earned = float(question.score) if is_correct else 0.0
-            total_earned += earned
-
-        # 역량별 점수 집계
-        comp = question.competency_type or "기타"
-        if comp not in competency_scores:
-            competency_scores[comp] = {"earned": 0, "total": 0}
-        competency_scores[comp]["earned"] += earned
-        competency_scores[comp]["total"] += question.score
-
-    # 역량별 퍼센트 계산
-    competency_breakdown = {
-        comp: round(v["earned"] / v["total"] * 100, 1) if v["total"] > 0 else 0
-        for comp, v in competency_scores.items()
-    }
-
-    # 전체 만점 대비 100% 기준으로 환산 점수 계산
-    if total_possible > 0:
-        final_normalized_score = round((total_earned / total_possible) * 100, 1)
-    else:
-        final_normalized_score = 0.0
-
-    # 합격 여부
-    pass_score = diagnosis.pass_score if diagnosis else 70
-    pass_yn = final_normalized_score >= pass_score
-
-    record.status = "graded"
-    record.submitted_at = datetime.utcnow()
-    record.total_score = final_normalized_score
-    record.pass_yn = pass_yn
-    record.competency_breakdown_json = competency_breakdown
-    record.answer_data = ",".join(answer_data_array)
-
-    # 응시자 상태 완료
-    applicant = db.query(Applicant).filter(Applicant.applicant_id == record.applicant_id).first()
-    if applicant:
-        applicant.status = "completed"
+    result = grade_record_from_answers(
+        db=db,
+        record=record,
+        diagnosis=diagnosis,
+        answers=data.answers,
+    )
 
     db.commit()
     db.refresh(record)
+
+    applicant = result["applicant"]
 
     submitted_text = None
     if record.submitted_at:
@@ -236,8 +518,8 @@ def submit_exam(data: ExamSubmit,exam_token: str,background_tasks: BackgroundTas
     return {
         "message": "제출이 완료되었습니다.",
         "record_id": data.record_id,
-        "total_score": final_normalized_score,
-        "pass_yn": pass_yn,
+        "total_score": record.total_score,
+        "pass_yn": record.pass_yn,
     }
 
 
@@ -256,11 +538,7 @@ def get_exam_result(record_id: int, db: Session = Depends(get_db)):
     analysis_report = None
 
     if diagnosis and diagnosis.question_idxs:
-        q_idxs = [
-            int(idx.strip())
-            for idx in diagnosis.question_idxs.split(",")
-            if idx.strip().isdigit()
-        ]
+        q_idxs = parse_question_idxs(diagnosis.question_idxs)
 
         if q_idxs:
             questions = db.query(Question).filter(Question.question_id.in_(q_idxs)).all()

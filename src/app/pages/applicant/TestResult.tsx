@@ -69,6 +69,25 @@ export default function TestResult() {
   const difficultyStats = analysis?.difficulty_stats ?? [];
   const weakCompetencies = analysis?.weak_competencies ?? [];
 
+  const formatKST = (value?: string | null) => {
+    if (!value) return "-";
+
+    const hasTimezone =
+      value.endsWith("Z") || /[+-]\d{2}:\d{2}$/.test(value);
+
+    const utcValue = hasTimezone ? value : `${value}Z`;
+
+    return new Date(utcValue).toLocaleString("ko-KR", {
+      timeZone: "Asia/Seoul",
+      year: "numeric",
+      month: "2-digit",
+      day: "2-digit",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: true,
+    });
+  };
+
   const toggleWrongAnswer = (questionId: number) => {
     setOpenWrongIds((prev) =>
       prev.includes(questionId)
@@ -112,9 +131,7 @@ export default function TestResult() {
                   </h1>
                   <p className="mt-1 text-xs text-slate-500">
                     제출일시{" "}
-                    {result.submitted_at
-                      ? new Date(result.submitted_at).toLocaleString("ko-KR")
-                      : "-"}
+                    {formatKST(result.submitted_at)}
                   </p>
                 </div>
               </div>

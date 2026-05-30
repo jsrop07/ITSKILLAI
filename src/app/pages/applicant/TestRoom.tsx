@@ -19,47 +19,76 @@ export default function TestRoom() {
   const [submitting, setSubmitting] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-
+  const answersRef = useRef<Record<number, AnswerSubmit>>({});
+  const submittingRef = useRef(false);
+  const endTimeRef = useRef<number | null>(null);
+  const lastViolationAtRef = useRef(0);
+  const [violationCount, setViolationCount] = useState(0);
+  const [showViolationWarning, setShowViolationWarning] = useState(false);
   // Load session & questions
   useEffect(() => {
     const raw = sessionStorage.getItem("exam_session");
     if (!raw) { navigate("/test-login"); return; }
     const s: ExamLoginResponse = JSON.parse(raw);
     setSession(s);
-    setTimeLeft(s.duration_minutes * 60);
+    setViolationCount(s.violation_count ?? 0);
 
     examApi.getQuestions(s.record_id, s.exam_token)
-      .then((qs) => {
+      .then(async (qs) => {
+        const status = await examApi.getStatus(s.record_id, s.exam_token);
+
+        if (status.status === "graded" || status.remaining_seconds <= 0) {
+          sessionStorage.setItem("submitted_record_id", String(s.record_id));
+          navigate("/test-submit");
+          return;
+        }
+
         setQuestions(qs);
-        // Restore from localStorage if exists
+        setViolationCount(status.violation_count ?? 0);
+
+        endTimeRef.current = Date.now() + status.remaining_seconds * 1000;
+        setTimeLeft(status.remaining_seconds);
+
+        const restoredAnswers: Record<number, AnswerSubmit> = {};
+
+        qs.forEach((q) => {
+          if (q.saved_answer_json !== null && q.saved_answer_json !== undefined) {
+            restoredAnswers[q.question_id] = {
+              question_id: q.question_id,
+              answer_json: q.saved_answer_json,
+            };
+          } else if (q.saved_answer_text) {
+            restoredAnswers[q.question_id] = {
+              question_id: q.question_id,
+              answer_text: q.saved_answer_text,
+            };
+          }
+        });
+
         const saved = localStorage.getItem(`exam_answers_${s.record_id}`);
-        if (saved) setAnswers(JSON.parse(saved));
+        if (Object.keys(restoredAnswers).length > 0) {
+          setAnswers(restoredAnswers);
+          answersRef.current = restoredAnswers;
+          localStorage.setItem(`exam_answers_${s.record_id}`, JSON.stringify(restoredAnswers));
+        } else if (saved) {
+          const parsed = JSON.parse(saved);
+          setAnswers(parsed);
+          answersRef.current = parsed;
+        }
       })
       .catch(() => navigate("/test-login"))
       .finally(() => setLoading(false));
   }, []);
-
-  // Timer
-  useEffect(() => {
-    if (!session || loading) return;
-    timerRef.current = setInterval(() => {
-      setTimeLeft((t) => {
-        if (t <= 1) {
-          clearInterval(timerRef.current!);
-          handleSubmit(true);
-          return 0;
-        }
-        return t - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timerRef.current!);
-  }, [session, loading]);
 
   // Save answers to localStorage on change
   useEffect(() => {
     if (!session) return;
     localStorage.setItem(`exam_answers_${session.record_id}`, JSON.stringify(answers));
   }, [answers, session]);
+
+  useEffect(() => {
+    answersRef.current = answers;
+  }, [answers]);
 
   const formatTime = (secs: number) => {
     const m = Math.floor(secs / 60).toString().padStart(2, "0");
@@ -70,34 +99,162 @@ export default function TestRoom() {
   const isUrgent = timeLeft < 300; // less than 5 min
 
   const setAnswer = (questionId: number, value: any, isJson: boolean) => {
-    setAnswers((prev) => ({
-      ...prev,
+    if (!session) return;
+
+    const nextAnswers = {
+      ...answersRef.current,
       [questionId]: {
         question_id: questionId,
         ...(isJson ? { answer_json: value } : { answer_text: String(value) }),
       },
-    }));
+    };
+
+    answersRef.current = nextAnswers;
+    setAnswers(nextAnswers);
+    localStorage.setItem(`exam_answers_${session.record_id}`, JSON.stringify(nextAnswers));
+
+    examApi
+      .saveProgress(session.record_id, Object.values(nextAnswers), session.exam_token)
+      .then((res) => {
+        if (res?.expired) {
+          sessionStorage.setItem("submitted_record_id", String(session.record_id));
+          navigate("/test-submit");
+        }
+      })
+      .catch((err) => {
+        console.error("답안 임시저장 실패:", err);
+      });
   };
 
   const handleSubmit = useCallback(async (auto = false) => {
     if (!session) return;
-    if (!auto && !showConfirm) { setShowConfirm(true); return; }
+    if (submittingRef.current) return;
+
+    if (!auto && !showConfirm) {
+      setShowConfirm(true);
+      return;
+    }
+
+    submittingRef.current = true;
     setSubmitting(true);
-    clearInterval(timerRef.current!);
+
+    if (timerRef.current) {
+      clearInterval(timerRef.current);
+    }
+
     try {
-      const answerList = Object.values(answers);
+      const answerList = Object.values(answersRef.current);
+
+      await examApi.saveProgress(session.record_id, answerList, session.exam_token);
       await examApi.submit(session.record_id, answerList, session.exam_token);
+
       localStorage.removeItem(`exam_answers_${session.record_id}`);
       sessionStorage.setItem("submitted_record_id", String(session.record_id));
       navigate("/test-submit");
     } catch (err) {
       console.error(err);
       alert("제출 중 오류가 발생했습니다. 다시 시도해 주세요.");
+      submittingRef.current = false;
       setSubmitting(false);
       setShowConfirm(false);
     }
-  }, [session, answers, showConfirm]);
+  }, [session, showConfirm, navigate]);
 
+  useEffect(() => {
+    if (!session || loading) return;
+
+    const reportViolation = async (reason: string) => {
+      if (submittingRef.current) return;
+
+      const now = Date.now();
+
+      // blur + visibilitychange가 동시에 발생하는 경우 중복 카운트 방지
+      if (now - lastViolationAtRef.current < 1500) return;
+      lastViolationAtRef.current = now;
+
+      console.log("화면 이탈 감지:", reason);
+
+      try {
+        const res = await examApi.reportViolation(
+          session.record_id,
+          reason,
+          session.exam_token
+        );
+
+        const nextCount = res.violation_count ?? violationCount + 1;
+        setViolationCount(nextCount);
+
+        if (res.disqualified) {
+          alert("화면 이탈 3회 이상으로 불합격 처리되었습니다.");
+          localStorage.removeItem(`exam_answers_${session.record_id}`);
+          sessionStorage.setItem("submitted_record_id", String(session.record_id));
+          navigate("/test-submit");
+          return;
+        }
+
+        if (nextCount >= 3) {
+          alert("화면 이탈 3회 이상으로 불합격 처리되었습니다.");
+          localStorage.removeItem(`exam_answers_${session.record_id}`);
+          sessionStorage.setItem("submitted_record_id", String(session.record_id));
+          navigate("/test-submit");
+          return;
+        }
+
+        setShowViolationWarning(true);
+      } catch (err) {
+        console.error("화면 이탈 기록 실패:", err);
+      }
+    };
+
+    const handleVisibilityChange = () => {
+      console.log("visibilitychange:", document.hidden);
+      if (document.hidden) {
+        reportViolation("visibility_hidden");
+      }
+    };
+
+    const handleBlur = () => {
+      console.log("window blur");
+      reportViolation("window_blur");
+    };
+
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    window.addEventListener("blur", handleBlur);
+
+    return () => {
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      window.removeEventListener("blur", handleBlur);
+    };
+  }, [session, loading, violationCount, handleSubmit]);
+
+  // timer
+  useEffect(() => {
+    if (!session || loading || !endTimeRef.current) return;
+
+    timerRef.current = setInterval(() => {
+      if (!endTimeRef.current) return;
+
+      const next = Math.max(
+        0,
+        Math.ceil((endTimeRef.current - Date.now()) / 1000)
+      );
+
+      setTimeLeft(next);
+
+      if (next <= 0) {
+        if (timerRef.current) {
+          clearInterval(timerRef.current);
+        }
+        handleSubmit(true);
+      }
+    }, 1000);
+
+    return () => {
+      if (timerRef.current) {
+        clearInterval(timerRef.current);
+      }
+    };
+  }, [session, loading, handleSubmit]);
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -189,8 +346,8 @@ export default function TestRoom() {
                         key={i}
                         onClick={() => setAnswer(current.question_id, i + 1, true)}
                         className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-all ${isSelected
-                            ? "border-sky-500 bg-sky-50 text-sky-700 font-medium"
-                            : "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                          ? "border-sky-500 bg-sky-50 text-sky-700 font-medium"
+                          : "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
                           }`}
                       >
                         <span className={`inline-flex items-center justify-center size-6 rounded-full mr-3 text-xs font-bold ${isSelected ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-600"
@@ -265,10 +422,10 @@ export default function TestRoom() {
                       key={i}
                       onClick={() => setCurrentIdx(i)}
                       className={`size-9 rounded text-xs font-medium transition-all ${isCurrent
-                          ? "bg-sky-600 text-white ring-2 ring-sky-300"
-                          : answered
-                            ? "bg-green-100 text-green-700"
-                            : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                        ? "bg-sky-600 text-white ring-2 ring-sky-300"
+                        : answered
+                          ? "bg-green-100 text-green-700"
+                          : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                         }`}
                     >
                       {i + 1}
@@ -294,7 +451,32 @@ export default function TestRoom() {
           </Card>
         </div>
       </div>
-
+      {showViolationWarning && (
+        <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
+          <Card className="w-full max-w-sm shadow-2xl">
+            <CardContent className="pt-6 space-y-4">
+              <div className="text-center space-y-2">
+                <AlertTriangle className="size-10 text-red-500 mx-auto" />
+                <h3 className="text-lg font-semibold text-slate-800">
+                  시험 화면 이탈 감지
+                </h3>
+                <p className="text-sm text-slate-500">
+                  시험 중 다른 창, 탭, 프로그램으로 이동하면 부정행위로 처리될 수 있습니다.
+                </p>
+                <p className="text-sm text-red-600 bg-red-50 rounded-lg p-2">
+                  현재 이탈 횟수: {violationCount}회 / 3회
+                </p>
+              </div>
+              <Button
+                className="w-full bg-red-600 hover:bg-red-700"
+                onClick={() => setShowViolationWarning(false)}
+              >
+                시험 계속하기
+              </Button>
+            </CardContent>
+          </Card>
+        </div>
+      )}
       {/* Submit Confirm Overlay */}
       {showConfirm && (
         <div className="fixed inset-0 bg-black/50 flex items-center justify-center z-50 p-4">
