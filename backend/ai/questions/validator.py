@@ -96,7 +96,7 @@ def validate_generated_question(question: GeneratedQuestion) -> None:
         for pattern in META_CHOICE_PATTERNS:
             if pattern in choice:
                 raise ValueError(f"선택지에 메타 표현이 포함되어 있습니다: {pattern}")
-    
+
     # 추가 검증
     if question.difficulty == "초급":
         _validate_beginner_choice_basic_quality(question)
@@ -108,6 +108,10 @@ def validate_generated_question(question: GeneratedQuestion) -> None:
             difficulty=question.difficulty,
         )
         _validate_answer_length_not_obvious(question)
+        
+        if _is_document_rag_question(question):
+            _validate_rag_choice_length_balance(question)
+        
         _validate_no_answer_leak_patterns(question.choices, difficulty=question.difficulty)
         _validate_ai_intermediate_terms(question)
     
@@ -234,7 +238,7 @@ def _validate_choice_length_balance(
     difficulty: str,
 ) -> None:
     lengths = [len(choice.strip()) for choice in choices]
-
+    
     if not lengths:
         return
 
@@ -258,6 +262,7 @@ def _validate_choice_length_balance(
     if max_len >= min_len * max_ratio and (max_len - min_len) >= max_gap:
         raise ValueError("선택지 간 길이 차이가 지나치게 큽니다.")
 
+        
 def _validate_answer_length_not_obvious(question: GeneratedQuestion) -> None:
     answer_index = question.answer - 1
     choices = question.choices
@@ -309,27 +314,34 @@ def _validate_no_answer_leak_patterns(
 
 def _validate_explanation_answer_consistency(question: GeneratedQuestion) -> None:
     answer = int(question.answer)
-    explanation = question.explanation.strip()
+    explanation = (question.explanation or "").strip()
 
     required_prefix = f"정답은 {answer}번입니다."
     if not explanation.startswith(required_prefix):
         raise ValueError("해설의 정답 번호가 answer와 일치하지 않습니다.")
 
+    reason_text = explanation.replace(required_prefix, "", 1).strip()
+
     for n in range(1, 6):
         if n == answer:
             continue
 
-        forbidden_markers = [
-            f"정답은 {n}번",
-            f"정답인 {n}번",
-            f"{n}번 선택지",
-            f"{n}번은",
+        forbidden_patterns = [
+            rf"정답\s*은\s*{n}\s*번",
+            rf"정답\s*인\s*{n}\s*번",
+            rf"{n}\s*번\s*선택지",
+            rf"{n}\s*번째\s*선택지",
+            rf"{n}\s*번\s*은",
+            rf"{n}\s*번\s*이",
+            rf"{n}\s*번\s*의",
+            rf"{n}\s*번\s*을",
+            rf"{n}\s*번\s*를",
         ]
 
-        for marker in forbidden_markers:
-            if marker in explanation:
+        for pattern in forbidden_patterns:
+            if re.search(pattern, reason_text):
                 raise ValueError("해설에 answer와 다른 선택지 번호가 포함되어 있습니다.")
-
+                
 def _validate_body_polite_question(body: str) -> None:
     stripped = body.strip()
 
@@ -430,49 +442,6 @@ def _validate_intermediate_body_has_context(question: GeneratedQuestion) -> None
     if sentence_count < 2 and question.question_format != "ai_log_or_metric_interpretation":
         raise ValueError("중급 문제 body는 최소 2문장 이상의 상황 설명과 질문을 포함해야 합니다.")
 
-def _normalize_for_overlap_check(text: str) -> str:
-    if not text:
-        return ""
-
-    text = str(text).lower()
-    text = re.sub(r"\s+", "", text)
-    text = re.sub(r"[^\w가-힣]", "", text)
-    return text
-
-
-def _validate_explanation_not_choice_copy(question) -> None:
-    choices = getattr(question, "choices", None) or []
-    answer = getattr(question, "answer", None)
-    explanation = getattr(question, "explanation", "") or ""
-
-    if not choices or not explanation:
-        return
-
-    try:
-        answer_index = int(answer) - 1
-    except Exception:
-        return
-
-    if answer_index < 0 or answer_index >= len(choices):
-        return
-
-    answer_choice = str(choices[answer_index])
-
-    normalized_choice = _normalize_for_overlap_check(answer_choice)
-    normalized_explanation = _normalize_for_overlap_check(explanation)
-
-    if not normalized_choice or not normalized_explanation:
-        return
-
-    # 정답 선택지 문장이 해설에 거의 그대로 포함된 경우 reject
-    if len(normalized_choice) >= 20 and normalized_choice in normalized_explanation:
-        raise ValueError("해설이 정답 선택지 문장을 거의 그대로 반복하고 있습니다.")
-
-    # 선택지 앞부분만 살짝 바꿔서 복붙한 경우도 일부 reject
-    choice_prefix = normalized_choice[:25]
-    if len(choice_prefix) >= 20 and choice_prefix in normalized_explanation:
-        raise ValueError("해설이 정답 선택지 표현을 과도하게 반복하고 있습니다.")
-
 def _normalize_for_similarity(text: str) -> str:
     if not text:
         return ""
@@ -532,12 +501,9 @@ def _validate_explanation_has_reasoning_depth(question: GeneratedQuestion) -> No
 
     reason_text = explanation.replace(expected_prefix, "", 1).strip()
 
-    # 너무 짧은 해설만 막는다.
-    # 180 이상은 현재 LLM이 자주 실패하므로 110~120 정도가 현실적이다.
     if len(reason_text) < 110:
         raise ValueError("해설이 너무 짧습니다. 정답 판단 근거와 오답 한계를 더 설명해야 합니다.")
 
-    # 정답 판단 근거가 아예 없는 경우만 막는다.
     reasoning_keywords = [
         "검증",
         "범위",
@@ -555,10 +521,6 @@ def _validate_explanation_has_reasoning_depth(question: GeneratedQuestion) -> No
         "값",
     ]
 
-    if not any(keyword in reason_text for keyword in reasoning_keywords):
-        raise ValueError("해설에 정답 판단 근거가 부족합니다.")
-
-    # 오답 한계 설명은 다양한 표현을 허용한다.
     wrong_limit_keywords = [
         "나머지 선택지",
         "다른 선택지",
@@ -579,10 +541,64 @@ def _validate_explanation_has_reasoning_depth(question: GeneratedQuestion) -> No
         "직접",
     ]
 
+    if _is_document_rag_question(question):
+        reasoning_keywords.extend([
+            "문서",
+            "근거",
+            "출처",
+            "검색",
+            "context",
+            "chunk",
+            "metadata",
+            "category",
+            "vector",
+            "keyword",
+            "hybrid",
+            "RRF",
+            "rank",
+            "순위",
+            "reranker",
+            "도메인",
+            "사전학습",
+            "추가 학습",
+            "fine-tuning",
+            "검증 데이터",
+            "일반화",
+            "과적합",
+            "품질",
+            "판단 기준",
+        ])
+
+        wrong_limit_keywords.extend([
+            "문서 범위",
+            "검색 조건",
+            "출처",
+            "chunk 품질",
+            "context 품질",
+            "보조",
+            "간접",
+            "현재 상황",
+            "현재 목표",
+            "핵심 조건",
+            "덜 직접",
+            "rank",
+            "순위",
+            "metadata",
+            "category",
+            "vector",
+            "keyword",
+            "프롬프트",
+            "temperature",
+            "서빙",
+            "리소스",
+        ])
+
+    if not any(keyword in reason_text for keyword in reasoning_keywords):
+        raise ValueError("해설에 정답 판단 근거가 부족합니다.")
+
     if not any(keyword in reason_text for keyword in wrong_limit_keywords):
         raise ValueError("해설에 오답 선택지의 한계 설명이 부족합니다.")
 
-    # 정말 뭉뚱그린 해설만 막는다.
     weak_phrases = [
         "나머지 선택지들은 부적절합니다.",
         "나머지 선택지들은 적절하지 않습니다.",
@@ -592,3 +608,58 @@ def _validate_explanation_has_reasoning_depth(question: GeneratedQuestion) -> No
 
     if any(phrase in reason_text for phrase in weak_phrases):
         raise ValueError("해설이 정답/오답을 뭉뚱그려 설명하고 있습니다.")
+
+def _is_document_rag_question(question: GeneratedQuestion) -> bool:
+    body = question.body or ""
+
+    return (
+        "[문서 기반 판단 기준]" in body
+        or "[문서 근거]" in body
+        or getattr(question, "question_format", "") in [
+            "ai_scenario_best_action",
+            "ai_scenario_find_incorrect_action",
+            "ai_quality_issue_diagnosis",
+            "ai_method_compare_decision",
+            "ai_log_or_metric_interpretation",
+        ] and "문서 기반" in body
+    )
+
+def _validate_rag_choice_length_balance(question: GeneratedQuestion) -> None:
+    choices = question.choices or []
+
+    if not choices:
+        return
+
+    lengths = [len(choice.strip()) for choice in choices]
+
+    if len(lengths) != 5:
+        return
+
+    answer_index = question.answer - 1
+
+    if answer_index < 0 or answer_index >= len(lengths):
+        return
+
+    answer_len = lengths[answer_index]
+    other_lengths = [
+        length for idx, length in enumerate(lengths)
+        if idx != answer_index
+    ]
+
+    avg_other_len = sum(other_lengths) / len(other_lengths)
+    max_other_len = max(other_lengths)
+    min_other_len = min(other_lengths)
+
+    # 정답만 유독 긴 경우
+    if answer_len > avg_other_len * 1.55 and answer_len - avg_other_len >= 20:
+        raise ValueError("문서 기반 RAG 문제에서 정답 선택지가 다른 선택지보다 길어 정답 힌트가 됩니다.")
+
+    # 정답만 유독 짧은 경우
+    if answer_len < avg_other_len * 0.60 and avg_other_len - answer_len >= 20:
+        raise ValueError("문서 기반 RAG 문제에서 정답 선택지가 다른 선택지보다 짧아 정답 힌트가 됩니다.")
+
+    # 전체 길이 차이는 너무 극단적인 경우만 막는다.
+    if max(lengths) - min(lengths) >= 42 and (
+        answer_len == max(lengths) or answer_len == min(lengths)
+    ):
+        raise ValueError("문서 기반 RAG 문제에서 정답 선택지 길이가 눈에 띄게 튑니다.")

@@ -28,6 +28,8 @@ COMMON_MULTIPLE_CHOICE_RULES = """
 - 선택지는 단순 기술명만 쓰지 말고, 현재 상황과의 연결이 드러나도록 짧은 조치 문장으로 작성하세요.
 - 선택지는 1문장으로 작성하되, 중급 문제에서는 현재 상황과 연결되는 조건이나 판단 기준을 짧게 포함하세요.
 - correct_points와 wrong_points의 길이가 달라도 최종 선택지 길이는 서로 비슷하게 맞추세요.
+- evidence_pack.correct_points와 wrong_points에 설명형 문장이 있더라도, 최종 선택지는 모두 비슷한 길이의 실행 조치 문장으로 재작성하세요.
+- 선택지에 "문서 claim은", "정답은", "판단을 뒷받침합니다" 같은 evidence 설명 표현을 쓰지 마세요.
 """
 
 QUESTION_BODY_RULES = """
@@ -223,6 +225,15 @@ AI_INTERMEDIATE_EXPLANATION_RULES = """
 - RAG 기반 문제의 explanation은 검색 근거의 핵심 기준을 바탕으로 판단 이유를 설명하되, 선택지 문장을 그대로 복사하지 마세요.
 - 잘못된 선택지를 고르면 채점, 검수, 저장, 운영, 검색 품질, 응답 신뢰성 중 어떤 문제가 생기는지 설명하세요.
 - 오답 설명은 "부적절합니다"로 끝내지 말고, JSON 형식만 확인함, schema 검증을 낮게 둠, enum 오류를 허용함, choices 개수만 확인함처럼 어떤 검증 기준을 빠뜨렸는지 설명하세요.
+"""
+
+DOCUMENT_RAG_CLAIM_RULES = """
+[문서 기반 RAG 문제 규칙]
+- log_or_metric.document_claims는 정답을 그대로 복사하기 위한 문장이 아니라 문서 근거입니다.
+- 정답 선택지는 document_claims를 현재 scenario에 적용한 조치 문장으로 재작성하세요.
+- 오답 선택지는 document_claims와 같은 범주의 실제 가능한 조치로 작성하되, 현재 claim과 scenario의 핵심 판단 기준과는 덜 직접적이어야 합니다.
+- 해설에는 document_claims의 핵심 판단 기준이 정답과 어떻게 연결되는지 설명하세요.
+- 문서 기반 RAG 문제의 해설에서는 오답을 완전히 효과 없는 조치라고 단정하지 말고, 현재 scenario의 핵심 원인이나 문서 claim과 비교해 덜 직접적인 조치라고 설명하세요.
 """
 
 FIND_INCORRECT_RULES = """

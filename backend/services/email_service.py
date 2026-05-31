@@ -2,8 +2,11 @@ import os
 import smtplib
 from datetime import datetime
 from dotenv import load_dotenv
+from email.header import Header
+from email.utils import formataddr
 from email.mime.text import MIMEText
 from email.mime.multipart import MIMEMultipart
+
 load_dotenv()
 
 SMTP_HOST = os.getenv("SMTP_HOST", "smtp.gmail.com")
@@ -11,6 +14,7 @@ SMTP_PORT = int(os.getenv("SMTP_PORT", "587"))
 SMTP_USER = os.getenv("SMTP_USER")
 SMTP_PASSWORD = os.getenv("SMTP_PASSWORD")
 MAIL_FROM = os.getenv("MAIL_FROM", SMTP_USER)
+MAIL_FROM_NAME = os.getenv("MAIL_FROM_NAME", "AI-ITSkill 관리자")
 ADMIN_EMAIL = os.getenv("ADMIN_EMAIL")
 FRONTEND_BASE_URL = os.getenv("FRONTEND_BASE_URL", "http://127.0.0.1:3000")
 
@@ -26,14 +30,17 @@ def send_email(to_email: str, subject: str, html: str) -> None:
 
     message = MIMEMultipart("alternative")
     message["Subject"] = subject
-    message["From"] = MAIL_FROM or SMTP_USER
+    sender_email = MAIL_FROM or SMTP_USER
+    sender_name = str(Header(MAIL_FROM_NAME, "utf-8"))
+
+    message["From"] = formataddr((sender_name, sender_email))
     message["To"] = to_email
     message.attach(MIMEText(html, "html", "utf-8"))
 
     with smtplib.SMTP(SMTP_HOST, SMTP_PORT) as server:
         server.starttls()
         server.login(SMTP_USER, SMTP_PASSWORD)
-        server.sendmail(MAIL_FROM or SMTP_USER, to_email, message.as_string())
+        server.sendmail(sender_email, to_email, message.as_string())
 
 
 def send_apply_notification_to_admin(

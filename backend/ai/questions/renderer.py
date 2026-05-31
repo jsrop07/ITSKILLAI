@@ -84,10 +84,10 @@ def render_question_from_evidence(
         difficulty=evidence_pack.difficulty,
         competency_type="ai",
     )
-    # question = _ensure_body_context_in_question(
-    #     question=question,
-    #     evidence_pack=evidence_pack,
-    # )
+    question = _ensure_body_context_in_question(
+        question=question,
+        evidence_pack=evidence_pack,
+    )
     return question
 
 def _ensure_body_context_in_question(
@@ -98,11 +98,24 @@ def _ensure_body_context_in_question(
     if not evidence_pack.body_context:
         return question
 
-    if evidence_pack.body_context.strip() in question.body:
+    body_context = evidence_pack.body_context.strip()
+
+    if not body_context:
+        return question
+
+    max_context_length = 700
+
+    if len(body_context) > max_context_length:
+        body_context = body_context[:max_context_length].rstrip() + "..."
+
+    if body_context in question.body:
+        return question
+
+    if "[문서 근거]" in question.body:
         return question
 
     question.body = (
-        f"{evidence_pack.body_context.strip()}\n\n"
+        f"{body_context}\n\n"
         f"{question.body.strip()}"
     ).strip()
 
