@@ -1,5 +1,6 @@
 # ai/rag/document_service.py
 
+import re
 import time
 import logging
 from sqlalchemy import text
@@ -12,7 +13,8 @@ logger = logging.getLogger("uvicorn.info")
 # RAG Search Config
 # ─────────────────────────────────────────────
 MIN_CONTEXT_SIMILARITY = 0.42
-MIN_HYBRID_SCORE = 0.0
+MIN_CONTENT_LENGTH = 120
+DEFAULT_RAG_CANDIDATE_K = 20
 
 
 def get_document_by_id(db, document_id: int):
@@ -447,30 +449,33 @@ def search_document_chunks(
             )
 
         else:
+            candidate_k = max(top_k * 4, DEFAULT_RAG_CANDIDATE_K)
+
             vector_results = search_vector_chunks(
                 query=query,
-                top_k=max(top_k * 2, 10),
+                top_k=candidate_k,
                 category=category,
             )
 
             keyword_results = search_keyword_chunks(
                 db=db,
                 query=query,
-                top_k=max(top_k * 2, 10),
+                top_k=candidate_k,
                 category=category,
             )
 
             search_results = merge_hybrid_search_results(
                 vector_results=vector_results,
                 keyword_results=keyword_results,
-                top_k=top_k,
+                top_k=candidate_k,
             )
             logger.info(
                 "Hybrid RAG [Merge]: "
                 f"vector_results={len(vector_results)}, "
                 f"keyword_results={len(keyword_results)}, "
                 f"merged_results={len(search_results)}, "
-                f"top_k={top_k}"
+                f"candidate_k={candidate_k}, "
+                f"final_top_k={top_k}"
             )
         elapsed_time = time.time() - start_time
         logger.info(
@@ -494,77 +499,261 @@ def search_document_chunks(
         )
         raise
 
-def _is_noise_context(content: str) -> bool:
-    """
-    문제 생성 근거로 부적합한 교수·학습 안내성 chunk를 필터링한다.
-    NCS PDF에는 교수자 안내, 학습 활동, 평가자 질문 등이 섞여 있어
-    검색 점수가 높아도 문제 생성 근거로는 부적절할 수 있다.
-    """
+def _normalize_context_text(content: str) -> str:
     if not content:
-        return True
+        return ""
 
     text_value = str(content)
+
+    lines = []
+    for line in text_value.splitlines():
+        stripped = line.strip()
+
+        if not stripped:
+            continue
+
+        # 내부 메타 헤더는 품질 판단에서 제외
+        if stripped.startswith("[역량유형:"):
+            continue
+        if stripped.startswith("[문서제목:"):
+            continue
+        if stripped.startswith("[출처유형:"):
+            continue
+
+        lines.append(stripped)
+
+    return " ".join(lines)
+
+
+def _score_noise_signals(content: str) -> int:
+    text_value = _normalize_context_text(content)
 
     noise_keywords = [
         "교수자",
         "학습자",
-        "학습한다",
-        "수업",
-        "실습 시",
-        "평가자 질문",
-        "평가 방법",
-        "평가지",
-        "자기진단",
-        "체크리스트",
-        "학습 내용",
-        "학습 목표",
         "교수·학습 방법",
+        "교수학습 방법",
         "교수 방법",
         "학습 방법",
-        "UML 저작도구",
-        "라이선스에 유의",
-        "파워포인트 자료",
+        "학습 활동",
+        "평가자 질문",
+        "평가자 체크리스트",
+        "자기진단",
+        "체크리스트",
+        "평가지",
+        "수업",
+        "실습 시",
+        "자료 및 준비물",
+        "기기(장비·공구)",
+        "안전·유의사항",
+        "안전 유의사항",
     ]
 
+    return sum(1 for keyword in noise_keywords if keyword in text_value)
+
+
+def _score_evidence_signals(content: str) -> int:
+    text_value = _normalize_context_text(content)
+
     evidence_keywords = [
+        "정의",
+        "개념",
+        "특징",
+        "목적",
+        "역할",
+        "절차",
+        "방법",
+        "기준",
+        "조건",
+        "비교",
+        "차이",
+        "장점",
+        "단점",
+        "원인",
+        "해결",
+        "분석",
+        "검증",
+        "평가",
         "요구사항",
-        "비기능",
         "기능 요구사항",
+        "비기능",
         "품질",
         "성능",
+        "보안",
         "가용성",
-        "보안성",
         "유지보수",
-        "검증",
-        "타당성",
-        "분석",
+        "추적성",
         "인터페이스",
         "제약사항",
         "응답 시간",
         "처리량",
+        "RAG",
+        "검색",
+        "임베딩",
+        "embedding",
+        "chunk",
+        "metadata",
+        "reranker",
+        "RRF",
+        "vector",
+        "keyword",
+        "hybrid",
+        "LLM",
+        "프롬프트",
+        "schema",
+        "tool calling",
     ]
 
-    noise_count = sum(1 for keyword in noise_keywords if keyword in text_value)
-    evidence_count = sum(1 for keyword in evidence_keywords if keyword in text_value)
+    return sum(1 for keyword in evidence_keywords if keyword in text_value)
 
-    # 안내성 문구가 많고, 출제 근거 키워드가 적으면 제외
-    if noise_count >= 2 and evidence_count <= 1:
+
+def _score_structure_signals(content: str) -> int:
+    text_value = _normalize_context_text(content)
+
+    score = 0
+
+    structure_patterns = [
+        "다음과 같다",
+        "예를 들어",
+        "따라서",
+        "때문에",
+        "반면",
+        "그러나",
+        "즉,",
+        "첫째",
+        "둘째",
+        "셋째",
+        "1.",
+        "2.",
+        "3.",
+    ]
+
+    score += sum(1 for pattern in structure_patterns if pattern in text_value)
+
+    if "장점" in text_value and "단점" in text_value:
+        score += 2
+
+    if "원인" in text_value and ("해결" in text_value or "대응" in text_value):
+        score += 2
+
+    if "기준" in text_value and ("판단" in text_value or "평가" in text_value):
+        score += 2
+
+    return score
+
+
+def _calculate_context_quality(item: dict) -> dict:
+    content = item.get("content", "")
+    metadata = item.get("metadata", {})
+
+    text_value = _normalize_context_text(content)
+
+    noise_score = _score_noise_signals(content)
+    evidence_score = _score_evidence_signals(content)
+    structure_score = _score_structure_signals(content)
+
+    vector_score = float(item.get("vector_score") or item.get("similarity") or 0.0)
+    keyword_score = float(item.get("keyword_score") or 0.0)
+    hybrid_score = float(item.get("hybrid_score") or 0.0)
+
+    search_source = item.get("search_source") or ""
+    source_bonus = 0.0
+
+    if search_source == "hybrid":
+        source_bonus = 0.08
+    elif search_source == "vector":
+        source_bonus = 0.03
+    elif search_source == "keyword":
+        source_bonus = 0.03
+
+    length_bonus = 0.0
+    content_length = len(text_value)
+
+    if 250 <= content_length <= 1200:
+        length_bonus = 0.04
+    elif content_length > 1200:
+        length_bonus = -0.03
+
+    quality_score = (
+        hybrid_score
+        + 0.04 * evidence_score
+        + 0.03 * structure_score
+        + source_bonus
+        + length_bonus
+        - 0.05 * noise_score
+    )
+
+    quality = {
+        "noise_score": noise_score,
+        "evidence_score": evidence_score,
+        "structure_score": structure_score,
+        "quality_score": round(quality_score, 6),
+        "content_length": content_length,
+    }
+
+    item["quality"] = quality
+    item["noise_score"] = noise_score
+    item["evidence_score"] = evidence_score
+    item["structure_score"] = structure_score
+    item["quality_score"] = round(quality_score, 6)
+
+    return quality
+
+
+def _matches_category(item: dict, category: str | None) -> bool:
+    if not category:
         return True
 
-    # 평가/학습 안내 페이지 성격이 강한 chunk 제외
-    if noise_count >= 4:
+    metadata = item.get("metadata", {})
+    item_category = metadata.get("category") or item.get("category")
+
+    return item_category == category
+
+
+def _is_low_quality_context(item: dict) -> bool:
+    content = item.get("content", "")
+    text_value = _normalize_context_text(content)
+
+    if not text_value or len(text_value) < MIN_CONTENT_LENGTH:
+        return True
+
+    quality = item.get("quality") or _calculate_context_quality(item)
+
+    noise_score = quality["noise_score"]
+    evidence_score = quality["evidence_score"]
+    structure_score = quality["structure_score"]
+
+    # 안내성 문구가 많고, 실제 근거 신호가 거의 없으면 제외
+    if noise_score >= 3 and evidence_score <= 1:
+        return True
+
+    # 안내성 문구가 매우 많고 구조적 설명도 없으면 제외
+    if noise_score >= 5 and structure_score == 0:
+        return True
+
+    # 근거 신호와 구조 신호가 모두 없으면 문제 생성 근거로 부적합
+    if evidence_score == 0 and structure_score == 0:
         return True
 
     return False
 
 
-def _is_valid_context_item(item: dict, search_mode: str) -> bool:
-    content = item.get("content", "")
-
-    if not content or len(content.strip()) < 80:
+def _is_valid_context_item(
+    item: dict,
+    search_mode: str,
+    category: str | None = None,
+) -> bool:
+    if not _matches_category(item, category):
         return False
 
-    if _is_noise_context(content):
+    content = item.get("content", "")
+
+    if not content:
+        return False
+
+    _calculate_context_quality(item)
+
+    if _is_low_quality_context(item):
         return False
 
     if search_mode == "vector":
@@ -573,7 +762,8 @@ def _is_valid_context_item(item: dict, search_mode: str) -> bool:
     if search_mode == "keyword":
         return (item.get("keyword_score") or 0.0) > 0
 
-    return (item.get("hybrid_score") or 0.0) > MIN_HYBRID_SCORE
+    # hybrid는 RRF 점수 절대값보다 품질 점수와 최종 정렬에 맡긴다.
+    return True
 
 def build_context_from_search_results(
     db,
@@ -597,7 +787,7 @@ def build_context_from_search_results(
 
     filtered_results = [
         item for item in results
-        if _is_valid_context_item(item, search_mode)
+        if _is_valid_context_item(item, search_mode, category)
     ]
 
     logger.info(
@@ -636,6 +826,16 @@ def build_context_from_search_results(
 
     return "\n\n".join(context_parts)
 
+def _extract_page_hint(content: str) -> str | None:
+    if not content:
+        return None
+
+    match = re.search(r"\[페이지\s*(\d+)\]", str(content))
+    if not match:
+        return None
+
+    return match.group(1)
+
 def _build_content_preview(content: str, max_length: int = 300) -> str:
     if not content:
         return ""
@@ -652,6 +852,8 @@ def _build_content_preview(content: str, max_length: int = 300) -> str:
         if stripped.startswith("[문서제목:"):
             continue
         if stripped.startswith("[출처유형:"):
+            continue
+        if stripped.startswith("[페이지"):
             continue
 
         lines.append(stripped)
@@ -682,14 +884,28 @@ def build_context_and_evidence_from_search_results(
     if not results:
         raise ValueError("관련 문서 내용을 찾을 수 없습니다.")
 
-    filtered_results = [
-        item for item in results
-        if _is_valid_context_item(item, search_mode)
-    ]
+    valid_results = []
+
+    for item in results:
+        if _is_valid_context_item(item, search_mode, category):
+            valid_results.append(item)
+
+    valid_results.sort(
+        key=lambda x: (
+            x.get("quality_score") or 0.0,
+            x.get("hybrid_score") or 0.0,
+            x.get("vector_score") or 0.0,
+            x.get("keyword_score") or 0.0,
+        ),
+        reverse=True,
+    )
+
+    filtered_results = valid_results[:top_k]
 
     logger.info(
         "RAG Context [Filter]: "
         f"before={len(results)}, "
+        f"valid={len(valid_results)}, "
         f"after={len(filtered_results)}, "
         f"search_mode={search_mode}, "
         f"category={category}"
@@ -720,6 +936,10 @@ def build_context_and_evidence_from_search_results(
         keyword_rank = item.get("keyword_rank")
         search_source = item.get("search_source")
 
+        content_preview = _build_content_preview(content)
+        page_hint = _extract_page_hint(content)
+        quality = item.get("quality") or _calculate_context_quality(item)
+        
         context_parts.append(
             f"[문서 {idx} | title={title} | category={category_value} | "
             f"file={file_name} | chunk={chunk_index} | source={search_source} | "
@@ -727,7 +947,7 @@ def build_context_and_evidence_from_search_results(
             f"{content}"
         )
 
-        content_preview = _build_content_preview(content)
+
 
         evidence_documents.append({
             "title": title,
@@ -736,6 +956,7 @@ def build_context_and_evidence_from_search_results(
             "source_type": source_type,
             "chunk_id": chunk_id,
             "chunk_index": chunk_index,
+            "page_hint": page_hint,
             "search_source": search_source,
             "vector_score": vector_score,
             "keyword_score": keyword_score,
@@ -743,6 +964,11 @@ def build_context_and_evidence_from_search_results(
             "rrf_score": rrf_score,
             "vector_rank": vector_rank,
             "keyword_rank": keyword_rank,
+            "noise_score": quality.get("noise_score"),
+            "evidence_score": quality.get("evidence_score"),
+            "structure_score": quality.get("structure_score"),
+            "quality_score": quality.get("quality_score"),
+            "content_length": quality.get("content_length"),
             "content_preview": content_preview,
         })
 

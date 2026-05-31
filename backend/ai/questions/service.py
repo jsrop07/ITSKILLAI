@@ -4,9 +4,10 @@ from ai.questions.format_selector import select_question_formats
 from ai.questions.models import GeneratedQuestion, QuestionV2Request
 from ai.questions.renderer import render_question_from_evidence
 from ai.questions.answer_position import rebalance_answer_positions
+from ai.questions.rag_evidence_builder import build_rag_evidence_pack
 from ai.questions.advanced_templates import build_ai_advanced_v2_questions
 from ai.questions.validator import validate_generated_question, validate_generated_questions
-from ai.questions.evidence_builder import (build_evidence_pack,build_rag_evidence_pack,build_beginner_evidence_pack_from_slot,resolve_beginner_generation_slots,)
+from ai.questions.evidence_builder import (build_evidence_pack,build_beginner_evidence_pack_from_slot,resolve_beginner_generation_slots,)
 
 logger = logging.getLogger(__name__)
 
@@ -236,6 +237,20 @@ def generate_ai_questions_v2(
             )
 
     questions = rebalance_answer_positions(questions)
-    validate_generated_questions(questions)
+
+    for idx, question in enumerate(questions, start=1):
+        try:
+            validate_generated_question(question)
+        except Exception as validation_exc:
+            logger.warning(
+                "AI Question V2 최종 검증 실패: index=%s, format=%s, answer=%s, body=%s, explanation=%s, error=%s",
+                idx,
+                question.question_format,
+                question.answer,
+                question.body,
+                question.explanation,
+                validation_exc,
+            )
+            raise validation_exc
 
     return questions
