@@ -332,8 +332,8 @@ export default function QuestionManagement() {
               <SelectTrigger className="w-40"><SelectValue placeholder="생성 방식" /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="all">생성 방식</SelectItem>
-                <SelectItem value="general_graph">설계서 기반</SelectItem>
-                <SelectItem value="rag">문서 기반 RAG</SelectItem>
+                <SelectItem value="ai_question_v2">설계서 기반</SelectItem>
+                <SelectItem value="ai_question_v2_rag">문서 기반 RAG</SelectItem>
               </SelectContent>
             </Select>
             <Select value={reviewFilter} onValueChange={setReviewFilter}>

@@ -5,6 +5,7 @@ from models import Question, Admin
 from routers.auth import get_current_admin
 from fastapi import APIRouter, Depends, HTTPException, Query
 from schemas import QuestionCreate, QuestionUpdate, QuestionRead
+from services.question_review_service import build_question_review_result
 
 router = APIRouter(prefix="/api/questions", tags=["questions"])
 
@@ -77,3 +78,29 @@ def delete_question(question_id: int, db: Session = Depends(get_db)):
     db.delete(question)
     db.commit()
     return {"message": "삭제되었습니다."}
+@router.get("/review/generated")
+
+def review_generated_questions(
+    limit: int = Query(default=100, ge=1, le=500),
+    competency_type: str = Query(default="ai"),
+    status: str | None = Query(default=None),
+    db: Session = Depends(get_db),
+):
+    query = db.query(Question)
+    if status and hasattr(Question, "review_status"):
+        query = query.filter(Question.review_status == status)
+
+    if competency_type:
+        query = query.filter(Question.competency_type == competency_type)
+
+    if status and hasattr(Question, "status"):
+        query = query.filter(Question.status == status)
+
+    if hasattr(Question, "created_at"):
+        query = query.order_by(Question.created_at.desc())
+    else:
+        query = query.order_by(Question.question_id.desc())
+
+    questions = query.limit(limit).all()
+
+    return build_question_review_result(questions)
