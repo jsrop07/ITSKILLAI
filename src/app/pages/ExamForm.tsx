@@ -8,7 +8,7 @@ import { Checkbox } from "../components/ui/checkbox";
 import { Badge } from "../components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "../components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "../components/ui/table";
-import { ArrowLeft, Search, Plus, Trash2, Save, Loader2 } from "lucide-react";
+import { ArrowLeft, Search, Plus, Trash2, Save, Loader2, ChevronDown, ChevronUp } from "lucide-react";
 import { diagnosesApi, questionsApi } from "../../lib/api";
 import type { DiagnosisCreate, Question } from "../../lib/types";
 import { LEVEL_LABELS } from "../../lib/types";
@@ -36,6 +36,8 @@ export default function ExamForm() {
   const [allQuestions, setAllQuestions] = useState<Question[]>([]);
   const [selectedQuestions, setSelectedQuestions] = useState<Question[]>([]); // The applied questions
   const [checkedIds, setCheckedIds] = useState<Set<number>>(new Set()); // For the pool table
+  const [expandedSelectedId, setExpandedSelectedId] = useState<number | null>(null);
+  const [expandedPoolId, setExpandedPoolId] = useState<number | null>(null);
 
   // Filters for pool
   const [searchTerm, setSearchTerm] = useState("");
@@ -148,6 +150,56 @@ export default function ExamForm() {
     초급: "bg-green-100 text-green-700",
   };
 
+  const renderQuestionDetail = (q: Question) => {
+    const choices = Array.isArray(q.choices_json) ? q.choices_json : [];
+
+    return (
+      <div className="rounded-lg border border-slate-200 bg-slate-50 p-4 space-y-3 text-sm">
+        <div>
+          <div className="font-semibold text-slate-700 mb-1">문제 본문</div>
+          <div className="whitespace-pre-wrap text-slate-700">
+            {q.body || "본문이 없습니다."}
+          </div>
+        </div>
+
+        {choices.length > 0 && (
+          <div>
+            <div className="font-semibold text-slate-700 mb-1">선택지</div>
+            <ol className="space-y-1 list-decimal pl-5 text-slate-700">
+              {choices.map((choice, index) => (
+                <li key={`${q.question_id}-choice-${index}`} className="whitespace-pre-wrap">
+                  {String(choice)}
+                </li>
+              ))}
+            </ol>
+          </div>
+        )}
+
+        <div className="grid grid-cols-1 gap-2 md:grid-cols-3">
+          <div>
+            <span className="font-semibold text-slate-700">정답: </span>
+            <span className="text-slate-700">{String(q.answer_json ?? "-")}번</span>
+          </div>
+          <div>
+            <span className="font-semibold text-slate-700">난이도: </span>
+            <span className="text-slate-700">{q.difficulty || "-"}</span>
+          </div>
+          <div>
+            <span className="font-semibold text-slate-700">역량: </span>
+            <span className="text-slate-700">{q.competency_type || "-"}</span>
+          </div>
+        </div>
+
+        <div>
+          <div className="font-semibold text-slate-700 mb-1">해설</div>
+          <div className="whitespace-pre-wrap text-slate-700">
+            {q.explanation || "해설이 없습니다."}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
   if (loading) {
     return <div className="p-8 flex justify-center py-16"><Loader2 className="size-6 animate-spin text-sky-500" /></div>;
   }
@@ -255,21 +307,60 @@ export default function ExamForm() {
                     </TableRow>
                   </TableHeader>
                   <TableBody>
-                    {selectedQuestions.map((q, idx) => (
-                      <TableRow key={`sq-${q.question_id}`}>
-                        <TableCell className="text-slate-500">{idx + 1}</TableCell>
-                        <TableCell className="max-w-[200px] truncate" title={q.title}>{q.title}</TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className={difficultyColor[q.difficulty || ""] || "bg-slate-100"}>{q.difficulty}</Badge>
-                        </TableCell>
-                        <TableCell>{q.score}점</TableCell>
-                        <TableCell className="text-right">
-                          <Button variant="ghost" size="sm" className="text-red-600 hover:text-red-700" onClick={() => handleRemoveApplied(q.question_id)}>
-                            <Trash2 className="size-4" />
-                          </Button>
-                        </TableCell>
-                      </TableRow>
-                    ))}
+                    {selectedQuestions.map((q, idx) => {
+                      const isExpanded = expandedSelectedId === q.question_id;
+
+                      return (
+                        <>
+                          <TableRow key={`sq-${q.question_id}`} className="cursor-pointer">
+                            <TableCell className="text-slate-500">{idx + 1}</TableCell>
+                            <TableCell className="max-w-[260px]">
+                              <button
+                                type="button"
+                                className="flex w-full items-center gap-2 text-left"
+                                onClick={() => setExpandedSelectedId(isExpanded ? null : q.question_id)}
+                              >
+                                {isExpanded ? (
+                                  <ChevronUp className="size-4 shrink-0 text-slate-400" />
+                                ) : (
+                                  <ChevronDown className="size-4 shrink-0 text-slate-400" />
+                                )}
+                                <span className="truncate" title={q.title}>
+                                  {q.title}
+                                </span>
+                              </button>
+                            </TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className={difficultyColor[q.difficulty || ""] || "bg-slate-100"}>
+                                {q.difficulty}
+                              </Badge>
+                            </TableCell>
+                            <TableCell>{q.score}점</TableCell>
+                            <TableCell className="text-right">
+                              <Button
+                                variant="ghost"
+                                size="sm"
+                                className="text-red-600 hover:text-red-700"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveApplied(q.question_id);
+                                }}
+                              >
+                                <Trash2 className="size-4" />
+                              </Button>
+                            </TableCell>
+                          </TableRow>
+
+                          {isExpanded && (
+                            <TableRow key={`sq-detail-${q.question_id}`}>
+                              <TableCell colSpan={5} className="bg-white p-4">
+                                {renderQuestionDetail(q)}
+                              </TableCell>
+                            </TableRow>
+                          )}
+                        </>
+                      );
+                    })}
                   </TableBody>
                 </Table>
               )}
@@ -346,24 +437,50 @@ export default function ExamForm() {
                     </TableRow>
                   ) : filteredPool.map((q) => {
                     const isAlreadyApplied = selectedQuestions.some(sq => sq.question_id === q.question_id);
+                    const isExpanded = expandedPoolId === q.question_id;
+
                     return (
-                      <TableRow key={`pool-${q.question_id}`} className={isAlreadyApplied ? "bg-slate-50 opacity-60" : ""}>
-                        <TableCell>
-                          <Checkbox
-                            checked={checkedIds.has(q.question_id) || isAlreadyApplied}
-                            disabled={isAlreadyApplied}
-                            onCheckedChange={() => toggleCheck(q.question_id)}
-                          />
-                        </TableCell>
-                        <TableCell className="max-w-[200px]">
-                          <p className={`text-sm truncate ${isAlreadyApplied ? "line-through text-slate-400" : ""}`} title={q.title}>{q.title}</p>
-                        </TableCell>
-                        <TableCell>
-                          <Badge variant="secondary" className={difficultyColor[q.difficulty || ""] || "bg-slate-100"}>{q.difficulty}</Badge>
-                        </TableCell>
-                        <TableCell className="text-sm">{q.competency_type}</TableCell>
-                        <TableCell className="text-sm">{q.score}점</TableCell>
-                      </TableRow>
+                      <>
+                        <TableRow key={`pool-${q.question_id}`} className={isAlreadyApplied ? "bg-slate-50 opacity-60" : ""}>
+                          <TableCell>
+                            <Checkbox
+                              checked={checkedIds.has(q.question_id) || isAlreadyApplied}
+                              disabled={isAlreadyApplied}
+                              onCheckedChange={() => toggleCheck(q.question_id)}
+                            />
+                          </TableCell>
+                          <TableCell className="max-w-[260px]">
+                            <button
+                              type="button"
+                              className={`flex w-full items-center gap-2 text-left text-sm ${isAlreadyApplied ? "line-through text-slate-400" : ""}`}
+                              title={q.title}
+                              onClick={() => setExpandedPoolId(isExpanded ? null : q.question_id)}
+                            >
+                              {isExpanded ? (
+                                <ChevronUp className="size-4 shrink-0 text-slate-400" />
+                              ) : (
+                                <ChevronDown className="size-4 shrink-0 text-slate-400" />
+                              )}
+                              <span className="truncate">{q.title}</span>
+                            </button>
+                          </TableCell>
+                          <TableCell>
+                            <Badge variant="secondary" className={difficultyColor[q.difficulty || ""] || "bg-slate-100"}>
+                              {q.difficulty}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-sm">{q.competency_type}</TableCell>
+                          <TableCell className="text-sm">{q.score}점</TableCell>
+                        </TableRow>
+
+                        {isExpanded && (
+                          <TableRow key={`pool-detail-${q.question_id}`}>
+                            <TableCell colSpan={5} className="bg-white p-4">
+                              {renderQuestionDetail(q)}
+                            </TableCell>
+                          </TableRow>
+                        )}
+                      </>
                     );
                   })}
                 </TableBody>

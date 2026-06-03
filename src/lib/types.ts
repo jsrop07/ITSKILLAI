@@ -399,12 +399,15 @@ export interface ResultStatItem {
 export interface WrongAnswerItem {
   question_id: number;
   question_title: string;
-  competency_type?: string;
-  competency_label?: string;
-  difficulty?: string;
+  question_body?: string | null;
+  choices_json?: string[];
+  competency_type?: string | null;
+  competency_label?: string | null;
+  difficulty?: string | null;
   submitted_answer?: unknown;
   correct_answer?: unknown;
   explanation?: string | null;
+  score?: number;
 }
 
 export interface ResultAnalysisReport {
@@ -423,15 +426,20 @@ export interface AnswerDetail {
   answer_id: number;
   question_id: number;
   question_title: string;
-  question_type?: QuestionType;
-  competency_type?: string;
-  difficulty?: string;
+  question_body?: string | null;
+  question_type?: QuestionType | string;
   choices_json?: string[];
+  competency_type?: string | null;
+  difficulty?: string | null;
   answer_text?: string;
-  answer_json?: any;
-  correct_answer_json?: any;
+  answer_json?: unknown;
+  submitted_answer_raw?: unknown;
+  correct_answer_json?: unknown;
+  correct_answer_raw?: unknown;
   is_correct?: boolean;
   earned_score: number;
+  score?: number;
+  explanation?: string | null;
 }
 
 // ──────────────────────────────────────────────

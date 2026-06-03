@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from typing import Any
 
 
@@ -23,7 +24,6 @@ DIFFICULTY_LABEL_MAP = {
     "intermediate": "중급",
     "advanced": "고급",
 }
-
 
 def _safe_float(value: Any, default: float = 0.0) -> float:
     try:
@@ -63,6 +63,68 @@ def _parse_answer_data(record) -> list[str]:
 
     return [answer.strip() for answer in str(record.answer_data).split(",")]
 
+def _normalize_choices(value: Any) -> list[Any]:
+    if value is None:
+        return []
+
+    if isinstance(value, list):
+        return value
+
+    if isinstance(value, str):
+        try:
+            parsed = json.loads(value)
+            if isinstance(parsed, list):
+                return parsed
+            return [parsed]
+        except Exception:
+            return []
+
+    return []
+
+def _get_question_items(record, diagnosis, questions) -> list[dict[str, Any]]:
+    if record and getattr(record, "question_snapshot_json", None):
+        try:
+            parsed = json.loads(record.question_snapshot_json)
+            if isinstance(parsed, list):
+                normalized_items = []
+                for item in parsed:
+                    if not isinstance(item, dict):
+                        continue
+
+                    copied = dict(item)
+                    copied["choices_json"] = _normalize_choices(copied.get("choices_json"))
+                    normalized_items.append(copied)
+
+                return normalized_items
+        except Exception:
+            pass
+    question_ids = _parse_question_ids(diagnosis)
+    question_map = {
+        int(q.question_id): q
+        for q in questions
+        if getattr(q, "question_id", None) is not None
+    }
+
+    items: list[dict[str, Any]] = []
+
+    for index, question_id in enumerate(question_ids):
+        question = question_map.get(question_id)
+        if not question:
+            continue
+
+        items.append({
+            "question_id": question.question_id,
+            "title": getattr(question, "title", "") or "",
+            "body": getattr(question, "body", "") or "",
+            "choices_json": _normalize_choices(getattr(question, "choices_json", None)),
+            "answer_json": getattr(question, "answer_json", None),
+            "explanation": getattr(question, "explanation", None),
+            "difficulty": getattr(question, "difficulty", None),
+            "competency_type": getattr(question, "competency_type", None),
+            "score": getattr(question, "score", 0),
+        })
+
+    return items
 
 def _get_label(mapping: dict[str, str], key: Any, default: str = "기타") -> str:
     if key is None:
@@ -75,22 +137,15 @@ def _get_label(mapping: dict[str, str], key: Any, default: str = "기타") -> st
     return mapping.get(key_str, key_str)
 
 
-def _readable_choice_answer(value: Any, choices: Any) -> Any:
-    """
-    오답 목록에서 사용자가 고른 답/정답을 사람이 읽을 수 있게 변환한다.
-    예: "3" + choices_json -> "3번. LLM은 ..."
-    """
+def _readable_choice_answer(value: Any, choices: Any = None) -> Any:
     normalized = _normalize_answer(value)
     if not normalized:
         return "-"
 
-    if not isinstance(choices, list):
-        return normalized
-
     try:
         idx = int(normalized)
-        if 1 <= idx <= len(choices):
-            return f"{idx}번. {choices[idx - 1]}"
+        if 1 <= idx <= 5:
+            return f"{idx}번"
     except (TypeError, ValueError):
         pass
 
@@ -181,23 +236,12 @@ def build_result_analysis_report(record, diagnosis, questions) -> dict[str, Any]
     """
     시험 결과 분석 리포트 생성.
 
-    입력:
-    - record: Record SQLAlchemy 객체
-    - diagnosis: Diagnosis SQLAlchemy 객체
-    - questions: 해당 시험에 포함된 Question SQLAlchemy 객체 리스트
-
-    반환:
-    - schemas.py의 ResultAnalysisReport와 매칭되는 dict
+    record.question_snapshot_json이 있으면 응시 당시 문제 스냅샷을 기준으로 분석한다.
+    없으면 기존 diagnosis.question_idxs + questions 기준으로 fallback한다.
     """
 
-    question_ids = _parse_question_ids(diagnosis)
+    question_items = _get_question_items(record, diagnosis, questions)
     submitted_answers = _parse_answer_data(record)
-
-    question_map = {
-        int(q.question_id): q
-        for q in questions
-        if getattr(q, "question_id", None) is not None
-    }
 
     total_questions = 0
     correct_count = 0
@@ -209,19 +253,15 @@ def build_result_analysis_report(record, diagnosis, questions) -> dict[str, Any]
     difficulty_stats_map: dict[str, dict[str, Any]] = {}
     wrong_answers: list[dict[str, Any]] = []
 
-    for index, question_id in enumerate(question_ids):
-        question = question_map.get(question_id)
-        if not question:
-            continue
-
+    for index, item in enumerate(question_items):
         total_questions += 1
 
         submitted_answer = submitted_answers[index] if index < len(submitted_answers) else ""
-        correct_answer = _normalize_answer(getattr(question, "answer_json", None))
+        correct_answer = _normalize_answer(item.get("answer_json"))
 
         is_correct = bool(submitted_answer) and submitted_answer == correct_answer
 
-        question_score = _safe_float(getattr(question, "score", 0))
+        question_score = _safe_float(item.get("score", 0))
         earned_score = question_score if is_correct else 0.0
 
         total_score_sum += question_score
@@ -232,11 +272,15 @@ def build_result_analysis_report(record, diagnosis, questions) -> dict[str, Any]
         else:
             wrong_count += 1
 
-        competency_key = str(getattr(question, "competency_type", None) or "기타")
+        competency_key = str(item.get("competency_type") or "기타")
         competency_label = _get_label(COMPETENCY_LABEL_MAP, competency_key)
 
-        difficulty_key = str(getattr(question, "difficulty", None) or "기타")
-        difficulty_label = _get_label(DIFFICULTY_LABEL_MAP, difficulty_key, default=difficulty_key)
+        difficulty_key = str(item.get("difficulty") or "기타")
+        difficulty_label = _get_label(
+            DIFFICULTY_LABEL_MAP,
+            difficulty_key,
+            default=difficulty_key,
+        )
 
         if competency_key not in competency_stats_map:
             competency_stats_map[competency_key] = _empty_stat(
@@ -265,17 +309,20 @@ def build_result_analysis_report(record, diagnosis, questions) -> dict[str, Any]
             difficulty_stat["correct_count"] += 1
 
         if not is_correct:
-            choices = getattr(question, "choices_json", None)
+            choices = _normalize_choices(item.get("choices_json"))
 
             wrong_answers.append({
-                "question_id": question.question_id,
-                "question_title": getattr(question, "title", "") or "",
+                "question_id": item.get("question_id"),
+                "question_title": item.get("title", "") or "",
+                "question_body": item.get("body", "") or "",
+                "choices_json": choices,
                 "competency_type": competency_key,
                 "competency_label": competency_label,
                 "difficulty": difficulty_label,
                 "submitted_answer": _readable_choice_answer(submitted_answer, choices),
                 "correct_answer": _readable_choice_answer(correct_answer, choices),
-                "explanation": getattr(question, "explanation", None),
+                "explanation": item.get("explanation"),
+                "score": question_score,
             })
 
     accuracy_rate = (
@@ -323,6 +370,7 @@ def build_result_analysis_report(record, diagnosis, questions) -> dict[str, Any]
         wrong_count=wrong_count,
         accuracy_rate=accuracy_rate,
     )
+
     return {
         "summary": {
             "total_questions": total_questions,

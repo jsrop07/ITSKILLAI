@@ -1,3 +1,4 @@
+import json
 from database import get_db
 from typing import List, Optional
 from sqlalchemy.orm import Session
@@ -9,6 +10,83 @@ from services.email_service import (send_exam_assignment_to_applicant,send_resul
 )
 router = APIRouter(prefix="/api/records", tags=["records"])
 
+def _parse_question_idxs(question_idxs: str | None) -> list[int]:
+    if not question_idxs:
+        return []
+
+    return [
+        int(x.strip())
+        for x in str(question_idxs).split(",")
+        if x.strip().isdigit()
+    ]
+
+
+def _build_question_snapshot(db: Session, diagnosis: Diagnosis) -> list[dict]:
+    q_idxs = _parse_question_idxs(diagnosis.question_idxs)
+    if not q_idxs:
+        return []
+
+    questions = db.query(Question).filter(Question.question_id.in_(q_idxs)).all()
+    q_map = {q.question_id: q for q in questions}
+
+    snapshot = []
+    for index, q_id in enumerate(q_idxs):
+        q = q_map.get(q_id)
+        if not q:
+            continue
+
+        snapshot.append({
+            "question_id": q.question_id,
+            "order_no": index + 1,
+            "question_type": str(q.question_type.value if hasattr(q.question_type, "value") else q.question_type),
+            "title": q.title,
+            "body": q.body,
+            "choices_json": q.choices_json,
+            "answer_json": q.answer_json,
+            "explanation": q.explanation,
+            "difficulty": q.difficulty,
+            "competency_type": q.competency_type,
+            "score": q.score,
+        })
+
+    return snapshot
+
+
+def _get_record_question_snapshot(
+    db: Session,
+    record: Record,
+    diagnosis: Diagnosis | None,
+) -> list[dict]:
+    if getattr(record, "question_snapshot_json", None):
+        try:
+            parsed = json.loads(record.question_snapshot_json)
+            if isinstance(parsed, list):
+                return parsed
+        except Exception:
+            pass
+
+    if not diagnosis:
+        return []
+
+    snapshot = _build_question_snapshot(db, diagnosis)
+    record.question_snapshot_json = json.dumps(snapshot, ensure_ascii=False)
+    db.commit()
+    db.refresh(record)
+    return snapshot
+
+
+def _readable_answer(value, choices):
+    if value is None or value == "" or value == "-":
+        return "-"
+
+    try:
+        idx = int(value)
+        if isinstance(choices, list) and 1 <= idx <= len(choices):
+            return f"{idx}번. {choices[idx - 1]}"
+    except (ValueError, TypeError):
+        pass
+
+    return str(value)
 
 @router.get("", response_model=List[RecordRead])
 def list_records(
@@ -53,11 +131,14 @@ def create_record(
 
     token = secrets.token_urlsafe(16)
 
+    question_snapshot = _build_question_snapshot(db, diagnosis)
+
     record = Record(
         applicant_id=data.applicant_id,
         diagnosis_id=data.diagnosis_id,
         login_token=token,
         deadline_at=data.deadline_at,
+        question_snapshot_json=json.dumps(question_snapshot, ensure_ascii=False),
     )
 
     db.add(record)
@@ -199,73 +280,56 @@ def get_record_answers(record_id: int, db: Session = Depends(get_db)):
     record = db.query(Record).filter(Record.record_id == record_id).first()
     if not record:
         return []
-    diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == record.diagnosis_id).first()
-    if not diagnosis or not diagnosis.question_idxs:
-        return []
 
-    # question_idxs 순서대로 파싱
-    q_idxs = [int(x.strip()) for x in diagnosis.question_idxs.split(',') if x.strip().isdigit()]
-    if not q_idxs:
-        return []
+    diagnosis = db.query(Diagnosis).filter(
+        Diagnosis.diagnosis_id == record.diagnosis_id
+    ).first()
 
-    # answer_data는 question_idxs 순서대로 저장된 콤마 구분 문자열
-    raw_answers = str(record.answer_data or "").split(',')
+    snapshot = _get_record_question_snapshot(
+        db=db,
+        record=record,
+        diagnosis=diagnosis,
+    )
 
-    questions = db.query(Question).filter(Question.question_id.in_(q_idxs)).all()
-    q_map = {q.question_id: q for q in questions}
+    raw_answers = str(record.answer_data or "").split(",") if record.answer_data else []
 
     result = []
-    for i, q_id in enumerate(q_idxs):
-        q = q_map.get(q_id)
-        if not q:
-            continue
 
-        # 응시자 답변 값 (빈 문자열 처리)
-        my_ans_raw = raw_answers[i].strip() if i < len(raw_answers) else ""
+    for index, item in enumerate(snapshot):
+        my_ans_raw = raw_answers[index].strip() if index < len(raw_answers) else ""
 
-        # 정답 값
-        correct_ans_val = q.answer_json  # 원본 그대로 (숫자 인덱스 or 문자열)
+        correct_ans_val = item.get("answer_json")
+        correct_raw = str(correct_ans_val).strip() if correct_ans_val is not None else ""
 
-        # 채점: 둘 다 문자열로 변환해서 비교
-        if my_ans_raw and correct_ans_val is not None:
-            is_correct = my_ans_raw == str(correct_ans_val)
-        else:
-            is_correct = False
+        is_correct = bool(my_ans_raw) and my_ans_raw == correct_raw
 
-        # 객관식이면 choices_json 기준 사람이 읽을 수 있는 텍스트로 변환
-        def readable(val, choices):
-            if val is None or val == "" or val == "-":
-                return "-"
-            try:
-                idx = int(val)
-                if choices and 1 <= idx <= len(choices):
-                    return f"{idx}번. {choices[idx - 1]}"
-            except (ValueError, TypeError):
-                pass
-            return str(val)
-
-        choices = q.choices_json if q.question_type == "multiple_choice" else None
+        choices = item.get("choices_json")
         if isinstance(choices, str):
-            import json
             try:
                 choices = json.loads(choices)
             except Exception:
-                pass
-        display_answer = readable(my_ans_raw, choices)
-        display_correct = readable(str(correct_ans_val) if correct_ans_val is not None else None, choices)
+                choices = []
+
+        score = float(item.get("score") or 0)
 
         result.append({
-            "answer_id": i + 1,
-            "question_id": q.question_id,
-            "question_title": q.title,
-            "question_type": q.question_type,
+            "answer_id": index + 1,
+            "question_id": item.get("question_id"),
+            "question_title": item.get("title"),
+            "question_body": item.get("body"),
+            "question_type": item.get("question_type"),
             "choices_json": choices,
-            "competency_type": q.competency_type,
-            "difficulty": q.difficulty,
-            "answer_text": display_answer,
+            "competency_type": item.get("competency_type"),
+            "difficulty": item.get("difficulty"),
+            "answer_text": _readable_answer(my_ans_raw, choices),
             "answer_json": my_ans_raw,
-            "correct_answer_json": display_correct,
+            "submitted_answer_raw": my_ans_raw,
+            "correct_answer_json": _readable_answer(correct_raw, choices),
+            "correct_answer_raw": correct_raw,
             "is_correct": is_correct,
-            "earned_score": float(q.score) if is_correct else 0.0,
+            "earned_score": score if is_correct else 0.0,
+            "score": score,
+            "explanation": item.get("explanation"),
         })
+
     return result

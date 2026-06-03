@@ -11,6 +11,7 @@ import AIReportCard from "../../components/result/AIReportCard";
 export default function TestResult() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
+
   const recordId = searchParams.get("record_id");
 
   const [result, setResult] = useState<ExamResultResponse | null>(null);
@@ -23,8 +24,18 @@ export default function TestResult() {
     examApi.getResult(Number(recordId))
       .then(setResult)
       .catch((err) => {
-        if (err.response?.status === 403) setNotVisible(true);
-        else navigate("/test-login");
+        console.error("결과 조회 실패:", err);
+        console.error("status:", err.response?.status);
+        console.error("data:", err.response?.data);
+
+        if (err.response?.status === 403) {
+          setNotVisible(true);
+        } else {
+          alert(
+            `결과 조회 실패: ${err.response?.status || "unknown"}\n` +
+            `${JSON.stringify(err.response?.data || err.message)}`
+          );
+        }
       })
       .finally(() => setLoading(false));
   }, [recordId]);
@@ -395,9 +406,34 @@ export default function TestResult() {
                                 )}
                               </div>
                             </button>
-
                             {isOpen && (
                               <div className="border-t border-slate-100 bg-slate-50 px-4 py-4">
+                                {item.question_body && (
+                                  <div className="mb-3 rounded-md bg-white p-3 text-sm leading-6 text-slate-700">
+                                    <p className="mb-1 text-xs font-semibold text-slate-500">
+                                      문제 본문
+                                    </p>
+                                    <div className="whitespace-pre-wrap">
+                                      {item.question_body}
+                                    </div>
+                                  </div>
+                                )}
+
+                                {Array.isArray(item.choices_json) && item.choices_json.length > 0 && (
+                                  <div className="mb-3 rounded-md bg-white p-3 text-sm leading-6 text-slate-700">
+                                    <p className="mb-2 text-xs font-semibold text-slate-500">
+                                      선택지
+                                    </p>
+                                    <ol className="list-decimal space-y-1 pl-5">
+                                      {item.choices_json.map((choice, index) => (
+                                        <li key={`${item.question_id}-choice-${index}`} className="whitespace-pre-wrap">
+                                          {String(choice)}
+                                        </li>
+                                      ))}
+                                    </ol>
+                                  </div>
+                                )}
+
                                 <div className="grid grid-cols-1 gap-3 text-sm md:grid-cols-2">
                                   <div className="rounded-md bg-white p-3">
                                     <p className="mb-1 text-xs font-semibold text-slate-500">
@@ -423,7 +459,9 @@ export default function TestResult() {
                                     <p className="mb-1 text-xs font-semibold text-slate-500">
                                       해설
                                     </p>
-                                    {item.explanation}
+                                    <div className="whitespace-pre-wrap">
+                                      {item.explanation}
+                                    </div>
                                   </div>
                                 )}
                               </div>
