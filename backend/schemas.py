@@ -108,6 +108,21 @@ class ApplicantBase(BaseModel):
 class ApplicantCreate(ApplicantBase):
     pass
 
+class EmailVerificationSendRequest(BaseModel):
+    email: EmailStr
+    purpose: str = "diagnosis_apply"
+
+
+class EmailVerificationVerifyRequest(BaseModel):
+    email: EmailStr
+    code: str
+    purpose: str = "diagnosis_apply"
+
+
+class EmailVerificationResponse(BaseModel):
+    success: bool
+    message: str
+    
 class ApplicantUpdate(BaseModel):
     name: Optional[str] = None
     email: Optional[str] = None
@@ -319,6 +334,7 @@ class RecordRead(BaseModel):
     result_visible: bool
     created_at: datetime
     updated_at: datetime
+    question_snapshot_json: Optional[Any] = None
 
     class Config:
         from_attributes = True
@@ -485,12 +501,15 @@ class ResultStatItem(BaseModel):
 class WrongAnswerItem(BaseModel):
     question_id: int
     question_title: str
+    question_body: Optional[str] = None
+    choices_json: Optional[List[Any]] = None
     competency_type: Optional[str] = None
     competency_label: Optional[str] = None
     difficulty: Optional[str] = None
     submitted_answer: Optional[Any] = None
     correct_answer: Optional[Any] = None
     explanation: Optional[str] = None
+    score: Optional[float] = None
 
 
 class ResultAnalysisReport(BaseModel):

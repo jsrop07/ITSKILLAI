@@ -42,7 +42,27 @@ def send_email(to_email: str, subject: str, html: str) -> None:
         server.login(SMTP_USER, SMTP_PASSWORD)
         server.sendmail(sender_email, to_email, message.as_string())
 
+def send_email_verification_code(
+    *,
+    to_email: str,
+    code: str,
+) -> None:
+    subject = "[IT 역량진단] 이메일 인증코드 안내"
 
+    html = f"""
+    <h2>IT 역량진단 이메일 인증코드</h2>
+    <p>진단 신청을 완료하려면 아래 인증코드를 입력해 주세요.</p>
+
+    <div style="font-size:24px; font-weight:700; letter-spacing:4px; margin:20px 0;">
+      {code}
+    </div>
+
+    <p>이 인증코드는 5분 동안만 유효합니다.</p>
+    <p>본인이 요청하지 않았다면 이 메일을 무시해 주세요.</p>
+    """
+
+    send_email(to_email, subject, html)
+    
 def send_apply_notification_to_admin(
     *,
     name: str,

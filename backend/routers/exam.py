@@ -41,6 +41,52 @@ def parse_question_idxs(question_idxs: str | None) -> list[int]:
         if idx.strip().isdigit()
     ]
 
+def build_question_snapshot(db: Session, diagnosis: Diagnosis) -> list[dict]:
+    q_idxs = parse_question_idxs(diagnosis.question_idxs)
+    if not q_idxs:
+        return []
+
+    questions = db.query(Question).filter(Question.question_id.in_(q_idxs)).all()
+    q_map = {q.question_id: q for q in questions}
+
+    snapshot = []
+    for index, q_id in enumerate(q_idxs):
+        q = q_map.get(q_id)
+        if not q:
+            continue
+
+        snapshot.append({
+            "question_id": q.question_id,
+            "order_no": index + 1,
+            "question_type": str(q.question_type.value if hasattr(q.question_type, "value") else q.question_type),
+            "title": q.title,
+            "body": q.body,
+            "choices_json": q.choices_json,
+            "answer_json": q.answer_json,
+            "explanation": q.explanation,
+            "difficulty": q.difficulty,
+            "competency_type": q.competency_type,
+            "score": q.score,
+        })
+
+    return snapshot
+
+
+def get_or_create_question_snapshot(db: Session, record: Record, diagnosis: Diagnosis) -> list[dict]:
+    if getattr(record, "question_snapshot_json", None):
+        try:
+            parsed = json.loads(record.question_snapshot_json)
+            if isinstance(parsed, list):
+                return parsed
+        except Exception:
+            pass
+
+    snapshot = build_question_snapshot(db, diagnosis)
+    record.question_snapshot_json = json.dumps(snapshot, ensure_ascii=False)
+    db.commit()
+    db.refresh(record)
+    return snapshot
+
 def calculate_remaining_seconds(record: Record, diagnosis: Diagnosis) -> tuple[datetime, int]:
     now = datetime.utcnow()
 
@@ -59,6 +105,12 @@ def is_exam_expired(record: Record, diagnosis: Diagnosis) -> bool:
     end_at = record.started_at + timedelta(minutes=diagnosis.duration_minutes)
     return datetime.utcnow() >= end_at
 
+def get_snapshot_question_ids(snapshot: list[dict]) -> list[int]:
+    return [
+        int(item["question_id"])
+        for item in snapshot
+        if item.get("question_id") is not None
+    ]
 
 def build_answer_data_array(
     q_idxs: list[int],
@@ -115,7 +167,7 @@ def exam_login(data: ExamLoginRequest, db: Session = Depends(get_db)):
     
     exam_token = create_exam_token(record.record_id)
 
-    question_idxs = parse_question_idxs(diagnosis.question_idxs)
+    snapshot = get_or_create_question_snapshot(db, record, diagnosis)
     server_now, remaining_seconds = calculate_remaining_seconds(record, diagnosis)
 
     return ExamLoginResponse(
@@ -123,7 +175,7 @@ def exam_login(data: ExamLoginRequest, db: Session = Depends(get_db)):
         applicant_name=applicant.name,
         diagnosis_title=diagnosis.title,
         duration_minutes=diagnosis.duration_minutes,
-        question_count=len(question_idxs),
+        question_count=len(snapshot),
         pass_score=diagnosis.pass_score,
         exam_token=exam_token,
         status=record.status,
@@ -174,8 +226,8 @@ def get_exam_questions(record_id: int, exam_token: str, db: Session = Depends(ge
         raise HTTPException(status_code=404, detail="응시 기록을 찾을 수 없습니다.")
 
     diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == record.diagnosis_id).first()
-    if not diagnosis or not diagnosis.question_idxs:
-        return []
+    if not diagnosis:
+        raise HTTPException(status_code=404, detail="시험 정보를 찾을 수 없습니다.")
 
     # 시험 시작 처리
     if record.status == "ready":
@@ -191,44 +243,38 @@ def get_exam_questions(record_id: int, exam_token: str, db: Session = Depends(ge
     if expired:
         return []
 
-    idxs = parse_question_idxs(diagnosis.question_idxs)
+    snapshot = get_or_create_question_snapshot(db, record, diagnosis)
     saved_answers = str(record.answer_data or "").split(",") if record.answer_data else []
 
-    if not idxs:
-        return []
-
-    questions = db.query(Question).filter(Question.question_id.in_(idxs)).all()
-    q_map = {q.question_id: q for q in questions}
-
     result = []
-    for i, q_id in enumerate(idxs):
-        if q_id in q_map:
-            q = q_map[q_id]
-            saved_value = saved_answers[i].strip() if i < len(saved_answers) else ""
 
-            saved_answer_json = None
-            saved_answer_text = None
+    for i, item in enumerate(snapshot):
+        saved_value = saved_answers[i].strip() if i < len(saved_answers) else ""
 
-            if saved_value:
-                if q.question_type == "multiple_choice":
-                    try:
-                        saved_answer_json = int(saved_value)
-                    except ValueError:
-                        saved_answer_json = saved_value
-                else:
-                    saved_answer_text = saved_value
+        saved_answer_json = None
+        saved_answer_text = None
 
-            result.append(QuestionForExam(
-                question_id=q.question_id,
-                order_no=i + 1,
-                question_type=q.question_type,
-                title=q.title,
-                body=q.body,
-                choices_json=q.choices_json,
-                score=q.score,
-                saved_answer_json=saved_answer_json,
-                saved_answer_text=saved_answer_text,
-            ))
+        if saved_value:
+            if item.get("question_type") == "multiple_choice":
+                try:
+                    saved_answer_json = int(saved_value)
+                except ValueError:
+                    saved_answer_json = saved_value
+            else:
+                saved_answer_text = saved_value
+
+        result.append(QuestionForExam(
+            question_id=item.get("question_id"),
+            order_no=i + 1,
+            question_type=item.get("question_type"),
+            title=item.get("title"),
+            body=item.get("body"),
+            choices_json=item.get("choices_json"),
+            score=item.get("score") or 1,
+            saved_answer_json=saved_answer_json,
+            saved_answer_text=saved_answer_text,
+        ))
+
     return result
 
 @router.post("/save-progress")
@@ -249,13 +295,14 @@ def save_exam_progress(
         raise HTTPException(status_code=400, detail="이미 제출된 시험입니다.")
 
     diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == record.diagnosis_id).first()
-    if not diagnosis or not diagnosis.question_idxs:
-        return {"message": "저장할 문제가 없습니다."}
+    if not diagnosis:
+        return {"message": "시험 정보를 찾을 수 없습니다."}
 
     if auto_grade_if_expired(db, record, diagnosis):
         return {"message": "시험 시간이 만료되어 자동 제출되었습니다.", "expired": True}
 
-    q_idxs = parse_question_idxs(diagnosis.question_idxs)
+    snapshot = get_or_create_question_snapshot(db, record, diagnosis)
+    q_idxs = get_snapshot_question_ids(snapshot)
     answer_data_array = build_answer_data_array(
         q_idxs=q_idxs,
         answers=data.answers,
@@ -278,12 +325,8 @@ def grade_record_from_answers(
     diagnosis: Diagnosis,
     answers: list,
 ):
-    q_idxs = parse_question_idxs(diagnosis.question_idxs)
-    all_questions_map = {}
-
-    if q_idxs:
-        all_questions = db.query(Question).filter(Question.question_id.in_(q_idxs)).all()
-        all_questions_map = {q.question_id: q for q in all_questions}
+    snapshot = get_or_create_question_snapshot(db, record, diagnosis)
+    q_idxs = get_snapshot_question_ids(snapshot)
 
     answer_data_array = build_answer_data_array(
         q_idxs=q_idxs,
@@ -295,32 +338,31 @@ def grade_record_from_answers(
     total_earned = 0.0
     competency_scores: dict = {}
 
-    for q_id in q_idxs:
-        question = all_questions_map.get(q_id)
-        if not question:
-            continue
+    for index, item in enumerate(snapshot):
+        question_score = float(item.get("score") or 0)
+        total_possible += question_score
 
-        total_possible += float(question.score)
+        ans_val = answer_data_array[index] if index < len(answer_data_array) else ""
 
-        idx = q_idxs.index(q_id)
-        ans_val = answer_data_array[idx] if idx < len(answer_data_array) else ""
+        correct_answer = item.get("answer_json")
+        correct = str(correct_answer).strip() if correct_answer is not None else ""
+
+        question_type = str(item.get("question_type") or "")
 
         is_correct = False
         earned = 0.0
 
-        if question.question_type == "multiple_choice" and question.answer_json is not None:
-            correct = str(question.answer_json)
-            submitted = ans_val
-            is_correct = (correct == submitted) if submitted else False
-            earned = float(question.score) if is_correct else 0.0
+        if question_type == "multiple_choice" and correct:
+            is_correct = bool(ans_val) and ans_val == correct
+            earned = question_score if is_correct else 0.0
             total_earned += earned
 
-        comp = question.competency_type or "기타"
+        comp = item.get("competency_type") or "기타"
         if comp not in competency_scores:
-            competency_scores[comp] = {"earned": 0, "total": 0}
+            competency_scores[comp] = {"earned": 0.0, "total": 0.0}
 
         competency_scores[comp]["earned"] += earned
-        competency_scores[comp]["total"] += question.score
+        competency_scores[comp]["total"] += question_score
 
     competency_breakdown = {
         comp: round(v["earned"] / v["total"] * 100, 1) if v["total"] > 0 else 0
@@ -343,7 +385,10 @@ def grade_record_from_answers(
     record.competency_breakdown_json = competency_breakdown
     record.answer_data = ",".join(answer_data_array)
 
-    applicant = db.query(Applicant).filter(Applicant.applicant_id == record.applicant_id).first()
+    applicant = db.query(Applicant).filter(
+        Applicant.applicant_id == record.applicant_id
+    ).first()
+
     if applicant:
         applicant.status = "completed"
 
@@ -354,21 +399,20 @@ def grade_record_from_answers(
     }
 
 def fail_record_for_violation(db: Session, record: Record, diagnosis: Diagnosis):
-    q_idxs = parse_question_idxs(diagnosis.question_idxs)
+    snapshot = get_or_create_question_snapshot(db, record, diagnosis)
 
-    # 모든 답안 초기화
-    empty_answer_data = [""] * len(q_idxs)
+    empty_answer_data = [""] * len(snapshot)
 
-    # 역량별 점수도 0점으로 구성
     competency_scores: dict = {}
 
-    if q_idxs:
-        questions = db.query(Question).filter(Question.question_id.in_(q_idxs)).all()
-        for q in questions:
-            comp = q.competency_type or "기타"
-            if comp not in competency_scores:
-                competency_scores[comp] = {"earned": 0, "total": 0}
-            competency_scores[comp]["total"] += q.score
+    for item in snapshot:
+        comp = item.get("competency_type") or "기타"
+        score = float(item.get("score") or 0)
+
+        if comp not in competency_scores:
+            competency_scores[comp] = {"earned": 0.0, "total": 0.0}
+
+        competency_scores[comp]["total"] += score
 
     competency_breakdown = {
         comp: 0
@@ -382,7 +426,10 @@ def fail_record_for_violation(db: Session, record: Record, diagnosis: Diagnosis)
     record.competency_breakdown_json = competency_breakdown
     record.answer_data = ",".join(empty_answer_data)
 
-    applicant = db.query(Applicant).filter(Applicant.applicant_id == record.applicant_id).first()
+    applicant = db.query(Applicant).filter(
+        Applicant.applicant_id == record.applicant_id
+    ).first()
+
     if applicant:
         applicant.status = "completed"
 
@@ -537,16 +584,20 @@ def get_exam_result(record_id: int, db: Session = Depends(get_db)):
     diagnosis = db.query(Diagnosis).filter(Diagnosis.diagnosis_id == record.diagnosis_id).first()
     analysis_report = None
 
-    if diagnosis and diagnosis.question_idxs:
-        q_idxs = parse_question_idxs(diagnosis.question_idxs)
+    if diagnosis:
+        snapshot = get_or_create_question_snapshot(db, record, diagnosis)
+        q_idxs = get_snapshot_question_ids(snapshot)
 
+        questions = []
         if q_idxs:
             questions = db.query(Question).filter(Question.question_id.in_(q_idxs)).all()
-            analysis_report = build_result_analysis_report(
-                record=record,
-                diagnosis=diagnosis,
-                questions=questions,
-            )
+
+        analysis_report = build_result_analysis_report(
+            record=record,
+            diagnosis=diagnosis,
+            questions=questions,
+        )
+        
     return ExamResultResponse(
         record_id=record.record_id,
         applicant_name=applicant.name if applicant else "",

@@ -6,7 +6,7 @@ import type { Admin, Applicant, ApplicantCreate, Diagnosis, DiagnosisCreate, Dia
 // Axios 인스턴스
 // ──────────────────────────────────────────────
 const api = axios.create({
-  baseURL: "http://localhost:9000",
+  baseURL: import.meta.env.VITE_API_BASE_URL || "",
   headers: { "Content-Type": "application/json" },
 });
 
@@ -107,6 +107,31 @@ export const applicantsApi = {
   // 공개 신청 API
   apply: async (data: ApplicantCreate): Promise<Applicant> => {
     const res = await api.post<Applicant>("/api/applicants/apply", data);
+    return res.data;
+  },
+};
+
+export const emailVerificationsApi = {
+  send: async (email: string) => {
+    const res = await api.post<{ success: boolean; message: string }>(
+      "/api/email-verifications/send",
+      {
+        email,
+        purpose: "diagnosis_apply",
+      }
+    );
+    return res.data;
+  },
+
+  verify: async (email: string, code: string) => {
+    const res = await api.post<{ success: boolean; message: string }>(
+      "/api/email-verifications/verify",
+      {
+        email,
+        code,
+        purpose: "diagnosis_apply",
+      }
+    );
     return res.data;
   },
 };

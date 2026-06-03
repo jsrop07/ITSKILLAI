@@ -1,8 +1,8 @@
 
 from database import get_db
-from models import Applicant
 from typing import List, Optional
 from sqlalchemy.orm import Session
+from models import Applicant, EmailVerification
 from fastapi import APIRouter, Depends, HTTPException, Query,BackgroundTasks
 from schemas import ApplicantCreate, ApplicantUpdate, ApplicantRead
 from services.email_service import send_apply_notification_to_admin
@@ -11,6 +11,26 @@ router = APIRouter(prefix="/api/applicants", tags=["applicants"])
 
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
+
+def _ensure_email_verified(email: str, db: Session) -> None:
+    normalized_email = _normalize_email(email)
+
+    verified = (
+        db.query(EmailVerification)
+        .filter(
+            EmailVerification.email == normalized_email,
+            EmailVerification.purpose == "diagnosis_apply",
+            EmailVerification.is_verified == True,
+        )
+        .order_by(EmailVerification.verified_at.desc())
+        .first()
+    )
+
+    if not verified:
+        raise HTTPException(
+            status_code=400,
+            detail="이메일 인증을 완료한 후 진단 신청을 할 수 있습니다.",
+        )    
     
 def _create_new_applicant_application(data: ApplicantCreate, db: Session) -> Applicant:
     payload = data.model_dump()
@@ -116,17 +136,29 @@ def update_applicant(applicant_id: int, data: ApplicantUpdate, db: Session = Dep
 
 @router.delete("/{applicant_id}")
 def delete_applicant(applicant_id: int, db: Session = Depends(get_db)):
-    from models import Record
-    applicant = db.query(Applicant).filter(Applicant.applicant_id == applicant_id).first()
+    from models import Record, ResultReport
+
+    applicant = db.query(Applicant).filter(
+        Applicant.applicant_id == applicant_id
+    ).first()
+
     if not applicant:
         raise HTTPException(status_code=404, detail="응시자를 찾을 수 없습니다.")
-        
-    records = db.query(Record).filter(Record.applicant_id == applicant_id).all()
-    for r in records:
-        db.delete(r)
-        
+
+    db.query(ResultReport).filter(
+        ResultReport.applicant_id == applicant_id
+    ).delete(synchronize_session=False)
+
+    records = db.query(Record).filter(
+        Record.applicant_id == applicant_id
+    ).all()
+
+    for record in records:
+        db.delete(record)
+
     db.delete(applicant)
     db.commit()
+
     return {"message": "삭제되었습니다."}
 
 
@@ -137,6 +169,8 @@ def apply_exam(
     background_tasks: BackgroundTasks,
     db: Session = Depends(get_db),
 ):
+    _ensure_email_verified(data.email, db)
+
     applicant = _create_new_applicant_application(data=data, db=db)
 
     background_tasks.add_task(
