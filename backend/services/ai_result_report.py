@@ -40,18 +40,15 @@ def _normalize_answer(value: Any) -> str:
     return str(value).strip()
 
 
-def _readable_choice_answer(value: Any, choices: Any) -> str:
+def _readable_choice_answer(value: Any, choices: Any = None) -> Any:
     normalized = _normalize_answer(value)
     if not normalized:
         return "-"
 
-    if not isinstance(choices, list):
-        return normalized
-
     try:
         idx = int(normalized)
-        if 1 <= idx <= len(choices):
-            return f"{idx}번. {choices[idx - 1]}"
+        if 1 <= idx <= 5:
+            return f"{idx}번"
     except (TypeError, ValueError):
         pass
 

@@ -3,7 +3,7 @@ import enum
 from database import Base
 from sqlalchemy.sql import func
 from sqlalchemy.orm import relationship
-from sqlalchemy import ( Column, Integer, String, Text, Boolean, DateTime, Float, ForeignKey, Enum, JSON)
+from sqlalchemy import ( Column, Integer, String, Text, Boolean, DateTime, Float, ForeignKey, Enum, JSON, Index)
 
 
 # ──────────────────────────────────────────────
@@ -93,6 +93,17 @@ class Applicant(Base):
     records = relationship("Record", back_populates="applicant")
     target_diagnosis = relationship("Diagnosis", foreign_keys=[target_diagnosis_id])
 
+class EmailVerification(Base):
+    __tablename__ = "email_verifications"
+
+    verification_id = Column(Integer, primary_key=True, index=True, autoincrement=True)
+    email = Column(String(255), nullable=False, index=True)
+    code = Column(String(10), nullable=False)
+    purpose = Column(String(50), default="diagnosis_apply", nullable=False)
+    is_verified = Column(Boolean, default=False, nullable=False)
+    expires_at = Column(DateTime, nullable=False)
+    verified_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, server_default=func.now(), nullable=False)
 
 class Diagnosis(Base):
     __tablename__ = "diagnoses"
@@ -163,6 +174,7 @@ class Record(Base):
     login_token = Column(String(255), unique=True, nullable=True, index=True)
     status = Column(Enum(RecordStatus), default=RecordStatus.ready, nullable=False)
     answer_data = Column(String(1000), nullable=True) # e.g. "1,2,4,4,1"
+    question_snapshot_json = Column(Text, nullable=True)
     deadline_at = Column(DateTime, nullable=True)
     started_at = Column(DateTime, nullable=True)
     submitted_at = Column(DateTime, nullable=True)

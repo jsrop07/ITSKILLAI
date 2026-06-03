@@ -7,7 +7,7 @@ import { Textarea } from "../../components/ui/textarea";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "../../components/ui/card";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue, } from "../../components/ui/select";
 import { ClipboardList, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
-import { applicantsApi } from "../../../lib/api";
+import { applicantsApi, emailVerificationsApi } from "../../../lib/api";
 import type { ApplicantCreate } from "../../../lib/types";
 
 export default function Apply() {
@@ -15,6 +15,12 @@ export default function Apply() {
   const [submitted, setSubmitted] = useState(false);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
+  const [emailCode, setEmailCode] = useState("");
+  const [emailCodeSent, setEmailCodeSent] = useState(false);
+  const [emailVerified, setEmailVerified] = useState(false);
+  const [emailSending, setEmailSending] = useState(false);
+  const [emailVerifying, setEmailVerifying] = useState(false);
+  const [emailMessage, setEmailMessage] = useState("");
   const [form, setForm] = useState<ApplicantCreate>({
     name: "",
     email: "",
@@ -24,9 +30,67 @@ export default function Apply() {
     tech_stack: "",
   });
 
+  const handleSendEmailCode = async () => {
+    if (!form.email) {
+      setError("이메일을 먼저 입력해주세요.");
+      return;
+    }
+
+    const emailDomain = form.email.split("@")[1]?.toLowerCase();
+    if (!["gmail.com", "naver.com"].includes(emailDomain)) {
+      setError("Gmail 또는 Naver 이메일만 사용할 수 있습니다.");
+      return;
+    }
+
+    setError("");
+    setEmailMessage("");
+    setEmailSending(true);
+
+    try {
+      const result = await emailVerificationsApi.send(form.email);
+      setEmailCodeSent(true);
+      setEmailVerified(false);
+      setEmailMessage(result.message || "인증코드가 발송되었습니다.");
+    } catch (err: any) {
+      setError(err.response?.data?.detail || "인증코드 발송 중 오류가 발생했습니다.");
+    } finally {
+      setEmailSending(false);
+    }
+  };
+
+  const handleVerifyEmailCode = async () => {
+    if (!form.email) {
+      setError("이메일을 먼저 입력해주세요.");
+      return;
+    }
+
+    if (!emailCode) {
+      setError("인증코드를 입력해주세요.");
+      return;
+    }
+
+    setError("");
+    setEmailMessage("");
+    setEmailVerifying(true);
+
+    try {
+      const result = await emailVerificationsApi.verify(form.email, emailCode);
+      setEmailVerified(true);
+      setEmailMessage(result.message || "이메일 인증이 완료되었습니다.");
+    } catch (err: any) {
+      setEmailVerified(false);
+      setError(err.response?.data?.detail || "이메일 인증 확인 중 오류가 발생했습니다.");
+    } finally {
+      setEmailVerifying(false);
+    }
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!form.name || !form.email) return setError("이름과 이메일은 필수입니다.");
+    if (!emailVerified) {
+      return setError("이메일 인증을 완료한 후 신청할 수 있습니다.");
+    }
     setError("");
     setLoading(true);
     try {
@@ -60,9 +124,9 @@ export default function Apply() {
               >
                 응시자 로그인으로 이동
               </Button>
-              <Button variant="outline" onClick={() => { setSubmitted(false); setForm({ name: "", email: "", phone: "", target_role: "", experience_level: "", tech_stack: "" }); }}>
+              {/* <Button variant="outline" onClick={() => { setSubmitted(false); setForm({ name: "", email: "", phone: "", target_role: "", experience_level: "", tech_stack: "" }); }}>
                 추가 신청
-              </Button>
+              </Button> */}
             </div>
           </CardContent>
         </Card>
@@ -110,14 +174,59 @@ export default function Apply() {
                 </div>
                 <div className="space-y-2">
                   <Label htmlFor="apply-email">이메일 *</Label>
-                  <Input
-                    id="apply-email"
-                    type="email"
-                    value={form.email}
-                    onChange={(e) => setForm({ ...form, email: e.target.value })}
-                    placeholder="example@email.com"
-                    required
-                  />
+
+                  <div className="flex gap-2">
+                    <Input
+                      id="apply-email"
+                      type="email"
+                      value={form.email}
+                      onChange={(e) => {
+                        setForm({ ...form, email: e.target.value });
+                        setEmailVerified(false);
+                        setEmailCodeSent(false);
+                        setEmailCode("");
+                        setEmailMessage("");
+                      }}
+                      placeholder="example@gmail.com 또는 example@naver.com"
+                      required
+                      disabled={emailVerified}
+                    />
+
+                    <Button
+                      type="button"
+                      variant="outline"
+                      onClick={handleSendEmailCode}
+                      disabled={emailSending || emailVerified}
+                    >
+                      {emailSending ? <Loader2 className="size-4 animate-spin" /> : "인증코드 발송"}
+                    </Button>
+                  </div>
+
+                  {emailCodeSent && !emailVerified && (
+                    <div className="flex gap-2">
+                      <Input
+                        value={emailCode}
+                        onChange={(e) => setEmailCode(e.target.value)}
+                        placeholder="인증코드 6자리"
+                        maxLength={6}
+                      />
+
+                      <Button
+                        type="button"
+                        variant="outline"
+                        onClick={handleVerifyEmailCode}
+                        disabled={emailVerifying}
+                      >
+                        {emailVerifying ? <Loader2 className="size-4 animate-spin" /> : "인증 확인"}
+                      </Button>
+                    </div>
+                  )}
+
+                  {emailMessage && (
+                    <p className={emailVerified ? "text-sm text-green-600" : "text-sm text-sky-600"}>
+                      {emailMessage}
+                    </p>
+                  )}
                 </div>
               </div>
 
@@ -163,7 +272,7 @@ export default function Apply() {
               <Button
                 type="submit"
                 className="w-full h-12 bg-sky-600 hover:bg-sky-700 text-base font-medium"
-                disabled={loading}
+                disabled={loading || !emailVerified}
               >
                 {loading ? <Loader2 className="size-5 animate-spin mr-2" /> : null}
                 시험 신청하기
