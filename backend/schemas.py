@@ -165,6 +165,7 @@ class DiagnosisBase(BaseModel):
     result_points: Optional[str] = None
     result_texts: Optional[str] = None
     result_comments: Optional[str] = None
+    is_direct_enabled: bool = False
 
 class DiagnosisCreate(DiagnosisBase):
     pass
@@ -182,6 +183,7 @@ class DiagnosisUpdate(BaseModel):
     result_points: Optional[str] = None
     result_texts: Optional[str] = None
     result_comments: Optional[str] = None
+    is_direct_enabled: Optional[bool] = None
 
 class DiagnosisRead(DiagnosisBase):
     diagnosis_id: int
@@ -332,6 +334,11 @@ class RecordRead(BaseModel):
     competency_breakdown_json: Optional[Any] = None
     summary_comment: Optional[str] = None
     result_visible: bool
+
+    entry_type: Optional[str] = "admin_invite"
+    ai_report_requested_at: Optional[datetime] = None
+    ai_report_generated: bool = False
+
     created_at: datetime
     updated_at: datetime
     question_snapshot_json: Optional[Any] = None
@@ -531,6 +538,48 @@ class ExamResultResponse(BaseModel):
     submitted_at: Optional[datetime] = None
     analysis_report: Optional[ResultAnalysisReport] = None
     summary_comment: Optional[str] = None
+
+class DirectCbtLoginRequest(BaseModel):
+    name: str
+    email: EmailStr
+
+
+class DirectCbtLoginResponse(BaseModel):
+    applicant_id: int
+    name: str
+    email: str
+
+
+class DirectCbtDiagnosisItem(BaseModel):
+    diagnosis_id: int
+    title: str
+    description: Optional[str] = None
+    level: Optional[DiagnosisLevelEnum] = None
+    duration_minutes: int
+    pass_score: int
+    question_count: int
+
+
+class DirectCbtStartRequest(BaseModel):
+    diagnosis_id: int
+
+
+class DirectCbtStartResponse(BaseModel):
+    record_id: int
+    diagnosis_id: int
+    exam_token: str
+    duration_minutes: int
+    question_count: int
+
+
+class DirectCbtSubmitResponse(BaseModel):
+    message: str
+    record_id: int
+    total_score: float
+    pass_yn: bool
+    ai_report_generated: bool = False
+    ai_report_limit_exceeded: bool = False
+    ai_report_remaining_today: int = 0
 
 
 # ──────────────────────────────────────────────

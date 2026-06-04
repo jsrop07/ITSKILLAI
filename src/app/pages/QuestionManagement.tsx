@@ -109,7 +109,10 @@ export default function QuestionManagement() {
     setLoading(true);
 
     try {
-      const params: any = {};
+      const params: any = {
+        skip: 0,
+        limit: 1000,
+      };
 
       if (searchTerm) params.search = searchTerm;
       if (typeFilter !== "all") params.question_type = typeFilter;
