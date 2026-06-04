@@ -62,7 +62,26 @@ def update_diagnosis(diagnosis_id: int, data: DiagnosisUpdate, db: Session = Dep
     db.refresh(diagnosis)
     return diagnosis
 
+@router.patch("/{diagnosis_id}/direct-enabled", response_model=DiagnosisRead)
+def update_direct_enabled(
+    diagnosis_id: int,
+    is_direct_enabled: bool,
+    db: Session = Depends(get_db),
+    current_admin: Admin = Depends(get_current_admin),
+):
+    diagnosis = db.query(Diagnosis).filter(
+        Diagnosis.diagnosis_id == diagnosis_id
+    ).first()
 
+    if not diagnosis:
+        raise HTTPException(status_code=404, detail="시험을 찾을 수 없습니다.")
+
+    diagnosis.is_direct_enabled = is_direct_enabled
+    db.commit()
+    db.refresh(diagnosis)
+
+    return diagnosis
+    
 @router.delete("/{diagnosis_id}")
 def delete_diagnosis(diagnosis_id: int, db: Session = Depends(get_db)):
     from models import Record, Applicant

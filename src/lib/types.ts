@@ -106,6 +106,7 @@ export interface Diagnosis {
   pass_score: number;
   status: DiagnosisStatus;
   question_idxs?: string;
+  is_direct_enabled?: boolean;
   created_by?: number;
   created_at: string;
   updated_at: string;
@@ -120,10 +121,12 @@ export interface DiagnosisCreate {
   pass_score?: number;
   status?: DiagnosisStatus;
   question_idxs?: string;
+  is_direct_enabled?: boolean;
 }
 
 export interface DiagnosisUpdate extends Partial<DiagnosisCreate> {
   question_count?: number;
+  is_direct_enabled?: boolean;
 }
 
 export interface RAGEvidenceDocument {
@@ -246,6 +249,9 @@ export interface ExamRecord {
   competency_breakdown_json?: Record<string, number>;
   summary_comment?: string | null;
   result_visible: boolean;
+  entry_type?: "admin_invite" | "direct_cbt" | string;
+  ai_report_requested_at?: string | null;
+  ai_report_generated?: boolean;
   violation_count?: number;
   violation_log_json?: any;
   created_at: string;
@@ -368,6 +374,49 @@ export interface ExamResultResponse {
   submitted_at?: string;
   analysis_report?: ResultAnalysisReport | null;
   summary_comment?: string | null;
+}
+
+export interface DirectCbtLoginRequest {
+  name: string;
+  email: string;
+}
+
+export interface DirectCbtLoginResponse {
+  applicant_id: number;
+  name: string;
+  email: string;
+}
+
+export interface DirectCbtDiagnosisItem {
+  diagnosis_id: number;
+  title: string;
+  description?: string | null;
+  level?: DiagnosisLevel;
+  duration_minutes: number;
+  pass_score: number;
+  question_count: number;
+}
+
+export interface DirectCbtStartRequest {
+  diagnosis_id: number;
+}
+
+export interface DirectCbtStartResponse {
+  record_id: number;
+  diagnosis_id: number;
+  exam_token: string;
+  duration_minutes: number;
+  question_count: number;
+}
+
+export interface DirectCbtSubmitResponse {
+  message: string;
+  record_id: number;
+  total_score: number;
+  pass_yn: boolean;
+  ai_report_generated: boolean;
+  ai_report_limit_exceeded: boolean;
+  ai_report_remaining_today: number;
 }
 
 export interface AIResultReportResponse {
