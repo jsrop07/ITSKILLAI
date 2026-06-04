@@ -1,6 +1,35 @@
 import axios from "axios";
 
-import type { Admin, Applicant, ApplicantCreate, Diagnosis, DiagnosisCreate, DiagnosisUpdate, Question, QuestionCreate, ExamRecord, RecordCreate, PageContent, PageContentUpdate, DashboardStats, RecentExamRecord, WeakCompetency, ExamLoginResponse, QuestionForExam, AnswerSubmit, ExamResultResponse, AnswerDetail, GenerateAIQuestionsV2Payload, GenerateAIQuestionsV2Response, AIResultReportResponse, ExamStatusResponse, } from "./types";
+import type {
+  Admin,
+  Applicant,
+  ApplicantCreate,
+  Diagnosis,
+  DiagnosisCreate,
+  DiagnosisUpdate,
+  Question,
+  QuestionCreate,
+  ExamRecord,
+  RecordCreate,
+  PageContent,
+  PageContentUpdate,
+  DashboardStats,
+  RecentExamRecord,
+  WeakCompetency,
+  ExamLoginResponse,
+  QuestionForExam,
+  AnswerSubmit,
+  ExamResultResponse,
+  AnswerDetail,
+  GenerateAIQuestionsV2Payload,
+  GenerateAIQuestionsV2Response,
+  AIResultReportResponse,
+  ExamStatusResponse,
+  DirectCbtLoginResponse,
+  DirectCbtDiagnosisItem,
+  DirectCbtStartResponse,
+  DirectCbtSubmitResponse,
+} from "./types";
 
 // ──────────────────────────────────────────────
 // Axios 인스턴스
@@ -31,7 +60,8 @@ api.interceptors.response.use(
       path.startsWith("/test-room") ||
       path.startsWith("/test-submit") ||
       path.startsWith("/test-result") ||
-      path.startsWith("/apply");
+      path.startsWith("/apply") ||
+      path.startsWith("/direct-assessment");
 
     if (status === 401 && !isApplicantPage) {
       localStorage.removeItem("admin_token");
@@ -148,26 +178,49 @@ export const diagnosesApi = {
     const res = await api.get<Diagnosis[]>("/api/diagnoses", { params });
     return res.data;
   },
+
   get: async (id: number): Promise<Diagnosis> => {
     const res = await api.get<Diagnosis>(`/api/diagnoses/${id}`);
     return res.data;
   },
+
   create: async (data: DiagnosisCreate): Promise<Diagnosis> => {
     const res = await api.post<Diagnosis>("/api/diagnoses", data);
     return res.data;
   },
+
   update: async (id: number, data: DiagnosisUpdate): Promise<Diagnosis> => {
     const res = await api.put<Diagnosis>(`/api/diagnoses/${id}`, data);
     return res.data;
   },
+
+  updateDirectEnabled: async (
+    diagnosisId: number,
+    isDirectEnabled: boolean
+  ): Promise<Diagnosis> => {
+    const res = await api.patch<Diagnosis>(
+      `/api/diagnoses/${diagnosisId}/direct-enabled`,
+      null,
+      {
+        params: { is_direct_enabled: isDirectEnabled },
+      }
+    );
+    return res.data;
+  },
+
   delete: async (id: number): Promise<void> => {
     await api.delete(`/api/diagnoses/${id}`);
   },
+
   getQuestions: async (diagnosisId: number): Promise<any[]> => {
     const res = await api.get<any[]>(`/api/diagnoses/${diagnosisId}/questions`);
     return res.data;
   },
-  addQuestion: async (diagnosisId: number, data: { question_id: number; order_no: number; score: number }) => {
+
+  addQuestion: async (
+    diagnosisId: number,
+    data: { question_id: number; order_no: number; score: number }
+  ) => {
     const res = await api.post(`/api/diagnoses/${diagnosisId}/questions`, {
       diagnosis_id: diagnosisId,
       ...data,
@@ -187,6 +240,9 @@ export const questionsApi = {
     source_type?: string;
     competency_type?: string;
     difficulty?: string;
+    ai_generation_type?: string;
+    skip?: number;
+    limit?: number;
   }): Promise<Question[]> => {
     const res = await api.get("/api/questions", { params });
     const body = res.data;
@@ -358,6 +414,71 @@ export const examApi = {
   },
   getResult: async (record_id: number): Promise<ExamResultResponse> => {
     const res = await api.get<ExamResultResponse>(`/api/exam/result/${record_id}`);
+    return res.data;
+  },
+};
+
+export const directCbtApi = {
+  login: async (
+    name: string,
+    email: string
+  ): Promise<DirectCbtLoginResponse> => {
+    const res = await api.post<DirectCbtLoginResponse>("/api/direct-cbt/login", {
+      name,
+      email,
+    });
+    return res.data;
+  },
+
+  listDiagnoses: async (): Promise<DirectCbtDiagnosisItem[]> => {
+    const res = await api.get<DirectCbtDiagnosisItem[]>("/api/direct-cbt/diagnoses");
+    return res.data;
+  },
+
+  startRecord: async (
+    diagnosisId: number,
+    applicantId: number
+  ): Promise<DirectCbtStartResponse> => {
+    const res = await api.post<DirectCbtStartResponse>(
+      "/api/direct-cbt/records",
+      {
+        diagnosis_id: diagnosisId,
+      },
+      {
+        params: { applicant_id: applicantId },
+      }
+    );
+    return res.data;
+  },
+
+  submit: async (
+    recordId: number,
+    answers: AnswerSubmit[],
+    applicantId: number
+  ): Promise<DirectCbtSubmitResponse> => {
+    const res = await api.post<DirectCbtSubmitResponse>(
+      "/api/direct-cbt/submit",
+      {
+        record_id: recordId,
+        answers,
+      },
+      {
+        params: { applicant_id: applicantId },
+      }
+    );
+    return res.data;
+  },
+
+  getResult: async (
+    recordId: number,
+    applicantId: number
+  ): Promise<ExamResultResponse> => {
+    const res = await api.get<ExamResultResponse>(
+      `/api/direct-cbt/result/${recordId}`,
+      {
+        params: { applicant_id: applicantId },
+      }
+    );
     return res.data;
   },
 };

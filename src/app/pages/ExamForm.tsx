@@ -30,6 +30,7 @@ export default function ExamForm() {
     duration_minutes: 60,
     pass_score: 70,
     status: "draft",
+    is_direct_enabled: false,
   });
 
   // Questions State
@@ -49,7 +50,10 @@ export default function ExamForm() {
     const fetchData = async () => {
       setLoading(true);
       try {
-        const qList = await questionsApi.list();
+        const qList = await questionsApi.list({
+          review_status: "approved",
+          limit: 1000,
+        } as any);
         setAllQuestions(qList);
 
         if (isEdit) {
@@ -62,6 +66,7 @@ export default function ExamForm() {
             duration_minutes: diag.duration_minutes,
             pass_score: diag.pass_score,
             status: diag.status,
+            is_direct_enabled: Boolean(diag.is_direct_enabled),
           });
 
           const dqList = await diagnosesApi.getQuestions(Number(id));
@@ -279,6 +284,26 @@ export default function ExamForm() {
                     <SelectItem value="inactive">비활성</SelectItem>
                   </SelectContent>
                 </Select>
+              </div>
+              <div className="flex items-center space-x-2 rounded-lg border border-slate-200 p-3">
+                <Checkbox
+                  id="is_direct_enabled"
+                  checked={Boolean(form.is_direct_enabled)}
+                  onCheckedChange={(checked) =>
+                    setForm({
+                      ...form,
+                      is_direct_enabled: checked === true,
+                    })
+                  }
+                />
+                <div className="grid gap-1.5 leading-none">
+                  <Label htmlFor="is_direct_enabled">
+                    직접 CBT 공개
+                  </Label>
+                  <p className="text-sm text-slate-500">
+                    체크하면 숨겨진 직접 응시 페이지에서 이 시험지를 선택할 수 있습니다.
+                  </p>
+                </div>
               </div>
             </CardContent>
           </Card>

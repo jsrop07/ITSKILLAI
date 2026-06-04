@@ -121,6 +121,7 @@ class Diagnosis(Base):
     result_points = Column(String(50), nullable=True)
     result_texts = Column(String(255), nullable=True)
     result_comments = Column(String(510), nullable=True)
+    is_direct_enabled = Column(Boolean, default=False, nullable=False)
     created_by = Column(Integer, ForeignKey("admins.admin_id"), nullable=True)
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
@@ -185,6 +186,11 @@ class Record(Base):
     competency_breakdown_json = Column(JSON, nullable=True)
     summary_comment = Column(Text, nullable=True)
     result_visible = Column(Boolean, default=False, nullable=False)
+
+    entry_type = Column(String(30), default="admin_invite", nullable=False)
+    ai_report_requested_at = Column(DateTime, nullable=True)
+    ai_report_generated = Column(Boolean, default=False, nullable=False)
+
     created_at = Column(DateTime, server_default=func.now(), nullable=False)
     updated_at = Column(DateTime, server_default=func.now(), onupdate=func.now(), nullable=False)
 

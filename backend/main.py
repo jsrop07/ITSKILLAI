@@ -2,7 +2,7 @@ from fastapi import FastAPI
 from database import engine, Base
 from fastapi.middleware.cors import CORSMiddleware
 # Routers
-from routers import auth, dashboard, applicants, diagnoses, questions, records, exam, page_contents, ai_questions, ai_documents, email_verifications
+from routers import auth, dashboard, applicants, diagnoses, questions, records, exam, page_contents, ai_questions, ai_documents, email_verifications, direct_cbt
 
 # Create all tables
 Base.metadata.create_all(bind=engine)
@@ -37,6 +37,7 @@ app.include_router(diagnoses.router)
 app.include_router(questions.router)
 app.include_router(records.router)
 app.include_router(exam.router)
+app.include_router(direct_cbt.router)
 app.include_router(page_contents.router)
 app.include_router(ai_questions.router)
 app.include_router(ai_documents.router)

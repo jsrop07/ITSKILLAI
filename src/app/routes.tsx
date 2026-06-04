@@ -22,6 +22,12 @@ import TestRoom from "./pages/applicant/TestRoom";
 import TestSubmit from "./pages/applicant/TestSubmit";
 import TestResult from "./pages/applicant/TestResult";
 
+// Direct pages
+import DirectAssessmentLogin from "./pages/direct-assessment/DirectAssessmentLogin";
+import DirectAssessmentExamList from "./pages/direct-assessment/DirectAssessmentExamList";
+import DirectAssessmentTake from "./pages/direct-assessment/DirectAssessmentTake";
+import DirectAssessmentResult from "./pages/direct-assessment/DirectAssessmentResult";
+
 export const router = createBrowserRouter([
   // ─────────────────────────────────────────
   // 응시자 공개 페이지 (레이아웃 없음)
@@ -32,6 +38,27 @@ export const router = createBrowserRouter([
   { path: "/test-room", Component: TestRoom },
   { path: "/test-submit", Component: TestSubmit },
   { path: "/test-result", Component: TestResult },
+
+  {
+    path: "/direct-assessment",
+    element: <DirectAssessmentLogin />,
+  },
+  {
+    path: "/direct-assessment/login",
+    element: <DirectAssessmentLogin />,
+  },
+  {
+    path: "/direct-assessment/exams",
+    element: <DirectAssessmentExamList />,
+  },
+  {
+    path: "/direct-assessment/take/:recordId",
+    element: <DirectAssessmentTake />,
+  },
+  {
+    path: "/direct-assessment/result/:recordId",
+    element: <DirectAssessmentResult />,
+  },
 
   // ─────────────────────────────────────────
   // 관리자 영역 (사이드바 레이아웃)
