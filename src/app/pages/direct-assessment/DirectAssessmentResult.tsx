@@ -24,8 +24,6 @@ export default function DirectAssessmentResult() {
     localStorage.getItem("direct_ai_report_generated") === "true";
   const aiReportLimitExceeded =
     localStorage.getItem("direct_ai_report_limit_exceeded") === "true";
-  const remainingToday =
-    localStorage.getItem("direct_ai_report_remaining_today");
 
   useEffect(() => {
     if (!applicantId || !parsedRecordId) {
@@ -69,6 +67,41 @@ export default function DirectAssessmentResult() {
     );
   };
 
+  const formatAnswerLabel = (value: unknown) => {
+    if (value === null || value === undefined || value === "") return "-";
+
+    const text = String(value);
+
+    // 이미 "1번" 형태면 그대로 사용
+    if (text.endsWith("번")) return text;
+
+    // 숫자면 "1번" 형태로 표시
+    if (/^\d+$/.test(text)) return `${text}번`;
+
+    return text;
+  };
+
+  const normalizeChoices = (choices?: unknown): string[] => {
+    if (!choices) return [];
+
+    if (Array.isArray(choices)) {
+      return choices.map((choice) => String(choice));
+    }
+
+    if (typeof choices === "string") {
+      try {
+        const parsed = JSON.parse(choices);
+        if (Array.isArray(parsed)) {
+          return parsed.map((choice) => String(choice));
+        }
+      } catch {
+        return [];
+      }
+    }
+
+    return [];
+  };
+
   if (loading) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-slate-50">
@@ -110,8 +143,8 @@ export default function DirectAssessmentResult() {
       <div className="mx-auto max-w-4xl space-y-5">
         <Card
           className={`border shadow-sm ${result.pass_yn
-              ? "border-emerald-200 bg-emerald-50/70"
-              : "border-rose-200 bg-rose-50/70"
+            ? "border-emerald-200 bg-emerald-50/70"
+            : "border-rose-200 bg-rose-50/70"
             }`}
         >
           <CardContent className="p-4">
@@ -130,7 +163,7 @@ export default function DirectAssessmentResult() {
 
                 <div>
                   <p className="text-xs text-slate-500">
-                    {result.applicant_name}님의 직접 CBT 결과
+                    체험형 CBT 결과
                   </p>
                   <h1 className="text-xl font-bold text-slate-900">
                     {result.diagnosis_title}
@@ -174,9 +207,11 @@ export default function DirectAssessmentResult() {
               <div className="flex items-start gap-3">
                 <Sparkles className="size-5 text-sky-600 mt-0.5" />
                 <div>
-                  <p className="font-medium text-sky-800">AI 종합 진단이 생성되었습니다.</p>
+                  <p className="font-medium text-sky-800">
+                    AI 종합 진단이 생성되었습니다.
+                  </p>
                   <p className="mt-1 text-sm text-sky-700">
-                    오늘 남은 AI 진단 가능 횟수: {remainingToday ?? "0"}회
+                    체험형 진단은 이전 기록과 비교하지 않고 현재 결과 기준으로 분석됩니다.
                   </p>
                 </div>
               </div>
@@ -188,10 +223,10 @@ export default function DirectAssessmentResult() {
           <Card className="border-amber-200 bg-amber-50 shadow-sm">
             <CardContent className="p-4">
               <p className="font-medium text-amber-800">
-                오늘 AI 진단 리포트 생성 가능 횟수 3회를 모두 사용했습니다.
+                현재 AI 진단 리포트를 생성할 수 없습니다.
               </p>
               <p className="mt-1 text-sm text-amber-700">
-                기본 채점 결과와 정량 분석은 확인할 수 있습니다. AI 종합 진단은 내일 다시 이용할 수 있습니다.
+                기본 채점 결과와 정량 분석은 확인할 수 있습니다.
               </p>
             </CardContent>
           </Card>
@@ -215,10 +250,10 @@ export default function DirectAssessmentResult() {
                         <span className="font-medium text-slate-700">{name}</span>
                         <span
                           className={`font-semibold ${score >= 70
-                              ? "text-green-600"
-                              : score >= 50
-                                ? "text-amber-600"
-                                : "text-red-500"
+                            ? "text-green-600"
+                            : score >= 50
+                              ? "text-amber-600"
+                              : "text-red-500"
                             }`}
                         >
                           {score}%
@@ -227,10 +262,10 @@ export default function DirectAssessmentResult() {
                       <div className="h-2.5 bg-slate-100 rounded-full overflow-hidden">
                         <div
                           className={`h-full rounded-full transition-all ${score >= 70
-                              ? "bg-green-500"
-                              : score >= 50
-                                ? "bg-amber-500"
-                                : "bg-red-500"
+                            ? "bg-green-500"
+                            : score >= 50
+                              ? "bg-amber-500"
+                              : "bg-red-500"
                             }`}
                           style={{ width: `${score}%` }}
                         />
@@ -312,10 +347,10 @@ export default function DirectAssessmentResult() {
                         <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
                           <div
                             className={`h-full rounded-full ${item.accuracy_rate >= 70
-                                ? "bg-green-500"
-                                : item.accuracy_rate >= 50
-                                  ? "bg-amber-500"
-                                  : "bg-red-500"
+                              ? "bg-green-500"
+                              : item.accuracy_rate >= 50
+                                ? "bg-amber-500"
+                                : "bg-red-500"
                               }`}
                             style={{ width: `${item.accuracy_rate}%` }}
                           />
@@ -344,10 +379,10 @@ export default function DirectAssessmentResult() {
                         <div className="h-2.5 overflow-hidden rounded-full bg-slate-100">
                           <div
                             className={`h-full rounded-full ${item.accuracy_rate >= 70
-                                ? "bg-green-500"
-                                : item.accuracy_rate >= 50
-                                  ? "bg-amber-500"
-                                  : "bg-red-500"
+                              ? "bg-green-500"
+                              : item.accuracy_rate >= 50
+                                ? "bg-amber-500"
+                                : "bg-red-500"
                               }`}
                             style={{ width: `${item.accuracy_rate}%` }}
                           />
@@ -419,6 +454,7 @@ export default function DirectAssessmentResult() {
                   <div className="space-y-3">
                     {wrongAnswers.map((item: WrongAnswerItem) => {
                       const opened = openWrongIds.includes(item.question_id);
+                      const choices = normalizeChoices(item.choices_json);
 
                       return (
                         <div
@@ -447,25 +483,48 @@ export default function DirectAssessmentResult() {
                           </button>
 
                           {opened && (
-                            <div className="border-t border-slate-100 px-4 py-4 text-sm text-slate-700 space-y-3">
+                            <div className="border-t border-slate-100 bg-slate-50 px-4 py-4 text-sm text-slate-700 space-y-3">
                               {item.question_body && (
-                                <div className="rounded-lg bg-slate-50 p-3 whitespace-pre-wrap">
-                                  {item.question_body}
+                                <div className="rounded-lg bg-white p-3">
+                                  <p className="mb-2 text-xs font-semibold text-slate-500">
+                                    문제 본문
+                                  </p>
+                                  <div className="whitespace-pre-wrap leading-6">
+                                    {item.question_body}
+                                  </div>
+                                </div>
+                              )}
+
+                              {choices.length > 0 && (
+                                <div className="rounded-lg bg-white p-3">
+                                  <p className="mb-2 text-xs font-semibold text-slate-500">
+                                    선택지
+                                  </p>
+                                  <ol className="list-decimal space-y-1 pl-5 leading-6">
+                                    {choices.map((choice, index) => (
+                                      <li
+                                        key={`${item.question_id}-choice-${index}`}
+                                        className="whitespace-pre-wrap"
+                                      >
+                                        {choice}
+                                      </li>
+                                    ))}
+                                  </ol>
                                 </div>
                               )}
 
                               <div className="grid gap-2 md:grid-cols-2">
                                 <div className="rounded-lg bg-rose-50 p-3">
                                   <p className="text-xs font-medium text-rose-600">내 답안</p>
-                                  <p className="mt-1 text-rose-900">
-                                    {String(item.submitted_answer ?? "-")}
+                                  <p className="mt-1 font-semibold text-rose-900">
+                                    {formatAnswerLabel(item.submitted_answer)}
                                   </p>
                                 </div>
 
                                 <div className="rounded-lg bg-emerald-50 p-3">
                                   <p className="text-xs font-medium text-emerald-600">정답</p>
-                                  <p className="mt-1 text-emerald-900">
-                                    {String(item.correct_answer ?? "-")}
+                                  <p className="mt-1 font-semibold text-emerald-900">
+                                    {formatAnswerLabel(item.correct_answer)}
                                   </p>
                                 </div>
                               </div>
@@ -473,7 +532,9 @@ export default function DirectAssessmentResult() {
                               {item.explanation && (
                                 <div className="rounded-lg bg-blue-50 p-3 text-blue-900">
                                   <p className="text-xs font-medium text-blue-600 mb-1">해설</p>
-                                  {item.explanation}
+                                  <div className="whitespace-pre-wrap leading-6">
+                                    {item.explanation}
+                                  </div>
                                 </div>
                               )}
                             </div>
