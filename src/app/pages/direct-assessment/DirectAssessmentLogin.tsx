@@ -11,16 +11,15 @@ import { directCbtApi } from "../../../lib/api";
 export default function DirectAssessmentLogin() {
     const navigate = useNavigate();
 
-    const [name, setName] = useState("");
-    const [email, setEmail] = useState("");
+    const [accessCode, setAccessCode] = useState("");
     const [loading, setLoading] = useState(false);
     const [error, setError] = useState("");
 
     const handleLogin = async (e: React.FormEvent) => {
         e.preventDefault();
 
-        if (!name.trim() || !email.trim()) {
-            setError("이름과 이메일을 입력해 주세요.");
+        if (!accessCode.trim()) {
+            setError("체험 코드를 입력해 주세요.");
             return;
         }
 
@@ -28,15 +27,27 @@ export default function DirectAssessmentLogin() {
         setLoading(true);
 
         try {
-            const result = await directCbtApi.login(name, email);
+            const result = await directCbtApi.login(accessCode.trim());
 
+            // 이전 direct-cbt 진행 정보 제거
+            // record_id와 applicant_id가 서로 꼬이는 문제 방지
+            localStorage.removeItem("direct_applicant_id");
+            localStorage.removeItem("direct_applicant_name");
+            localStorage.removeItem("direct_applicant_email");
+            localStorage.removeItem("direct_record_id");
+            localStorage.removeItem("direct_exam_token");
+            localStorage.removeItem("direct_ai_report_generated");
+            localStorage.removeItem("direct_ai_report_limit_exceeded");
+            localStorage.removeItem("direct_ai_report_remaining_today");
+
+            // 백엔드에서 자동 생성한 체험 응시자 정보 저장
             localStorage.setItem("direct_applicant_id", String(result.applicant_id));
             localStorage.setItem("direct_applicant_name", result.name);
             localStorage.setItem("direct_applicant_email", result.email);
 
             navigate("/direct-assessment/exams");
         } catch (err: any) {
-            setError(err.response?.data?.detail || "직접 진단 로그인 중 오류가 발생했습니다.");
+            setError(err.response?.data?.detail || "체험 코드 확인 중 오류가 발생했습니다.");
         } finally {
             setLoading(false);
         }
@@ -59,8 +70,8 @@ export default function DirectAssessmentLogin() {
                     </h1>
 
                     <p className="text-slate-500 mt-2 leading-relaxed">
-                        관리자 배정 없이 공개된 시험지를 선택해<br />
-                        바로 응시하고 결과를 확인할 수 있습니다.
+                        체험 코드를 입력하면 관리자 배정 없이<br />
+                        공개된 시험지를 선택해 바로 응시할 수 있습니다.
                     </p>
                 </div>
 
@@ -69,8 +80,8 @@ export default function DirectAssessmentLogin() {
                         <ShieldCheck className="size-5 flex-shrink-0 text-sky-600" />
                         <div className="space-y-1">
                             <p className="font-medium">이용 안내</p>
-                            <p>• 같은 이메일 기준 하루 3회까지 AI 진단 리포트가 제공됩니다.</p>
-                            <p>• 이후에는 기본 채점 결과만 확인할 수 있습니다.</p>
+                            <p>• 체험 코드를 입력하면 관리자 승인 없이 진단을 진행할 수 있습니다.</p>
+                            <p>• 체험형 결과는 이전 기록과 비교하지 않고 현재 결과 기준으로 분석됩니다.</p>
                         </div>
                     </div>
                 </div>
@@ -79,30 +90,18 @@ export default function DirectAssessmentLogin() {
                     <CardContent className="pt-6">
                         <form onSubmit={handleLogin} className="space-y-5">
                             <div className="space-y-2">
-                                <Label htmlFor="direct-name">이름</Label>
+                                <Label htmlFor="direct-access-code">체험 코드</Label>
                                 <Input
-                                    id="direct-name"
-                                    value={name}
-                                    onChange={(e) => setName(e.target.value)}
-                                    placeholder="홍길동"
-                                    required
-                                    className="h-11"
-                                />
-                            </div>
-
-                            <div className="space-y-2">
-                                <Label htmlFor="direct-email">이메일</Label>
-                                <Input
-                                    id="direct-email"
-                                    type="email"
-                                    value={email}
-                                    onChange={(e) => setEmail(e.target.value)}
-                                    placeholder="example@gmail.com"
+                                    id="direct-access-code"
+                                    type="password"
+                                    value={accessCode}
+                                    onChange={(e) => setAccessCode(e.target.value)}
+                                    placeholder="체험 코드를 입력해 주세요"
                                     required
                                     className="h-11"
                                 />
                                 <p className="text-xs text-slate-400">
-                                    입력한 이메일 기준으로 AI 진단 횟수가 관리됩니다.
+                                    포트폴리오 검토용 체험 코드를 입력하면 바로 진단을 시작할 수 있습니다.
                                 </p>
                             </div>
 

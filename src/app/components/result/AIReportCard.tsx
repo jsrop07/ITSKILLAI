@@ -16,19 +16,25 @@ type ParsedReportItem =
     | { type: "section"; key: number; text: string }
     | { type: "number"; key: number; number: string; text: string }
     | { type: "bullet"; key: number; text: string }
+    | { type: "nestedBullet"; key: number; text: string }
     | { type: "paragraph"; key: number; text: string };
+
+const SECTION_TITLES = [
+    "[종합 진단]",
+    "[체험형 분석 기준]",
+    "[이전 대비 변화]",
+    "[부족한 세부 영역]",
+    "[복습 참고 방향]",
+];
 
 function parseReport(report: string): ParsedReportItem[] {
     const lines = report
         .split("\n")
-        .map((line) => line.trim())
-        .filter(Boolean);
+        .map((line) => line.replace(/\s+$/, ""))
+        .filter((line) => line.trim());
 
     return lines.map((line, index) => {
-        const isSection =
-            line === "[종합 진단]" ||
-            line === "[부족한 세부 영역]" ||
-            line === "[추천 학습 순서]";
+        const isSection = SECTION_TITLES.includes(line);
 
         if (isSection) {
             return {
@@ -47,11 +53,19 @@ function parseReport(report: string): ParsedReportItem[] {
             };
         }
 
-        if (line.startsWith("-")) {
+        if (/^\s{2,}-/.test(line)) {
+            return {
+                type: "nestedBullet",
+                key: index,
+                text: line.replace(/^\s*-\s*/, ""),
+            };
+        }
+
+        if (line.trim().startsWith("-")) {
             return {
                 type: "bullet",
                 key: index,
-                text: line.replace(/^-/, "").trim(),
+                text: line.trim().replace(/^-/, "").trim(),
             };
         }
 
@@ -65,8 +79,9 @@ function parseReport(report: string): ParsedReportItem[] {
 
 function getSectionIndex(text: string) {
     if (text === "종합 진단" || text === "전체 진단 요약") return "1";
-    if (text === "부족한 세부 영역" || text === "부족한 세부 영역 분석") return "2";
-    if (text === "추천 학습 순서") return "3";
+    if (text === "체험형 분석 기준" || text === "이전 대비 변화") return "2";
+    if (text === "부족한 세부 영역" || text === "부족한 세부 영역 분석") return "3";
+    if (text === "복습 참고 방향") return "4";
     return "";
 }
 
@@ -158,6 +173,15 @@ export default function AIReportCard({
                                 return (
                                     <div key={item.key} className="flex gap-2 pl-1">
                                         <span className="mt-2.5 h-1.5 w-1.5 shrink-0 rounded-full bg-blue-500" />
+                                        <p>{item.text}</p>
+                                    </div>
+                                );
+                            }
+
+                            if (item.type === "nestedBullet") {
+                                return (
+                                    <div key={item.key} className="flex gap-2 pl-7 text-sm text-slate-600">
+                                        <span className="mt-2.5 h-1 w-1 shrink-0 rounded-full bg-slate-400" />
                                         <p>{item.text}</p>
                                     </div>
                                 );

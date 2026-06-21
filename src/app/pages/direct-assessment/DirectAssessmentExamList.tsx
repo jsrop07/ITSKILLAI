@@ -3,7 +3,7 @@ import { useNavigate } from "react-router";
 import { Button } from "../../components/ui/button";
 import { Card, CardContent, CardHeader, CardTitle } from "../../components/ui/card";
 import { Badge } from "../../components/ui/badge";
-import { AlertCircle, ArrowRight, Clock, FileText, Loader2, RefreshCcw, UserRound } from "lucide-react";
+import { AlertCircle, ArrowRight, Clock, FileText, Loader2, RefreshCcw } from "lucide-react";
 import { directCbtApi } from "../../../lib/api";
 import type { DirectCbtDiagnosisItem } from "../../../lib/types";
 
@@ -16,8 +16,6 @@ export default function DirectAssessmentExamList() {
     const [error, setError] = useState("");
 
     const applicantId = Number(localStorage.getItem("direct_applicant_id") || 0);
-    const applicantName = localStorage.getItem("direct_applicant_name") || "";
-    const applicantEmail = localStorage.getItem("direct_applicant_email") || "";
 
     const loadDiagnoses = async () => {
         try {
@@ -80,28 +78,21 @@ export default function DirectAssessmentExamList() {
                             공개된 시험지를 선택하면 바로 응시가 시작됩니다.
                         </p>
                     </div>
-
-                    <Card className="border-slate-200 shadow-sm">
-                        <CardContent className="flex items-center gap-3 p-4">
-                            <div className="size-10 rounded-full bg-sky-100 flex items-center justify-center">
-                                <UserRound className="size-5 text-sky-600" />
-                            </div>
-                            <div>
-                                <p className="text-sm font-medium text-slate-800">
-                                    {applicantName || "응시자"}
-                                </p>
-                                <p className="text-xs text-slate-500">{applicantEmail}</p>
-                            </div>
+                    <Card className="border-sky-200 bg-sky-50 shadow-sm">
+                        <CardContent className="p-4">
+                            <p className="text-sm font-medium text-sky-800">
+                                체험 모드
+                            </p>
+                            <p className="mt-1 text-xs text-sky-700">
+                                관리자 승인 없이 공개된 시험지를 선택해 바로 응시할 수 있습니다.
+                            </p>
                         </CardContent>
                     </Card>
                 </div>
 
                 <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-                    <p className="font-medium">AI 진단 이용 제한</p>
-                    <p className="mt-1">
-                        같은 이메일 기준 하루 3회까지 AI 종합 진단 리포트가 생성됩니다.
-                        4회차부터는 점수와 기본 분석만 제공됩니다.
-                    </p>
+                    <p>• 체험형 결과는 이전 기록과 비교하지 않고 현재 결과 기준으로 분석됩니다.</p>
+                    <p className="mt-1">• 체험 응시자 정보는 내부에서 자동 생성되며 화면에는 표시되지 않습니다.</p>
                 </div>
 
                 {error && (
@@ -212,10 +203,20 @@ export default function DirectAssessmentExamList() {
                             localStorage.removeItem("direct_applicant_id");
                             localStorage.removeItem("direct_applicant_name");
                             localStorage.removeItem("direct_applicant_email");
+                            localStorage.removeItem("direct_record_id");
+                            localStorage.removeItem("direct_exam_token");
+                            localStorage.removeItem("direct_ai_report_generated");
+                            localStorage.removeItem("direct_ai_report_limit_exceeded");
+                            localStorage.removeItem("direct_ai_report_remaining_today");
+
+                            Object.keys(localStorage)
+                                .filter((key) => key.startsWith("direct_answers_"))
+                                .forEach((key) => localStorage.removeItem(key));
+
                             navigate("/direct-assessment/login");
                         }}
                     >
-                        다른 이메일로 로그인
+                        체험 코드 다시 입력
                     </Button>
                 </div>
             </div>
