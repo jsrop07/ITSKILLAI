@@ -16,6 +16,12 @@ def get_previous_graded_record(db: Session, current_record: Record) -> Record | 
     - applicants.email UNIQUE를 제거했기 때문에 같은 사람이 재신청하면 applicant_id가 달라질 수 있다.
     - 따라서 이전 기록 비교는 applicant_id가 아니라 같은 email을 가진 applicant들의 record 기준으로 조회한다.
     """
+
+    # direct-cbt는 포트폴리오 체험용이므로 여러 사용자의 기록이 섞이지 않도록
+    # 이전 기록 비교를 하지 않고 현재 결과 기준으로만 AI 리포트를 생성한다.
+    if getattr(current_record, "entry_type", None) == "direct_cbt":
+        return None
+
     current_applicant = db.query(Applicant).filter(
         Applicant.applicant_id == current_record.applicant_id
     ).first()
@@ -37,6 +43,7 @@ def get_previous_graded_record(db: Session, current_record: Record) -> Record | 
 
     query = db.query(Record).filter(
         Record.applicant_id.in_(same_email_applicant_ids),
+        Record.diagnosis_id == current_record.diagnosis_id,
         Record.record_id != current_record.record_id,
         Record.status == "graded",
         Record.submitted_at.isnot(None),
@@ -88,8 +95,12 @@ def compare_with_previous_record(
     current_accuracy = float(current_summary.get("accuracy_rate", 0.0) or 0.0)
 
     if not previous_evidence:
+        is_direct_cbt = current_evidence.get("entry_type") == "direct_cbt"
+
         return {
             "has_previous": False,
+            "comparison_mode": "direct_cbt_current_only" if is_direct_cbt else "no_previous_same_diagnosis",
+            "comparison_label": "체험형 진단은 현재 결과 기준으로만 분석합니다." if is_direct_cbt else "같은 시험지의 이전 응시 기록이 없어 현재 결과 기준으로 분석합니다.",
             "previous_record_id": None,
             "previous_accuracy": None,
             "current_accuracy": current_accuracy,
@@ -151,6 +162,8 @@ def compare_with_previous_record(
 
     return {
         "has_previous": True,
+        "comparison_mode": "same_email_same_diagnosis",
+        "comparison_label": "같은 이메일과 같은 시험지의 이전 응시 기록을 기준으로 비교합니다.",
         "previous_record_id": previous_evidence.get("record_id"),
         "previous_accuracy": previous_accuracy,
         "current_accuracy": current_accuracy,

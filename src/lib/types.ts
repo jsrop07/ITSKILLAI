@@ -377,8 +377,7 @@ export interface ExamResultResponse {
 }
 
 export interface DirectCbtLoginRequest {
-  name: string;
-  email: string;
+  access_code: string;
 }
 
 export interface DirectCbtLoginResponse {

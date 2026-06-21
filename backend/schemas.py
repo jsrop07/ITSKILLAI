@@ -540,9 +540,7 @@ class ExamResultResponse(BaseModel):
     summary_comment: Optional[str] = None
 
 class DirectCbtLoginRequest(BaseModel):
-    name: str
-    email: EmailStr
-
+    access_code: str
 
 class DirectCbtLoginResponse(BaseModel):
     applicant_id: int

@@ -14,7 +14,6 @@ export default function DirectAssessmentTake() {
 
     const parsedRecordId = Number(recordId);
     const applicantId = Number(localStorage.getItem("direct_applicant_id") || 0);
-    const applicantName = localStorage.getItem("direct_applicant_name") || "";
     const examToken = localStorage.getItem("direct_exam_token") || "";
 
     const [questions, setQuestions] = useState<QuestionForExam[]>([]);
@@ -163,6 +162,7 @@ export default function DirectAssessmentTake() {
             );
 
             localStorage.removeItem(`direct_answers_${parsedRecordId}`);
+            localStorage.setItem("direct_record_id", String(parsedRecordId));
             localStorage.setItem("direct_ai_report_generated", String(result.ai_report_generated));
             localStorage.setItem("direct_ai_report_limit_exceeded", String(result.ai_report_limit_exceeded));
             localStorage.setItem("direct_ai_report_remaining_today", String(result.ai_report_remaining_today));
@@ -226,7 +226,6 @@ export default function DirectAssessmentTake() {
                     <div>
                         <p className="text-sm opacity-70">직접 CBT 진단</p>
                         <h1 className="font-semibold">문제 풀이</h1>
-                        <p className="text-xs opacity-60">{applicantName || "응시자"}님</p>
                     </div>
 
                     <div className="flex items-center gap-3">
@@ -291,8 +290,8 @@ export default function DirectAssessmentTake() {
                                                 key={i}
                                                 onClick={() => setAnswer(current.question_id, i + 1, true)}
                                                 className={`w-full text-left px-4 py-3 rounded-lg border text-sm transition-all ${isSelected
-                                                        ? "border-sky-500 bg-sky-50 text-sky-700 font-medium"
-                                                        : "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
+                                                    ? "border-sky-500 bg-sky-50 text-sky-700 font-medium"
+                                                    : "border-slate-200 bg-white text-slate-700 hover:border-sky-300 hover:bg-sky-50"
                                                     }`}
                                             >
                                                 <span className={`inline-flex items-center justify-center size-6 rounded-full mr-3 text-xs font-bold ${isSelected ? "bg-sky-600 text-white" : "bg-slate-100 text-slate-600"
@@ -366,10 +365,10 @@ export default function DirectAssessmentTake() {
                                             key={q.question_id}
                                             onClick={() => setCurrentIdx(i)}
                                             className={`size-9 rounded text-xs font-medium transition-all ${isCurrent
-                                                    ? "bg-sky-600 text-white ring-2 ring-sky-300"
-                                                    : answered
-                                                        ? "bg-green-100 text-green-700"
-                                                        : "bg-slate-100 text-slate-500 hover:bg-slate-200"
+                                                ? "bg-sky-600 text-white ring-2 ring-sky-300"
+                                                : answered
+                                                    ? "bg-green-100 text-green-700"
+                                                    : "bg-slate-100 text-slate-500 hover:bg-slate-200"
                                                 }`}
                                         >
                                             {i + 1}

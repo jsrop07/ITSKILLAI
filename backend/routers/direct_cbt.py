@@ -1,5 +1,7 @@
+import os 
 import json
 import secrets
+import traceback
 from database import get_db
 from sqlalchemy.orm import Session
 from datetime import datetime, timedelta
@@ -14,8 +16,8 @@ from schemas import (DirectCbtLoginRequest,DirectCbtLoginResponse,DirectCbtDiagn
 router = APIRouter(prefix="/api/direct-cbt", tags=["direct-cbt"])
 
 
-DIRECT_CBT_AI_REPORT_DAILY_LIMIT = 3
-
+DIRECT_CBT_AI_REPORT_DAILY_LIMIT = 20
+DIRECT_CBT_ACCESS_CODE = os.getenv("DIRECT_CBT_ACCESS_CODE", "cbt2")
 
 def _normalize_email(email: str) -> str:
     return email.strip().lower()
@@ -47,30 +49,12 @@ def _count_today_direct_cbt_ai_reports_by_email(db: Session, email: str) -> int:
     )
 
 
-def _get_or_create_direct_applicant(
-    db: Session,
-    name: str,
-    email: str,
-) -> Applicant:
-    normalized_email = _normalize_email(email)
-
-    applicant = (
-        db.query(Applicant)
-        .filter(Applicant.email == normalized_email)
-        .order_by(Applicant.created_at.desc())
-        .first()
-    )
-
-    if applicant:
-        applicant.name = name.strip() or applicant.name
-        applicant.email = normalized_email
-        db.commit()
-        db.refresh(applicant)
-        return applicant
+def _create_direct_demo_applicant(db: Session) -> Applicant:
+    unique_key = secrets.token_hex(8)
 
     applicant = Applicant(
-        name=name.strip(),
-        email=normalized_email,
+        name=f"체험 응시자-{unique_key}",
+        email=f"demo-{unique_key}@itskill-demo.local",
         status="ready",
     )
 
@@ -86,11 +70,13 @@ def direct_cbt_login(
     data: DirectCbtLoginRequest,
     db: Session = Depends(get_db),
 ):
-    applicant = _get_or_create_direct_applicant(
-        db=db,
-        name=data.name,
-        email=data.email,
-    )
+    if data.access_code.strip() != DIRECT_CBT_ACCESS_CODE:
+        raise HTTPException(
+            status_code=403,
+            detail="유효하지 않은 체험 코드입니다.",
+        )
+
+    applicant = _create_direct_demo_applicant(db=db)
 
     return DirectCbtLoginResponse(
         applicant_id=applicant.applicant_id,
@@ -254,7 +240,10 @@ def submit_direct_cbt_exam(
             ai_report_generated = True
             db.commit()
             db.refresh(record)
-        except Exception:
+        except Exception as e:
+            print("Direct CBT AI report generation failed:", str(e))
+            traceback.print_exc()
+
             record.ai_report_generated = False
             record.ai_report_requested_at = datetime.utcnow()
             db.commit()

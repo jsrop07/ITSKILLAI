@@ -420,12 +420,10 @@ export const examApi = {
 
 export const directCbtApi = {
   login: async (
-    name: string,
-    email: string
+    accessCode: string
   ): Promise<DirectCbtLoginResponse> => {
     const res = await api.post<DirectCbtLoginResponse>("/api/direct-cbt/login", {
-      name,
-      email,
+      access_code: accessCode,
     });
     return res.data;
   },
