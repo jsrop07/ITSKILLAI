@@ -34,22 +34,31 @@ function parseReport(report: string): ParsedReportItem[] {
         .filter((line) => line.trim());
 
     return lines.map((line, index) => {
-        const isSection = SECTION_TITLES.includes(line);
+        const trimmed = line.trim();
+
+        const normalizedSection = trimmed
+            .replace(/^\[/, "")
+            .replace(/\]$/, "")
+            .trim();
+
+        const isSection =
+            SECTION_TITLES.includes(trimmed) ||
+            ["종합 진단", "체험형 분석 기준", "이전 대비 변화", "부족한 세부 영역", "복습 참고 방향"].includes(normalizedSection);
 
         if (isSection) {
             return {
                 type: "section",
                 key: index,
-                text: line.replace("[", "").replace("]", ""),
+                text: normalizedSection,
             };
         }
 
-        if (/^\d+\./.test(line)) {
+        if (/^\d+\./.test(trimmed)) {
             return {
                 type: "number",
                 key: index,
-                number: line.split(".")[0],
-                text: line.replace(/^\d+\.\s*/, ""),
+                number: trimmed.split(".")[0],
+                text: trimmed.replace(/^\d+\.\s*/, ""),
             };
         }
 
@@ -61,18 +70,18 @@ function parseReport(report: string): ParsedReportItem[] {
             };
         }
 
-        if (line.trim().startsWith("-")) {
+        if (trimmed.startsWith("-")) {
             return {
                 type: "bullet",
                 key: index,
-                text: line.trim().replace(/^-/, "").trim(),
+                text: trimmed.replace(/^-/, "").trim(),
             };
         }
 
         return {
             type: "paragraph",
             key: index,
-            text: line,
+            text: trimmed,
         };
     });
 }
