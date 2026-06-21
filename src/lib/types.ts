@@ -551,3 +551,19 @@ export function getCompetencyLabel(value?: string | null): string {
   if (!value) return "-";
   return COMPETENCY_LABEL_MAP[value] ?? value;
 }
+
+export interface DirectCbtSubmitStartResponse {
+  job_id: string;
+}
+
+export interface DirectCbtSubmitEvent {
+  status: "running" | "completed" | "failed";
+  message: string;
+  record_id?: number | null;
+  total_score?: number | null;
+  pass_yn?: boolean | null;
+  ai_report_generated?: boolean;
+  ai_report_limit_exceeded?: boolean;
+  ai_report_remaining_today?: number;
+  error?: string | null;
+}

@@ -29,6 +29,7 @@ import type {
   DirectCbtDiagnosisItem,
   DirectCbtStartResponse,
   DirectCbtSubmitResponse,
+  DirectCbtSubmitStartResponse,
 } from "./types";
 
 // ──────────────────────────────────────────────
@@ -448,7 +449,23 @@ export const directCbtApi = {
     );
     return res.data;
   },
-
+  startSubmit: async (
+    recordId: number,
+    answers: AnswerSubmit[],
+    applicantId: number
+  ): Promise<DirectCbtSubmitStartResponse> => {
+    const res = await api.post<DirectCbtSubmitStartResponse>(
+      "/api/direct-cbt/submit/start",
+      {
+        record_id: recordId,
+        answers,
+      },
+      {
+        params: { applicant_id: applicantId },
+      }
+    );
+    return res.data;
+  },
   submit: async (
     recordId: number,
     answers: AnswerSubmit[],

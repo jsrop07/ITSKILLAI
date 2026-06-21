@@ -6,7 +6,7 @@ import { Badge } from "../../components/ui/badge";
 import { Progress } from "../../components/ui/progress";
 import { AlertTriangle, ChevronLeft, ChevronRight, Clock, Loader2, Send } from "lucide-react";
 import { directCbtApi, examApi } from "../../../lib/api";
-import type { AnswerSubmit, QuestionForExam } from "../../../lib/types";
+import type { AnswerSubmit, QuestionForExam, DirectCbtSubmitEvent, } from "../../../lib/types";
 
 export default function DirectAssessmentTake() {
     const navigate = useNavigate();
@@ -24,10 +24,21 @@ export default function DirectAssessmentTake() {
     const [submitting, setSubmitting] = useState(false);
     const [showConfirm, setShowConfirm] = useState(false);
     const [error, setError] = useState("");
+    const [submitMessage, setSubmitMessage] = useState("");
+    const [submitError, setSubmitError] = useState("");
 
     const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
     const answersRef = useRef<Record<number, AnswerSubmit>>({});
     const endTimeRef = useRef<number | null>(null);
+    const eventSourceRef = useRef<EventSource | null>(null);
+    useEffect(() => {
+        return () => {
+            if (eventSourceRef.current) {
+                eventSourceRef.current.close();
+                eventSourceRef.current = null;
+            }
+        };
+    }, []);
 
     useEffect(() => {
         if (!applicantId || !examToken || !parsedRecordId) {
@@ -147,29 +158,74 @@ export default function DirectAssessmentTake() {
         if (submitting) return;
 
         setSubmitting(true);
+        setSubmitError("");
+        setSubmitMessage("답안을 제출하고 있습니다.");
 
         if (timerRef.current) {
             clearInterval(timerRef.current);
         }
 
+        if (eventSourceRef.current) {
+            eventSourceRef.current.close();
+            eventSourceRef.current = null;
+        }
+
         try {
             const answerList = Object.values(answersRef.current);
 
-            const result = await directCbtApi.submit(
+            const startResult = await directCbtApi.startSubmit(
                 parsedRecordId,
                 answerList,
                 applicantId
             );
 
-            localStorage.removeItem(`direct_answers_${parsedRecordId}`);
-            localStorage.setItem("direct_record_id", String(parsedRecordId));
-            localStorage.setItem("direct_ai_report_generated", String(result.ai_report_generated));
-            localStorage.setItem("direct_ai_report_limit_exceeded", String(result.ai_report_limit_exceeded));
-            localStorage.setItem("direct_ai_report_remaining_today", String(result.ai_report_remaining_today));
+            setShowConfirm(false);
+            setSubmitMessage("AI 분석 작업을 시작하고 있습니다.");
 
-            navigate(`/direct-assessment/result/${parsedRecordId}`);
+            const eventSource = new EventSource(
+                `/api/direct-cbt/submit/events/${startResult.job_id}`
+            );
+
+            eventSourceRef.current = eventSource;
+
+            eventSource.onmessage = (event) => {
+                const data: DirectCbtSubmitEvent = JSON.parse(event.data);
+
+                setSubmitMessage(data.message || "AI 분석을 진행하고 있습니다.");
+
+                if (data.status === "completed") {
+                    eventSource.close();
+                    eventSourceRef.current = null;
+
+                    localStorage.removeItem(`direct_answers_${parsedRecordId}`);
+                    localStorage.setItem("direct_record_id", String(data.record_id || parsedRecordId));
+                    localStorage.setItem("direct_ai_report_generated", String(Boolean(data.ai_report_generated)));
+                    localStorage.setItem("direct_ai_report_limit_exceeded", String(Boolean(data.ai_report_limit_exceeded)));
+                    localStorage.setItem("direct_ai_report_remaining_today", String(data.ai_report_remaining_today ?? 0));
+
+                    navigate(`/direct-assessment/result/${data.record_id || parsedRecordId}`);
+                }
+
+                if (data.status === "failed") {
+                    eventSource.close();
+                    eventSourceRef.current = null;
+
+                    setSubmitError(data.message || "제출 중 오류가 발생했습니다.");
+                    setSubmitting(false);
+                    setShowConfirm(false);
+                }
+            };
+
+            eventSource.onerror = () => {
+                eventSource.close();
+                eventSourceRef.current = null;
+
+                setSubmitError("서버 연결이 끊어졌습니다. 잠시 후 다시 시도해주세요.");
+                setSubmitting(false);
+                setShowConfirm(false);
+            };
         } catch (err: any) {
-            alert(err.response?.data?.detail || "제출 중 오류가 발생했습니다.");
+            setSubmitError(err.response?.data?.detail || "제출을 시작하는 중 오류가 발생했습니다.");
             setSubmitting(false);
             setShowConfirm(false);
         }
@@ -341,8 +397,12 @@ export default function DirectAssessmentTake() {
                                 onClick={() => handleSubmit(false)}
                                 disabled={submitting}
                             >
-                                <Send className="size-4 mr-2" />
-                                최종 제출
+                                {submitting ? (
+                                    <Loader2 className="size-4 mr-2 animate-spin" />
+                                ) : (
+                                    <Send className="size-4 mr-2" />
+                                )}
+                                {submitting ? "AI 분석 중..." : "최종 제출"}
                             </Button>
                         )}
                     </div>
@@ -427,14 +487,49 @@ export default function DirectAssessmentTake() {
                                 </Button>
 
                                 <Button
-                                    className="flex-1 bg-sky-600 hover:bg-sky-700"
+                                    className="bg-green-600 hover:bg-green-700"
                                     onClick={() => handleSubmit(false)}
                                     disabled={submitting}
                                 >
-                                    {submitting ? <Loader2 className="size-4 animate-spin mr-2" /> : null}
-                                    제출하기
+                                    {submitting ? (
+                                        <Loader2 className="size-4 mr-2 animate-spin" />
+                                    ) : (
+                                        <Send className="size-4 mr-2" />
+                                    )}
+                                    {submitting ? "AI 분석 중..." : "최종 제출"}
                                 </Button>
                             </div>
+                        </CardContent>
+                    </Card>
+                </div>
+            )}
+            {submitting && !showConfirm && (
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
+                    <Card className="w-full max-w-md shadow-2xl border-slate-200">
+                        <CardContent className="pt-8 pb-8 text-center space-y-5">
+                            <div className="mx-auto flex size-14 items-center justify-center rounded-full bg-sky-50">
+                                <Loader2 className="size-8 animate-spin text-sky-600" />
+                            </div>
+
+                            <div className="space-y-2">
+                                <h3 className="text-lg font-semibold text-slate-900">
+                                    AI 분석이 진행되고 있습니다
+                                </h3>
+
+                                <p className="text-sm leading-6 text-slate-600">
+                                    {submitMessage || "제출한 답안을 분석하는 중입니다. 잠시만 기다려주세요."}
+                                </p>
+                            </div>
+
+                            {submitError ? (
+                                <div className="rounded-lg bg-red-50 px-4 py-3 text-sm text-red-700">
+                                    {submitError}
+                                </div>
+                            ) : (
+                                <div className="rounded-lg bg-sky-50 px-4 py-3 text-sm text-sky-700">
+                                    완료되면 결과 페이지로 자동 이동됩니다.
+                                </div>
+                            )}
                         </CardContent>
                     </Card>
                 </div>
