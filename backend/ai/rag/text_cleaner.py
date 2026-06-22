@@ -23,6 +23,47 @@ REMOVE_LINE_KEYWORDS = [
     "학습 방법",
 ]
 
+def _is_toc_or_repeated_line(line: str) -> bool:
+    """
+    PDF 추출 과정에서 생기는 목차/헤더/푸터/반복 라인을 제거한다.
+    예: '인공지 01. 인공지 02. 인공지 03...' 같은 라인
+    """
+    if not line:
+        return True
+
+    # 이전에 실제로 나온 문제 패턴
+    if line.count("인공지") >= 4:
+        return True
+
+    if line.count("생성형 AI엔지니") >= 2:
+        return True
+
+    if line.count("교육훈련과정") >= 2:
+        return True
+
+    # 숫자 목차가 과도하게 반복되는 라인
+    number_tokens = re.findall(r"\b\d{1,2}\b", line)
+    if len(number_tokens) >= 8 and len(line) < 250:
+        return True
+
+    # 같은 짧은 토큰이 과도하게 반복되는 라인
+    tokens = re.findall(r"[가-힣A-Za-z0-9]+", line)
+    if len(tokens) >= 12:
+        unique_ratio = len(set(tokens)) / max(len(tokens), 1)
+        if unique_ratio < 0.35:
+            return True
+
+    # 목차 점선 형태
+    if re.search(r"\.{3,}\s*\d+$", line):
+        return True
+
+    return False
+
+
+def _normalize_cleaned_text(text: str) -> str:
+    text = re.sub(r"\n{3,}", "\n\n", text)
+    text = re.sub(r"[ \t]{2,}", " ", text)
+    return text.strip()
 
 def clean_pdf_text_for_rag(text: str) -> str:
     if not text:
@@ -62,12 +103,11 @@ def clean_pdf_text_for_rag(text: str) -> str:
         if re.match(r"^\d+\.\s*$", line):
             continue
 
+        # 반복 목차/헤더/깨진 PDF 추출 라인 제거
+        if _is_toc_or_repeated_line(line):
+            continue
+
         cleaned_lines.append(line)
 
     cleaned_text = "\n".join(cleaned_lines)
-
-    # 반복 공백/줄바꿈 정리
-    cleaned_text = re.sub(r"\n{3,}", "\n\n", cleaned_text)
-    cleaned_text = re.sub(r"[ \t]{2,}", " ", cleaned_text)
-
-    return cleaned_text.strip()
+    return _normalize_cleaned_text(cleaned_text)

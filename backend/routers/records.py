@@ -162,27 +162,88 @@ def create_record(
 
 @router.get("/analytics/summary")
 def get_analytics_summary(db: Session = Depends(get_db)):
-    from sqlalchemy import func, text
+    from sqlalchemy import func
 
-    total_records = db.query(func.count(Record.record_id)).scalar() or 0
-    graded_records = db.query(func.count(Record.record_id)).filter(
-        Record.status == "graded"
-    ).scalar() or 0
-    pass_count = db.query(func.count(Record.record_id)).filter(
-        Record.pass_yn == True
-    ).scalar() or 0
-    avg_score = db.query(func.avg(Record.total_score)).filter(
-        Record.total_score.isnot(None)
-    ).scalar()
+    # 1) 총 응시자는 applicants 테이블 기준
+    total_applicants = db.query(func.count(Applicant.applicant_id)).scalar() or 0
 
-    pass_rate = (pass_count / graded_records * 100) if graded_records > 0 else 0
+    # 2) applicant별 최신 graded record 1개만 대표 결과로 사용
+    graded_records = db.query(Record).filter(
+        Record.status == "graded",
+        Record.total_score.isnot(None),
+    ).order_by(
+        Record.applicant_id.asc(),
+        Record.submitted_at.is_(None).asc(),
+        Record.submitted_at.desc(),
+        Record.record_id.desc(),
+    ).all()
+
+    latest_record_by_applicant = {}
+
+    for record in graded_records:
+        if record.applicant_id not in latest_record_by_applicant:
+            latest_record_by_applicant[record.applicant_id] = record
+
+    latest_records = list(latest_record_by_applicant.values())
+
+    graded_applicants = len(latest_records)
+
+    pass_count = sum(
+        1 for record in latest_records
+        if record.pass_yn is True
+    )
+
+    fail_count = max(total_applicants - pass_count, 0)
+
+    scores = [
+        float(record.total_score)
+        for record in latest_records
+        if record.total_score is not None
+    ]
+
+    avg_score = sum(scores) / len(scores) if scores else None
+
+    # applicant 테이블 기준 합격률
+    pass_rate = (
+        pass_count / total_applicants * 100
+        if total_applicants > 0
+        else 0
+    )
+
+    score_distribution = [
+        {"range": "0-20", "count": 0},
+        {"range": "21-40", "count": 0},
+        {"range": "41-60", "count": 0},
+        {"range": "61-80", "count": 0},
+        {"range": "81-100", "count": 0},
+    ]
+
+    for score in scores:
+        if score <= 20:
+            score_distribution[0]["count"] += 1
+        elif score <= 40:
+            score_distribution[1]["count"] += 1
+        elif score <= 60:
+            score_distribution[2]["count"] += 1
+        elif score <= 80:
+            score_distribution[3]["count"] += 1
+        else:
+            score_distribution[4]["count"] += 1
 
     return {
-        "total_records": total_records,
-        "graded_records": graded_records,
+        # 새 기준
+        "total_applicants": total_applicants,
+        "graded_applicants": graded_applicants,
+
+        # 기존 프론트 호환용
+        "total_records": total_applicants,
+        "graded_records": total_applicants,
+
         "pass_count": pass_count,
+        "fail_count": fail_count,
         "pass_rate": round(pass_rate, 1),
-        "avg_score": round(float(avg_score), 1) if avg_score else None,
+        "avg_score": round(float(avg_score), 1) if avg_score is not None else None,
+        "score_distribution": score_distribution,
     }
 
 @router.post("/{record_id}/publish-result", response_model=RecordRead)

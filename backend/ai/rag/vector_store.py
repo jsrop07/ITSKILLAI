@@ -75,3 +75,30 @@ def search_similar_chunks(
         elapsed_time = time.time() - start_time
         logger.error(f"Vector Store [Search]: 유사도 검색 실패 (소요 시간: {elapsed_time:.3f}초) - 에러: {str(e)}")
         raise
+
+def delete_document_vectors(document_id: int):
+    """
+    특정 문서에 속한 ChromaDB vector를 모두 삭제한다.
+    기준은 metadata.document_id.
+    """
+    start_time = time.time()
+    logger.info(f"Vector Store [Delete]: 문서 벡터 삭제 시작 (document_id={document_id})")
+
+    try:
+        collection.delete(
+            where={"document_id": int(document_id)}
+        )
+
+        elapsed_time = time.time() - start_time
+        logger.info(
+            f"Vector Store [Delete]: 문서 벡터 삭제 성공 "
+            f"(document_id={document_id}, 소요 시간: {elapsed_time:.3f}초)"
+        )
+
+    except Exception as e:
+        elapsed_time = time.time() - start_time
+        logger.error(
+            f"Vector Store [Delete]: 문서 벡터 삭제 실패 "
+            f"(document_id={document_id}, 소요 시간: {elapsed_time:.3f}초) - 에러: {str(e)}"
+        )
+        raise

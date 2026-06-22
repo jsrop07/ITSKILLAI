@@ -13,6 +13,7 @@ from ai.rag.document_loader import load_text_from_file
 from ai.rag.text_splitter import split_text_into_chunks
 from ai.rag.document_service import embed_document_chunks
 from ai.rag.document_service import search_document_chunks
+from ai.rag.document_service import delete_document_with_chunks
 from ai.core.config import normalize_competency_type, get_competency_label
 from fastapi import APIRouter, Depends, File, Form, UploadFile, HTTPException
 
@@ -31,6 +32,8 @@ def upload_ai_document(
     db: Session = Depends(get_db),
     # current_admin: Admin = Depends(get_current_admin),
 ):
+    saved_file_path = None
+
     try:
         os.makedirs(UPLOAD_DIR, exist_ok=True)
 
@@ -122,6 +125,13 @@ def upload_ai_document(
 
     except Exception as e:
         db.rollback()
+
+        if saved_file_path and os.path.exists(saved_file_path):
+            try:
+                os.remove(saved_file_path)
+            except Exception:
+                pass
+
         raise HTTPException(status_code=500, detail=str(e))
 
 
@@ -131,7 +141,35 @@ def list_ai_documents(
 ):
     return db.query(AIDocument).order_by(AIDocument.created_at.desc()).all()
 
+@router.delete("/{document_id}")
+def delete_ai_document(
+    document_id: int,
+    db: Session = Depends(get_db),
+):
+    try:
+        result = delete_document_with_chunks(db, document_id)
 
+        file_path = result.get("file_path")
+        if file_path and os.path.exists(file_path):
+            try:
+                os.remove(file_path)
+            except Exception:
+                pass
+
+        return {
+            "message": "문서와 관련 chunk/vector가 삭제되었습니다.",
+            "data": result,
+        }
+
+    except ValueError as e:
+        raise HTTPException(status_code=404, detail=str(e))
+
+    except Exception as e:
+        raise HTTPException(
+            status_code=500,
+            detail=f"문서 삭제 중 오류가 발생했습니다: {str(e)}"
+        )
+        
 @router.post("/{document_id}/embed")
 def embed_document(document_id: int, conn=Depends(get_db)):
     try:

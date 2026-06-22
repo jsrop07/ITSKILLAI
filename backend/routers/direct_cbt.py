@@ -22,7 +22,7 @@ router = APIRouter(prefix="/api/direct-cbt", tags=["direct-cbt"])
 
 
 DIRECT_CBT_AI_REPORT_DAILY_LIMIT = 20
-DIRECT_CBT_ACCESS_CODE = os.getenv("DIRECT_CBT_ACCESS_CODE", "cbt2")
+DIRECT_CBT_ACCESS_CODE = os.getenv("DIRECT_CBT_ACCESS_CODE", "cbt")
 
 direct_cbt_submit_jobs: dict[str, dict] = {}
 
