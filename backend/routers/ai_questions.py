@@ -27,8 +27,8 @@ class AIQuestionGenerateRequest(BaseModel):
 class AIQuestionGenerateFromDocumentRequest(BaseModel):
     topic: str
     difficulty: Literal["초급", "중급", "고급"]
-    count: int = 1
-    top_k: int = 5
+    count: int = Field(default=1, ge=1, le=10)
+    top_k: int = Field(default=5, ge=1, le=20)
     question_type: Literal["multiple_choice", "essay", "coding"] = "multiple_choice"
     competency_type: str | None = None
     search_query: str | None = None

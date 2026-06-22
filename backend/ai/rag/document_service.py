@@ -5,7 +5,11 @@ import time
 import logging
 from sqlalchemy import text
 from ai.rag.embedding_service import create_embedding
-from ai.rag.vector_store import (search_similar_chunks, add_chunk_to_vector_store)
+from ai.rag.vector_store import (
+    search_similar_chunks,
+    add_chunk_to_vector_store,
+    delete_document_vectors,
+)
 
 logger = logging.getLogger("uvicorn.info")
 
@@ -54,6 +58,55 @@ def get_chunks_by_document_id(db, document_id: int):
     result = db.execute(sql, {"document_id": document_id}).mappings().all()
     return result
 
+def delete_document_with_chunks(db, document_id: int):
+    """
+    문서 삭제:
+    1. 문서 존재 확인
+    2. ChromaDB vector 삭제
+    3. ai_document_chunks 삭제
+    4. ai_documents 삭제
+    """
+    document = get_document_by_id(db, document_id)
+
+    if not document:
+        raise ValueError("문서를 찾을 수 없습니다.")
+
+    file_path = document.get("file_path")
+
+    try:
+        # 1) ChromaDB vector 삭제
+        delete_document_vectors(document_id)
+
+        # 2) DB chunk 삭제
+        db.execute(
+            text("""
+                DELETE FROM ai_document_chunks
+                WHERE document_id = :document_id
+            """),
+            {"document_id": document_id}
+        )
+
+        # 3) DB document 삭제
+        db.execute(
+            text("""
+                DELETE FROM ai_documents
+                WHERE document_id = :document_id
+            """),
+            {"document_id": document_id}
+        )
+
+        db.commit()
+
+        return {
+            "document_id": document_id,
+            "file_path": file_path,
+            "deleted": True,
+            "message": "문서와 관련 chunk/vector가 삭제되었습니다.",
+        }
+
+    except Exception:
+        db.rollback()
+        raise
 
 def update_document_embedding_status(
     db,
@@ -477,6 +530,9 @@ def search_document_chunks(
                 f"candidate_k={candidate_k}, "
                 f"final_top_k={top_k}"
             )
+        for item in search_results:
+            _calculate_context_quality(item)
+
         elapsed_time = time.time() - start_time
         logger.info(
             f"RAG Pipeline [Search]: 문서 검색 성공 "

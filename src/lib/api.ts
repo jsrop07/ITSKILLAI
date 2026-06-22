@@ -544,6 +544,18 @@ export interface RAGSearchResult {
   rrf_score?: number | null;
   keyword_raw_score?: number | null;
   search_sources?: string[];
+
+  quality_score?: number | null;
+  noise_score?: number | null;
+  evidence_score?: number | null;
+  structure_score?: number | null;
+  quality?: {
+    noise_score?: number;
+    evidence_score?: number;
+    structure_score?: number;
+    quality_score?: number;
+    content_length?: number;
+  };
 }
 
 export interface AIDocumentSearchPayload {
@@ -602,6 +614,10 @@ export const aiDocumentApi = {
   embed: async (documentId: number) => {
     const res = await api.post(`/api/ai/documents/${documentId}/embed`);
     return res.data;
+  },
+
+  delete: async (documentId: number): Promise<void> => {
+    await api.delete(`/api/ai/documents/${documentId}`);
   },
 
   search: async (payload: AIDocumentSearchPayload) => {
