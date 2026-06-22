@@ -14,6 +14,7 @@ import {
   Clock,
   AlertCircle,
   Sparkles,
+  Trash2,
 } from "lucide-react";
 import {
   Table,
@@ -163,6 +164,36 @@ export default function DocumentRAGManagement() {
       await loadDocuments();
     } catch (error: any) {
       alert(error.response?.data?.detail || "문서 인덱싱 중 오류가 발생했습니다.");
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleDeleteDocument = async (doc: AIDocument) => {
+    const ok = window.confirm(
+      `"${doc.title}" 문서를 삭제할까요?\n\n삭제하면 해당 문서의 DB chunk와 ChromaDB vector도 함께 삭제됩니다.`
+    );
+
+    if (!ok) return;
+
+    try {
+      setIsLoading(true);
+
+      await aiDocumentApi.delete(doc.document_id);
+
+      if (selectedDoc?.document_id === doc.document_id) {
+        setSelectedDoc(null);
+      }
+
+      setRetrievalResults((prev) =>
+        prev.filter((item) => item.metadata?.document_id !== doc.document_id)
+      );
+
+      await loadDocuments();
+
+      alert("문서가 삭제되었습니다.");
+    } catch (error: any) {
+      alert(error.response?.data?.detail || "문서 삭제 중 오류가 발생했습니다.");
     } finally {
       setIsLoading(false);
     }
@@ -391,6 +422,16 @@ export default function DocumentRAGManagement() {
                         <RefreshCw className="size-4 mr-2" />
                         인덱싱
                       </Button>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        disabled={isLoading || doc.embedding_status === "processing"}
+                        onClick={() => handleDeleteDocument(doc)}
+                        className="text-red-600 hover:text-red-700 hover:bg-red-50"
+                      >
+                        <Trash2 className="size-4 mr-2" />
+                        삭제
+                      </Button>
                     </div>
                   </TableCell>
                 </TableRow>
@@ -457,7 +498,7 @@ export default function DocumentRAGManagement() {
                 검색 쿼리
               </label>
               <Textarea
-                placeholder="예: Java 상속과 오버라이딩"
+                placeholder="예: RAG 검색 품질"
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 rows={3}
@@ -541,6 +582,12 @@ export default function DocumentRAGManagement() {
                           ? result.hybrid_score.toFixed(3)
                           : "-"}
                       </Badge>
+
+                      {typeof result.quality_score === "number" && (
+                        <Badge variant="secondary" className="bg-emerald-100 text-emerald-700">
+                          quality {result.quality_score.toFixed(3)}
+                        </Badge>
+                      )}
                     </div>
 
                     <p className="text-xs text-slate-500 mb-2">

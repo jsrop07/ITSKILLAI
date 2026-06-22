@@ -81,7 +81,7 @@ type DocumentScopeValue = "none" | "rag_all";
 export default function AIQuestionGeneration() {
   // const [role, setRole] = useState("backend");
   const [competencyType, setCompetencyType] =
-    useState<CompetencyTypeValue>("software_engineering");
+    useState<CompetencyTypeValue>("ai");
   const [difficulty, setDifficulty] = useState<"초급" | "중급" | "고급">("초급");
   const [questionType, setQuestionType] = useState<"multiple_choice" | "essay" | "coding">("multiple_choice");
   const [documentScope, setDocumentScope] = useState<"none" | "rag_all">("none");
@@ -313,23 +313,6 @@ export default function AIQuestionGeneration() {
               </Select>
             </div>
 
-            {competencyType === "ai" && !isRagEnabled && (
-              <div className="space-y-2">
-                <Label htmlFor="useV2">AI 생성 엔진</Label>
-                <Select
-                  value={useV2 ? "v2" : "v1"}
-                  onValueChange={(value) => setUseV2(value === "v2")}
-                >
-                  <SelectTrigger id="useV2">
-                    <SelectValue placeholder="AI 생성 엔진 선택" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="v2">AI V2 사용</SelectItem>
-                    <SelectItem value="v1">기존 AI 생성 사용</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="scope">문서 범위 (RAG)</Label>

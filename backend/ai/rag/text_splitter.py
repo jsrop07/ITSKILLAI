@@ -1,5 +1,48 @@
 import re
 
+def _token_unique_ratio(text: str) -> float:
+    tokens = re.findall(r"[가-힣A-Za-z0-9]+", text)
+    if not tokens:
+        return 0.0
+    return len(set(tokens)) / len(tokens)
+
+
+def _is_bad_chunk(chunk: str) -> bool:
+    text = (chunk or "").strip()
+
+    if len(text) < 120:
+        return True
+
+    # 실제로 문제가 됐던 반복 패턴 방지
+    if text.count("인공지") >= 8:
+        return True
+
+    if text.count("생성형 AI엔지니") >= 3:
+        return True
+
+    if text.count("교육훈련과정") >= 3:
+        return True
+
+    # 중복 토큰 비율이 낮으면 목차/깨진 추출일 가능성이 큼
+    if _token_unique_ratio(text) < 0.35:
+        return True
+
+    evidence_terms = [
+        "정의", "개념", "특징", "목적", "역할", "방법", "절차", "기준",
+        "조건", "원인", "해결", "비교", "장점", "단점", "분석", "검증",
+        "평가", "요구사항", "성능", "보안", "RAG", "검색", "임베딩",
+        "metadata", "vector", "keyword", "hybrid", "LLM", "프롬프트",
+    ]
+
+    has_evidence_term = any(term in text for term in evidence_terms)
+    has_sentence_ending = bool(
+        re.search(r"(다\.|한다\.|된다\.|이다\.|있다\.|없다\.|해야 한다\.|필요하다\.)", text)
+    )
+
+    if not has_evidence_term and not has_sentence_ending:
+        return True
+
+    return False
 
 def split_text_into_chunks(text: str, chunk_size: int = 700, overlap: int = 120):
     text = (text or "").strip()
@@ -77,5 +120,5 @@ def split_text_into_chunks(text: str, chunk_size: int = 700, overlap: int = 120)
     if current:
         chunks.append(current)
 
-    # 너무 짧은 chunk 제거
-    return [chunk for chunk in chunks if len(chunk.strip()) >= 80]
+    # 너무 짧거나 반복/목차성 chunk 제거
+    return [chunk for chunk in chunks if not _is_bad_chunk(chunk)]

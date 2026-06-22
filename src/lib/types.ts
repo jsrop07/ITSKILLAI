@@ -495,16 +495,17 @@ export interface AnswerDetail {
 // ──────────────────────────────────────────────
 
 export type CompetencyTypeValue =
+  | "ai"
   | "software_engineering"
   | "java"
   | "python"
   | "c_language"
   | "sql"
   | "data_structure_algorithm"
-  | "security"
-  | "ai";
+  | "security";
 
 export const COMPETENCY_OPTIONS: { value: CompetencyTypeValue; label: string }[] = [
+  { value: "ai", label: "AI" },
   { value: "software_engineering", label: "소프트웨어공학" },
   { value: "java", label: "Java" },
   { value: "python", label: "Python" },
@@ -512,11 +513,11 @@ export const COMPETENCY_OPTIONS: { value: CompetencyTypeValue; label: string }[]
   { value: "sql", label: "SQL" },
   { value: "data_structure_algorithm", label: "자료구조/알고리즘" },
   { value: "security", label: "정보보안" },
-  { value: "ai", label: "AI" },
 ];
 
 export const COMPETENCY_LABEL_MAP: Record<string, string> = {
   // 신규 8개
+  ai: "AI",
   software_engineering: "소프트웨어공학",
   java: "Java",
   python: "Python",
@@ -524,16 +525,6 @@ export const COMPETENCY_LABEL_MAP: Record<string, string> = {
   sql: "SQL",
   data_structure_algorithm: "자료구조/알고리즘",
   security: "정보보안",
-  ai: "AI",
-
-  // legacy display only — 기존 DB 데이터 표시용
-  programming: "프로그래밍",
-  programming_language: "프로그래밍",
-  database: "데이터베이스",
-  ai_data: "인공지능/데이터",
-  web_development: "웹 개발",
-  os_network: "운영체제/네트워크",
-  cloud_devops: "클라우드/DevOps",
 };
 
 export const TOPIC_PLACEHOLDER_MAP: Record<string, string> = {
